@@ -1,3 +1,17 @@
+# --- JAVA PATH HELPER ---
+def get_java_path() -> Optional[str]:
+    """Повертає шлях до вбудованої JRE або системної Java."""
+    # sys.frozen встановлюється PyInstaller при запуску exe
+    if getattr(sys, 'frozen', False):
+        base = Path(sys.executable).parent
+        bundled = base / "jre" / "bin" / "java.exe"
+        if bundled.exists():
+            return str(bundled)
+    # Fallback на системну
+    java = shutil.which('java')
+    if java:
+        return java
+    return None
 import os
 import sys
 import json
@@ -12,6 +26,7 @@ import atexit
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Dict, Any, Optional, Callable, Tuple
+from translations import _t, Translator
 
 try:
     import psutil
@@ -65,20 +80,20 @@ class ServerState:
 # --- HELPERS ---
 def parse_core_info(jar_name: str) -> Tuple[str, str, bool]:
     jar_lower = jar_name.lower()
-    version = "Unknown"
+    version = _t("CORE_TYPE_UNKNOWN")
     v_match = re.search(r"(\d+\.\d+(\.\d+)?)", jar_name)
     if v_match:
         version = v_match.group(1)
 
-    if 'paper' in jar_lower: return "Paper", version, True
-    if 'purpur' in jar_lower: return "Purpur", version, True
-    if 'spigot' in jar_lower: return "Spigot", version, False
-    if 'bukkit' in jar_lower: return "Bukkit", version, False
-    if 'fabric' in jar_lower: return "Fabric", version, False
-    if 'forge' in jar_lower: return "Forge", version, False
-    if 'vanilla' in jar_lower or 'server' in jar_lower: return "Vanilla", version, False
+    if 'paper' in jar_lower: return _t("CORE_TYPE_PAPER"), version, True
+    if 'purpur' in jar_lower: return _t("CORE_TYPE_PURPUR"), version, True
+    if 'spigot' in jar_lower: return _t("CORE_TYPE_SPIGOT"), version, False
+    if 'bukkit' in jar_lower: return _t("CORE_TYPE_BUKKIT"), version, False
+    if 'fabric' in jar_lower: return _t("CORE_TYPE_FABRIC"), version, False
+    if 'forge' in jar_lower: return _t("CORE_TYPE_FORGE"), version, False
+    if 'vanilla' in jar_lower or 'server' in jar_lower: return _t("CORE_TYPE_VANILLA"), version, False
 
-    return "Unknown", version, False
+    return _t("CORE_TYPE_UNKNOWN"), version, False
 
 def get_directory_size_gb(start_path: str) -> float:
     total_size = 0
@@ -118,7 +133,7 @@ class ServerData:
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> 'ServerData':
         return ServerData(
-            name=data.get('name', 'Unknown'),
+            name=data.get('name', _t("CORE_TYPE_UNKNOWN")),
             core_name=data.get('core_name', ''),
             jar_path=data.get('jar_path', ''),
             ram=int(data.get('ram', 1024)),
@@ -146,13 +161,12 @@ class ServerInstance:
         self.psutil_proc = None
         self.state = ServerState.OFFLINE
         self._stop_event = threading.Event()
-        self.job_handle = None 
-        
+        self.job_handle = None
+        self._stdin_lock = threading.Lock()
         # Stats
         self.start_time = None
         self.player_count = 0
         self.current_tps = 20.0
-        
         self.core_type, self.version, self.supports_tps = parse_core_info(data.core_name)
         
     def set_state(self, new_state):
@@ -163,9 +177,9 @@ class ServerInstance:
     def start(self):
         if self.state != ServerState.OFFLINE: return
 
-        java_path = shutil.which('java')
+        java_path = get_java_path()
         if not java_path:
-            self.callbacks.on_log("ERROR: Java not found!\n", "ERROR")
+            self.callbacks.on_log(_t("CORE_ERR_JAVA_NOT_FOUND"), "ERROR")
             self.callbacks.on_stop(-1)
             return
 
@@ -182,7 +196,7 @@ class ServerInstance:
         if heap_mb < 512: heap_mb = 512
 
         cmd = [
-            'java',
+            java_path,
             f'-Xmx{heap_mb}M',
             f'-Xms{heap_mb}M',
             '-jar', self.data.core_name,
@@ -193,7 +207,7 @@ class ServerInstance:
             creation_flags = 0
             if sys.platform == 'win32':
                 creation_flags = CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB
-            
+
             self.process = subprocess.Popen(
                 cmd,
                 cwd=os.path.abspath(self.data.directory),
@@ -204,34 +218,36 @@ class ServerInstance:
                 errors='replace',
                 creationflags=creation_flags
             )
-            
+
             if psutil:
                 try: self.psutil_proc = psutil.Process(self.process.pid)
-                except: self.psutil_proc = None
-            
+                except Exception: self.psutil_proc = None
+
             if sys.platform == 'win32':
                 try: self._apply_windows_limit(total_limit_mb)
                 except Exception: pass
 
             self.set_state(ServerState.STARTING)
-            
+
             threading.Thread(target=self._log_reader_thread, daemon=True).start()
             threading.Thread(target=self._monitor_thread, daemon=True).start()
-            
-            self.callbacks.on_log(f"--- Запуск сервера: {self.data.name} ---\n", "INFO")
+
+            self.callbacks.on_log(_t("CORE_LOG_SERVER_START", name=self.data.name), "INFO")
 
         except Exception as e:
-            self.callbacks.on_log(f"Failed to start: {e}\n", "ERROR")
+            self.callbacks.on_log(_t("CORE_ERR_START_FAIL", error=e), "ERROR")
             self.callbacks.on_stop(-1)
 
     def _apply_windows_limit(self, limit_mb):
+        if self.job_handle:
+            return
         self.job_handle = ctypes.windll.kernel32.CreateJobObjectW(None, None)
         if not self.job_handle: return
 
         info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
         info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_PROCESS_MEMORY
         info.ProcessMemoryLimit = int(limit_mb * 1024 * 1024)
-        
+
         ctypes.windll.kernel32.SetInformationJobObject(
             self.job_handle, JobObjectExtendedLimitInformation,
             ctypes.byref(info), ctypes.sizeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION)
@@ -243,22 +259,31 @@ class ServerInstance:
         if self.process and self.state in [ServerState.STARTING, ServerState.ONLINE]:
             self.set_state(ServerState.STOPPING)
             self.write_command("stop")
-            self.callbacks.on_log("--- Stop command sent ---\n", "WARN")
+            self.callbacks.on_log(_t("CORE_LOG_STOP_SENT"), "WARN")
 
     def kill(self):
-        if self.process: 
-            try: self.process.kill()
-            except: pass
+        if self.process:
+            try:
+                self.process.kill()
+            except Exception as e:
+                if self.callbacks:
+                    self.callbacks.on_log(_t("CORE_ERR_KILL", error=e), "WARN")
+            self.process = None
         if self.job_handle:
-            ctypes.windll.kernel32.CloseHandle(self.job_handle)
+            try:
+                ctypes.windll.kernel32.CloseHandle(self.job_handle)
+            except Exception:
+                pass
             self.job_handle = None
 
     def write_command(self, command: str):
         if self.process and self.process.stdin:
-            try:
-                self.process.stdin.write(command + "\n")
-                self.process.stdin.flush()
-            except IOError: pass
+            with self._stdin_lock:
+                try:
+                    self.process.stdin.write(command + "\n")
+                    self.process.stdin.flush()
+                except IOError:
+                    pass
 
     def _log_reader_thread(self):
         if not self.process or not self.process.stdout: return
@@ -296,16 +321,23 @@ class ServerInstance:
 
             self.callbacks.on_log(line, level)
 
-        self.process.wait()
+        exit_code = None
+        if self.process:
+            exit_code = self.process.wait()
         self.set_state(ServerState.OFFLINE)
         self.start_time = None
         self._stop_event.set()
-        
         if self.job_handle:
-            ctypes.windll.kernel32.CloseHandle(self.job_handle)
+            try:
+                ctypes.windll.kernel32.CloseHandle(self.job_handle)
+            except Exception:
+                pass
             self.job_handle = None
-            
-        self.callbacks.on_stop(self.process.returncode)
+        if exit_code is None and self.process:
+            exit_code = self.process.returncode
+        if exit_code is None:
+            exit_code = -1
+        self.callbacks.on_stop(exit_code)
 
     def _monitor_thread(self):
         tick_counter = 0
@@ -341,13 +373,13 @@ class ServerInstance:
             
             gc_time = 0.0 # Placeholder
 
-            uptime_str = "0 год 0 хв 0 с"
+            uptime_str = _t("CORE_UPTIME_ZERO")
             if self.start_time:
                 delta = int(time.time() - self.start_time)
                 h = delta // 3600
                 m = (delta % 3600) // 60
                 s = delta % 60
-                uptime_str = f"{h} год {m} хв {s} с"
+                uptime_str = _t("CORE_UPTIME_FMT", h=h, m=m, s=s)
 
             self.callbacks.on_stats(ram_mb, tps_val, current_disk_gb, uptime_str, self.player_count, cpu_percent, gc_time, mspt)
             
@@ -367,6 +399,7 @@ class PlayitInstance:
     def start(self):
         if self.process: return
         try:
+            self.stop_event.clear()
             creation_flags = 0
             if sys.platform == 'win32':
                 creation_flags = CREATE_NO_WINDOW
@@ -381,14 +414,15 @@ class PlayitInstance:
                 stderr=subprocess.STDOUT,
                 text=True,
                 creationflags=creation_flags,
-                errors='replace'
+                errors='replace',
+                bufsize=1
             )
             threading.Thread(target=self._read_loop, daemon=True).start()
             return True
         except Exception as e:
             print(f"Playit launch error: {e}")
             if self.on_output:
-                self.on_output(f"Error starting playit: {e}", None)
+                self.on_output(_t("CORE_PLAYIT_START_ERR", error=e), None)
             return False
 
     def stop(self):
@@ -400,28 +434,26 @@ class PlayitInstance:
             self.public_address = None
 
     def _read_loop(self):
-        # Improved Regex: matches playit.gg domains
-        addr_regex = re.compile(r'(\S+\.playit\.gg(?::\d+)?)') 
-        
-        while self.process and not self.stop_event.is_set():
-            line = self.process.stdout.readline()
-            if not line: break
-            
-            # CRITICAL FIX: Clean ANSI codes (colors, cursor movements) from the line
-            clean_line = strip_ansi_codes(line.strip())
-            
-            # Try to grab the address from CLEAN text
-            if not self.public_address:
-                if match := addr_regex.search(clean_line):
-                    found = match.group(1)
-                    # Simple filter to avoid grabbing urls like https://playit.gg/claim...
-                    if "https" not in found and "http" not in found:
-                         self.public_address = found
-            
-            # Pass CLEAN text to UI
+        if not self.process or not self.process.stdout:
+            return
+        addr_regex = re.compile(r'(\S+\.playit\.gg(?::\d+)?)')
+        for line in iter(self.process.stdout.readline, ''):
+            if self.stop_event.is_set():
+                break
+            if not line:
+                break
+            clean_line = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', line.strip())
+            match = addr_regex.search(clean_line)
+            if match:
+                self.public_address = match.group(1)
+                if self.on_output:
+                    self.on_output(clean_line, self.public_address)
+            else:
+                if self.on_output:
+                    self.on_output(clean_line, None)
+        if self.process and not self.stop_event.is_set():
             if self.on_output:
-                self.on_output(clean_line, self.public_address)
-        
+                self.on_output(_t("CORE_PLAYIT_EXITED"), None)
         self.process = None
 
 # --- MANAGER ---
@@ -435,6 +467,7 @@ class ServerManager:
         
         self.servers: Dict[str, ServerData] = self.load_servers()
         self.settings: Dict[str, Any] = self.load_settings()
+        Translator().set_language(self.settings.get("language", "uk"))
         
         self.active_instance: Optional[ServerInstance] = None
         self.playit_instance: Optional[PlayitInstance] = None
@@ -464,9 +497,12 @@ class ServerManager:
         if self.settings_file.exists():
             try:
                 with open(self.settings_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+                    settings = json.load(f)
+                    settings.setdefault("playit_path", "")
+                    settings.setdefault("language", "uk")
+                    return settings
             except: pass
-        return {"playit_path": ""}
+        return {"playit_path": "", "language": "uk"}
 
     def save_settings(self):
         with open(self.settings_file, 'w', encoding='utf-8') as f:
@@ -478,6 +514,12 @@ class ServerManager:
 
     def get_playit_path(self) -> str:
         return self.settings.get("playit_path", "")
+
+    def set_language(self, lang_code: str):
+        lang = "en" if lang_code == "en" else "uk"
+        self.settings["language"] = lang
+        self.save_settings()
+        Translator().set_language(lang)
 
     def toggle_playit(self, on_output: Callable[[str, Optional[str]], None]) -> bool:
         """Returns True if started, False if stopped or failed"""
@@ -526,9 +568,21 @@ class ServerManager:
         return True
 
     def rename_server(self, old_name: str, new_name: str) -> bool:
-        if new_name in self.servers or old_name not in self.servers: return False
+        if new_name in self.servers or old_name not in self.servers:
+            return False
         server = self.servers.pop(old_name)
-        server.name = new_name
+        old_dir = Path(server.directory)
+        new_dir = old_dir.parent / new_name
+        try:
+            if old_dir.exists():
+                old_dir.rename(new_dir)
+            server.name = new_name
+            server.directory = str(new_dir)
+            if server.jar_path:
+                server.jar_path = str(new_dir / Path(server.jar_path).name)
+        except OSError as e:
+            self.servers[old_name] = server  # rollback
+            return False
         self.servers[new_name] = server
         self.save_servers()
         return True
@@ -563,22 +617,27 @@ class ServerManager:
         return props
 
     def save_server_properties(self, server_name: str, new_props: Dict[str, str]):
+        import tempfile
         server = self.servers.get(server_name)
-        if not server: return
+        if not server:
+            return
         path = Path(server.directory) / "server.properties"
-        if not path.exists(): return
-        lines = []
-        with open(path, "r") as f: lines = f.readlines()
-        with open(path, "w") as f:
+        if not path.exists():
+            return
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        tmp = path.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
             for line in lines:
                 if "=" in line and not line.strip().startswith("#"):
-                    k, _ = line.strip().split("=", 1)
+                    k = line.split("=", 1)[0].strip()
                     if k in new_props:
                         f.write(f"{k}={new_props[k]}\n")
                     else:
                         f.write(line)
                 else:
                     f.write(line)
+        tmp.replace(path)
 
     @staticmethod
     def get_dir_size_gb(path: str) -> float:
@@ -586,16 +645,16 @@ class ServerManager:
 
     @staticmethod
     def get_local_ip() -> str:
+        import socket
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            s.close()
-            return ip
-        except: return "127.0.0.1"
+            return socket.gethostbyname(socket.gethostname())
+        except Exception:
+            return "127.0.0.1"
 
     @staticmethod
     def get_public_ip() -> str:
+        import urllib.request
         try:
-            return urllib.request.urlopen('https://api.ipify.org').read().decode('utf8')
-        except: return "Unavailable"
+            return urllib.request.urlopen('https://api.ipify.org', timeout=5).read().decode('utf8')
+        except Exception:
+            return _t("CORE_UNAVAILABLE")
