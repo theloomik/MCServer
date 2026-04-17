@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# MCServer dir
+playit.exe
+*.exe
+server_log_*
+icon.ico
+minecraft_servers/
