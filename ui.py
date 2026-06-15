@@ -16,7 +16,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import (
     Qt, QSize, Signal, QObject, Slot, QTimer, QPropertyAnimation, 
-    QEasingCurve, QPoint, QParallelAnimationGroup, QSequentialAnimationGroup, QEvent, QUrl
+    QEasingCurve, QPoint, QParallelAnimationGroup, QSequentialAnimationGroup, QEvent, QUrl,
+    QRunnable, QThreadPool
 )
 from PySide6.QtGui import (
     QFont, QColor, QCursor, QIcon, QPainter, QLinearGradient, QBrush, 
@@ -570,6 +571,31 @@ class ServerBridge(QObject):
     def on_stop(self, code): self.stop_signal.emit(code)
     def on_playit_output(self, line, pub_ip): self.playit_signal.emit(line, pub_ip or "")
 
+
+class WorkerSignals(QObject):
+    result = Signal(object)
+    error = Signal(str)
+    finished = Signal()
+
+
+class WorkerTask(QRunnable):
+    def __init__(self, function):
+        super().__init__()
+        self.function = function
+        self.signals = WorkerSignals()
+
+    @Slot()
+    def run(self):
+        try:
+            result = self.function()
+        except Exception as error:
+            self.signals.error.emit(str(error))
+        else:
+            self.signals.result.emit(result)
+        finally:
+            self.signals.finished.emit()
+
+
 class ToastNotification(QFrame):
     def __init__(self, parent, message, is_error=False):
         super().__init__(parent)
@@ -897,11 +923,17 @@ class DashboardPage(QWidget):
         state = "OFFLINE"
         if self.manager.active_instance and self.manager.active_instance.data.name == name: state = self.manager.active_instance.state
         self.update_ui_state(state)
-        d_size = core.ServerManager.get_dir_size_gb(server.directory)
-        self.card_disk.update_data(d_size, 0, f"{d_size:.2f} GB")
+        self.main.run_async(
+            lambda path=server.directory: core.ServerManager.get_dir_size_gb(path),
+            lambda size, server_name=name: self.on_disk_size_loaded(server_name, size),
+        )
         if state == "OFFLINE": 
             for c in [self.card_tps, self.card_ram, self.card_cpu]:
                 c.update_data(-1.0, 100)
+
+    def on_disk_size_loaded(self, server_name, size):
+        if self.current_server == server_name:
+            self.card_disk.update_data(size, 0, f"{size:.2f} GB")
 
     def update_ui_state(self, state):
         self.status_badge.update_state(state)
@@ -1300,9 +1332,9 @@ class SettingsPage(QWidget):
 
         self.form.addStretch()
         self.add_section_header(_t("SETTINGS_SECTION_DANGER"))
-        btn_del = ModernButton(_t("SETTINGS_BTN_DELETE"), bg_color="#2c1515", text_color=COLOR_DANGER, hover_color=COLOR_DANGER)
-        btn_del.clicked.connect(self.delete_server)
-        self.form.addWidget(btn_del)
+        self.btn_delete = ModernButton(_t("SETTINGS_BTN_DELETE"), bg_color="#2c1515", text_color=COLOR_DANGER, hover_color=COLOR_DANGER)
+        self.btn_delete.clicked.connect(self.delete_server)
+        self.form.addWidget(self.btn_delete)
 
         scroll.setWidget(container)
         layout.addWidget(scroll)
@@ -1347,7 +1379,16 @@ class SettingsPage(QWidget):
         )
         if answer != QMessageBox.Yes:
             return
-        if self.manager.delete_server(self.current_server):
+        self.btn_delete.setEnabled(False)
+        self.main.run_async(
+            lambda name=self.current_server: self.manager.delete_server(name),
+            self.on_delete_finished,
+            lambda _error: self.on_delete_finished(False),
+        )
+
+    def on_delete_finished(self, deleted):
+        self.btn_delete.setEnabled(True)
+        if deleted:
             self.main.show_home()
             self.main.show_toast(_t("SETTINGS_MSG_SERVER_DELETED"), False)
         else:
@@ -1410,9 +1451,9 @@ class CreatePage(QWidget):
         slider_labels.addWidget(QLabel(_t("RAM_MAX_LABEL"), styleSheet=f"color: {COLOR_TEXT_SEC};"))
         cl.addLayout(slider_labels)
         cl.addStretch()
-        btn_create = ModernButton(_t("CREATE_BTN_CREATE"), bg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER, text_color="white", is_accent=True)
-        btn_create.clicked.connect(self.create)
-        cl.addWidget(btn_create)
+        self.btn_create = ModernButton(_t("CREATE_BTN_CREATE"), bg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER, text_color="white", is_accent=True)
+        self.btn_create.clicked.connect(self.create)
+        cl.addWidget(self.btn_create)
         btn_cancel = ModernButton(_t("CREATE_BTN_CANCEL"), bg_color="transparent")
         btn_cancel.clicked.connect(self.main.show_home)
         cl.addWidget(btn_cancel)
@@ -1428,7 +1469,17 @@ class CreatePage(QWidget):
         if not name or not jar:
             self.main.show_toast(_t("CREATE_MSG_FILL_FIELDS"), True)
             return
-        if self.manager.create_server(name, jar, self.slider.value() * 1024):
+        self.btn_create.setEnabled(False)
+        ram_mb = self.slider.value() * 1024
+        self.main.run_async(
+            lambda: self.manager.create_server(name, jar, ram_mb),
+            lambda created: self.on_create_finished(name, created),
+            lambda _error: self.on_create_finished(name, False),
+        )
+
+    def on_create_finished(self, name, created):
+        self.btn_create.setEnabled(True)
+        if created:
             self.main.refresh_sidebar()
             self.main.show_dashboard(name)
             self.main.show_toast(_t("CREATE_MSG_CREATED", name=name), False)
@@ -1629,6 +1680,8 @@ class MainWindow(QMainWindow):
         Translator().set_language(self.manager.settings.get("language", "uk"))
         self.setWindowTitle(_t("APP_TITLE"))
         self.bridge = ServerBridge()
+        self.thread_pool = QThreadPool.globalInstance()
+        self.worker_tasks = set()
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
@@ -1726,6 +1779,14 @@ class MainWindow(QMainWindow):
     def show_network(self, name): self.stack.setCurrentIndex(3); self.page_network.load(name); fade_in(self.page_network)
     def show_properties(self, name): self.stack.setCurrentIndex(5); self.page_props.begin_load(name); fade_in(self.page_props)
     def show_toast(self, msg, is_error=False): ToastNotification(self, msg, is_error)
+    def run_async(self, function, on_result, on_error=None):
+        task = WorkerTask(function)
+        self.worker_tasks.add(task)
+        task.signals.result.connect(on_result)
+        if on_error:
+            task.signals.error.connect(on_error)
+        task.signals.finished.connect(lambda: self.worker_tasks.discard(task))
+        self.thread_pool.start(task)
     def closeEvent(self, event):
         if self.manager: self.manager.cleanup()
         event.accept()

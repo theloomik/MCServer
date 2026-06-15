@@ -9,12 +9,12 @@ import subprocess
 import urllib.request
 import re
 import atexit
-import tempfile
 import uuid
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Dict, Any, Optional, Callable, Tuple
 from translations import _t, Translator
+from services import AtomicJsonStore, NetworkService, ServerPathPolicy
 
 try:
     import psutil
@@ -120,6 +120,18 @@ def strip_ansi_codes(text: str) -> str:
     ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
     return ansi_escape.sub('', text)
 
+
+def read_properties_file(path: Path) -> Dict[str, str]:
+    if not path.exists():
+        return {}
+    props = {}
+    with open(path, "r", encoding="utf-8") as properties_file:
+        for line in properties_file:
+            if "=" in line and not line.strip().startswith("#"):
+                key, value = line.strip().split("=", 1)
+                props[key] = value
+    return props
+
 # --- DATA STRUCTURES ---
 
 @dataclass
@@ -183,6 +195,17 @@ class ServerInstance:
         java_path = get_java_path()
         if not java_path:
             self.callbacks.on_log(_t("CORE_ERR_JAVA_NOT_FOUND"), "ERROR")
+            self.callbacks.on_stop(-1)
+            return
+
+        properties = read_properties_file(Path(self.data.directory) / "server.properties")
+        try:
+            port = int(properties.get("server-port", "25565"))
+        except ValueError:
+            port = 25565
+        host = properties.get("server-ip", "")
+        if not NetworkService.is_port_available(host, port):
+            self.callbacks.on_log(_t("CORE_ERR_PORT_BUSY", port=port), "ERROR")
             self.callbacks.on_stop(-1)
             return
 
@@ -480,6 +503,7 @@ class ServerManager:
     def __init__(self, base_dir: str = "minecraft_servers"):
         self.servers_dir = Path(base_dir).resolve()
         self.servers_dir.mkdir(parents=True, exist_ok=True)
+        self.path_policy = ServerPathPolicy(self.servers_dir)
         self.config_file = self.servers_dir / "servers_config.json"
         self.settings_file = self.servers_dir / "app_settings.json"
         
@@ -511,47 +535,17 @@ class ServerManager:
 
     @staticmethod
     def _is_valid_server_name(name: str) -> bool:
-        if not isinstance(name, str) or not name or name in {".", ".."}:
-            return False
-        if name != name.strip() or name.endswith((".", " ")):
-            return False
-        if any(ord(char) < 32 or char in '<>:"/\\|?*' for char in name):
-            return False
-        return True
+        return ServerPathPolicy.is_valid_name(name)
 
     def _server_dir_for_name(self, name: str) -> Path:
-        if not self._is_valid_server_name(name):
-            raise ValueError("Invalid server name")
-        path = (self.servers_dir / name).resolve()
-        if path.parent != self.servers_dir:
-            raise ValueError("Server path escapes the managed directory")
-        return path
+        return self.path_policy.directory_for_name(name)
 
     def _managed_server_dir(self, server: ServerData) -> Path:
-        path = Path(server.directory).resolve()
-        if path.parent != self.servers_dir:
-            raise ValueError("Server directory is outside the managed directory")
-        return path
+        return self.path_policy.require_managed_directory(server.directory)
 
     @staticmethod
     def _atomic_write_json(path: Path, data: Any) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                "w", encoding="utf-8", dir=path.parent, delete=False, suffix=".tmp"
-            ) as temp_file:
-                temp_path = Path(temp_file.name)
-                json.dump(data, temp_file, indent=2, ensure_ascii=False)
-                temp_file.flush()
-                os.fsync(temp_file.fileno())
-            os.replace(temp_path, path)
-        finally:
-            if temp_path and temp_path.exists():
-                try:
-                    temp_path.unlink()
-                except OSError:
-                    pass
+        AtomicJsonStore.write(path, data)
 
     def load_servers(self) -> Dict[str, ServerData]:
         if self.config_file.exists():
@@ -726,14 +720,7 @@ class ServerManager:
         server = self.servers.get(server_name)
         if not server: return {}
         path = Path(server.directory) / "server.properties"
-        if not path.exists(): return {}
-        props = {}
-        with open(path, "r") as f:
-            for line in f:
-                if "=" in line and not line.strip().startswith("#"):
-                    k, v = line.strip().split("=", 1)
-                    props[k] = v
-        return props
+        return read_properties_file(path)
 
     def save_server_properties(self, server_name: str, new_props: Dict[str, str]):
         import tempfile

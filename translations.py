@@ -135,6 +135,10 @@ STRINGS = {
     "CORE_ERR_JAVA_NOT_FOUND": {"uk": "ERROR: Java не знайдено!\n", "en": "ERROR: Java not found!\n"},
     "CORE_LOG_SERVER_START": {"uk": "--- Запуск сервера: {name} ---\n", "en": "--- Starting server: {name} ---\n"},
     "CORE_ERR_START_FAIL": {"uk": "Не вдалося запустити: {error}\n", "en": "Failed to start: {error}\n"},
+    "CORE_ERR_PORT_BUSY": {
+        "uk": "ERROR: Порт {port} вже зайнятий. Змініть server-port або зупиніть інший сервер.\n",
+        "en": "ERROR: Port {port} is already in use. Change server-port or stop the other server.\n",
+    },
     "CORE_LOG_STOP_SENT": {"uk": "--- Команду stop надіслано ---\n", "en": "--- Stop command sent ---\n"},
     "CORE_ERR_KILL": {"uk": "Помилка kill: {error}\n", "en": "Kill error: {error}\n"},
     "CORE_UPTIME_FMT": {"uk": "{h} год {m} хв {s} с", "en": "{h} h {m} m {s} s"},
