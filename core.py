@@ -14,7 +14,7 @@ from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Dict, Any, Optional, Callable, Tuple
 from translations import _t, Translator
-from services import AtomicJsonStore, NetworkService, ServerPathPolicy
+from services import AtomicJsonStore, NetworkService, PlayitDownloader, ServerPathPolicy
 
 try:
     import psutil
@@ -158,7 +158,7 @@ class ServerData:
 class ServerCallbacks:
     def __init__(self, 
                  on_log: Callable[[str, str], None], 
-                 on_stats: Callable[[float, float, float, str, int, float, float, float], None], # 8 args
+                 on_stats: Callable[[float, float, float, str, int, float], None],  # ram, tps, disk, uptime, players, cpu
                  on_state: Callable[[str], None],
                  on_stop: Callable[[int], None]):
         self.on_log = on_log
@@ -184,6 +184,23 @@ class ServerInstance:
         self.current_tps = 20.0
         self.core_type, self.version, self.supports_tps = parse_core_info(data.core_name)
         
+    @staticmethod
+    def needs_eula(server_dir: str) -> bool:
+        """Returns True if the server directory still requires EULA acceptance."""
+        eula_path = Path(server_dir) / "eula.txt"
+        if not eula_path.exists():
+            return True
+        try:
+            return "eula=true" not in eula_path.read_text(encoding="utf-8").lower()
+        except OSError:
+            return True
+
+    @staticmethod
+    def write_eula(server_dir: str) -> None:
+        """Writes eula=true to the server directory after explicit user consent."""
+        with open(Path(server_dir) / "eula.txt", "w", encoding="utf-8") as f:
+            f.write("eula=true\n")
+
     def set_state(self, new_state):
         self.state = new_state
         if self.callbacks.on_state:
@@ -208,10 +225,6 @@ class ServerInstance:
             self.callbacks.on_log(_t("CORE_ERR_PORT_BUSY", port=port), "ERROR")
             self.callbacks.on_stop(-1)
             return
-
-        eula_path = Path(self.data.directory) / "eula.txt"
-        if not eula_path.exists():
-            with open(eula_path, "w") as f: f.write("eula=true\n")
 
         self.start_time = time.time()
         self.player_count = 0
@@ -405,14 +418,6 @@ class ServerInstance:
                 current_disk_gb = get_directory_size_gb(self.data.directory)
 
             tps_val = self.current_tps if self.supports_tps else -1.0
-            
-            # --- New Metrics ---
-            mspt = 0.0
-            if tps_val > 0:
-                # Approximate MSPT: if 20 TPS, mspt <= 50.
-                mspt = 50.0 + (20.0 - tps_val) * 10 if tps_val < 20 else 20.0 
-            
-            gc_time = 0.0 # Placeholder
 
             uptime_str = _t("CORE_UPTIME_ZERO")
             if self.start_time:
@@ -422,7 +427,7 @@ class ServerInstance:
                 s = delta % 60
                 uptime_str = _t("CORE_UPTIME_FMT", h=h, m=m, s=s)
 
-            self.callbacks.on_stats(ram_mb, tps_val, current_disk_gb, uptime_str, self.player_count, cpu_percent, gc_time, mspt)
+            self.callbacks.on_stats(ram_mb, tps_val, current_disk_gb, uptime_str, self.player_count, cpu_percent)
             
             time.sleep(0.5)
             tick_counter += 1

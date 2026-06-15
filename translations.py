@@ -190,6 +190,21 @@ STRINGS = {
     "PROP_DESC_SYNC_CHUNK_WRITES": {"uk": "Синхронний запис чанків (стабільність I/O).", "en": "Synchronous chunk writes (I/O stability)."},
     "PROP_DESC_NET_COMPRESS": {"uk": "Поріг стиснення пакетів (байти).", "en": "Network compression threshold (bytes)."},
     "PROP_DESC_PREVENT_PROXY": {"uk": "Блокувати проксі/VPN підключення.", "en": "Block proxy/VPN connections."},
+
+    "EULA_TITLE": {"uk": "Ліцензійна угода Minecraft", "en": "Minecraft License Agreement"},
+    "EULA_TEXT": {
+        "uk": "Для запуску сервера необхідно прийняти ліцензійну угоду Minecraft (EULA).\n\nПовний текст: https://aka.ms/MinecraftEULA\n\nВи погоджуєтесь з умовами?",
+        "en": "To start the server you must accept the Minecraft End User License Agreement (EULA).\n\nFull text: https://aka.ms/MinecraftEULA\n\nDo you agree to the terms?",
+    },
+
+    "NETWORK_DLG_SAVE_PLAYIT": {"uk": "Зберегти playit.exe", "en": "Save playit.exe"},
+    "NETWORK_DL_CHECKING": {"uk": "Перевірка останнього релізу на GitHub...", "en": "Checking latest release on GitHub..."},
+    "NETWORK_DL_PROGRESS": {"uk": "Завантаження {version}...", "en": "Downloading {version}..."},
+    "NETWORK_DL_OK": {
+        "uk": "✓ Завантажено ({version})\nSHA-256: {sha}\n(збережіть хеш для перевірки цілісності)",
+        "en": "✓ Downloaded ({version})\nSHA-256: {sha}\n(save this hash to verify file integrity)",
+    },
+    "NETWORK_DL_ERR": {"uk": "Помилка завантаження: {error}", "en": "Download error: {error}"},
 }
 
 
