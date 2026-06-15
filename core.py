@@ -1,3 +1,26 @@
+import os
+import sys
+import json
+import time
+import shutil
+import socket
+import threading
+import subprocess
+import urllib.request
+import re
+import atexit
+import tempfile
+import uuid
+from pathlib import Path
+from dataclasses import dataclass, asdict
+from typing import Dict, Any, Optional, Callable, Tuple
+from translations import _t, Translator
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
 # --- JAVA PATH HELPER ---
 def get_java_path() -> Optional[str]:
     """Повертає шлях до вбудованої JRE або системної Java."""
@@ -12,26 +35,6 @@ def get_java_path() -> Optional[str]:
     if java:
         return java
     return None
-import os
-import sys
-import json
-import time
-import shutil
-import socket
-import threading
-import subprocess
-import urllib.request
-import re
-import atexit
-from pathlib import Path
-from dataclasses import dataclass, asdict
-from typing import Dict, Any, Optional, Callable, Tuple
-from translations import _t, Translator
-
-try:
-    import psutil
-except ImportError:
-    psutil = None
 
 # --- WINDOWS HARD LIMITS (JOB OBJECTS) ---
 if sys.platform == 'win32':
@@ -261,10 +264,25 @@ class ServerInstance:
             self.write_command("stop")
             self.callbacks.on_log(_t("CORE_LOG_STOP_SENT"), "WARN")
 
+    def shutdown(self, timeout: float = 20.0) -> bool:
+        """Gracefully stop the server, falling back to a forced kill."""
+        process = self.process
+        if not process or process.poll() is not None:
+            return True
+
+        self.stop()
+        try:
+            process.wait(timeout=timeout)
+            return True
+        except subprocess.TimeoutExpired:
+            self.kill()
+            return False
+
     def kill(self):
         if self.process:
             try:
                 self.process.kill()
+                self.process.wait(timeout=5)
             except Exception as e:
                 if self.callbacks:
                     self.callbacks.on_log(_t("CORE_ERR_KILL", error=e), "WARN")
@@ -460,8 +478,8 @@ class PlayitInstance:
 
 class ServerManager:
     def __init__(self, base_dir: str = "minecraft_servers"):
-        self.servers_dir = Path(base_dir)
-        self.servers_dir.mkdir(exist_ok=True)
+        self.servers_dir = Path(base_dir).resolve()
+        self.servers_dir.mkdir(parents=True, exist_ok=True)
         self.config_file = self.servers_dir / "servers_config.json"
         self.settings_file = self.servers_dir / "app_settings.json"
         
@@ -471,14 +489,69 @@ class ServerManager:
         
         self.active_instance: Optional[ServerInstance] = None
         self.playit_instance: Optional[PlayitInstance] = None
+        self._cleanup_lock = threading.Lock()
+        self._cleaned_up = False
         
         atexit.register(self.cleanup)
 
     def cleanup(self):
-        if self.active_instance and self.active_instance.state != ServerState.OFFLINE:
-            self.active_instance.kill()
+        with self._cleanup_lock:
+            if self._cleaned_up:
+                return
+            self._cleaned_up = True
+
+        if (
+            self.active_instance
+            and self.active_instance.process
+            and self.active_instance.process.poll() is None
+        ):
+            self.active_instance.shutdown()
         if self.playit_instance:
             self.playit_instance.stop()
+
+    @staticmethod
+    def _is_valid_server_name(name: str) -> bool:
+        if not isinstance(name, str) or not name or name in {".", ".."}:
+            return False
+        if name != name.strip() or name.endswith((".", " ")):
+            return False
+        if any(ord(char) < 32 or char in '<>:"/\\|?*' for char in name):
+            return False
+        return True
+
+    def _server_dir_for_name(self, name: str) -> Path:
+        if not self._is_valid_server_name(name):
+            raise ValueError("Invalid server name")
+        path = (self.servers_dir / name).resolve()
+        if path.parent != self.servers_dir:
+            raise ValueError("Server path escapes the managed directory")
+        return path
+
+    def _managed_server_dir(self, server: ServerData) -> Path:
+        path = Path(server.directory).resolve()
+        if path.parent != self.servers_dir:
+            raise ValueError("Server directory is outside the managed directory")
+        return path
+
+    @staticmethod
+    def _atomic_write_json(path: Path, data: Any) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", dir=path.parent, delete=False, suffix=".tmp"
+            ) as temp_file:
+                temp_path = Path(temp_file.name)
+                json.dump(data, temp_file, indent=2, ensure_ascii=False)
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+            os.replace(temp_path, path)
+        finally:
+            if temp_path and temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
 
     def load_servers(self) -> Dict[str, ServerData]:
         if self.config_file.exists():
@@ -490,8 +563,10 @@ class ServerManager:
         return {}
 
     def save_servers(self) -> None:
-        with open(self.config_file, 'w', encoding='utf-8') as f:
-            json.dump({name: s.to_dict() for name, s in self.servers.items()}, f, indent=2, ensure_ascii=False)
+        self._atomic_write_json(
+            self.config_file,
+            {name: server.to_dict() for name, server in self.servers.items()},
+        )
 
     def load_settings(self) -> Dict[str, Any]:
         if self.settings_file.exists():
@@ -505,8 +580,7 @@ class ServerManager:
         return {"playit_path": "", "language": "uk"}
 
     def save_settings(self):
-        with open(self.settings_file, 'w', encoding='utf-8') as f:
-            json.dump(self.settings, f, indent=2, ensure_ascii=False)
+        self._atomic_write_json(self.settings_file, self.settings)
 
     def set_playit_path(self, path: str):
         self.settings["playit_path"] = path
@@ -540,52 +614,97 @@ class ServerManager:
         return True
 
     def create_server(self, name: str, jar_source: str, ram_mb: int) -> bool:
-        if name in self.servers: return False
-        s_dir = self.servers_dir / name
-        if s_dir.exists(): return False
+        if name in self.servers:
+            return False
         try:
-            s_dir.mkdir(parents=True, exist_ok=True)
-            jar_name = Path(jar_source).name
+            s_dir = self._server_dir_for_name(name)
+            jar_path = Path(jar_source)
+            if s_dir.exists() or not jar_path.is_file() or jar_path.suffix.lower() != ".jar":
+                return False
+            s_dir.mkdir()
+            jar_name = jar_path.name
             shutil.copy2(jar_source, s_dir / jar_name)
             with open(s_dir / "start.bat", "w") as f:
-                f.write(f"java -Xmx{ram_mb}M -Xms{ram_mb}M -jar {jar_name} nogui\npause")
+                f.write(f'java -Xmx{ram_mb}M -Xms{ram_mb}M -jar "{jar_name}" nogui\npause')
             with open(s_dir / "eula.txt", "w") as f: f.write("eula=true\n")
             new_server = ServerData(name, jar_name, str(s_dir / jar_name), ram_mb, str(s_dir))
             self.servers[name] = new_server
-            self.save_servers()
+            try:
+                self.save_servers()
+            except Exception:
+                self.servers.pop(name, None)
+                raise
             return True
-        except: return False
+        except Exception:
+            if 's_dir' in locals() and s_dir.exists():
+                shutil.rmtree(s_dir, ignore_errors=True)
+            return False
 
     def delete_server(self, name: str) -> bool:
-        if name not in self.servers: return False
+        if name not in self.servers:
+            return False
         if self.active_instance and self.active_instance.data.name == name and self.active_instance.state != ServerState.OFFLINE:
             return False
-        server = self.servers.pop(name)
+
+        server = self.servers[name]
+        trash_dir = None
         try:
-            if os.path.exists(server.directory): shutil.rmtree(server.directory)
-        except: pass
-        self.save_servers()
-        return True
+            server_dir = self._managed_server_dir(server)
+            if server_dir.exists():
+                trash_root = self.servers_dir / ".trash"
+                trash_root.mkdir(exist_ok=True)
+                trash_dir = trash_root / f"{server_dir.name}-{uuid.uuid4().hex}"
+                server_dir.rename(trash_dir)
+
+            self.servers.pop(name)
+            try:
+                self.save_servers()
+            except Exception:
+                self.servers[name] = server
+                if trash_dir and trash_dir.exists():
+                    trash_dir.rename(server_dir)
+                raise
+
+            if trash_dir and trash_dir.exists():
+                shutil.rmtree(trash_dir)
+            return True
+        except Exception:
+            return False
 
     def rename_server(self, old_name: str, new_name: str) -> bool:
         if new_name in self.servers or old_name not in self.servers:
             return False
         server = self.servers.pop(old_name)
-        old_dir = Path(server.directory)
-        new_dir = old_dir.parent / new_name
+        old_server_data = ServerData.from_dict(server.to_dict())
+        old_dir = None
+        new_dir = None
         try:
+            old_dir = self._managed_server_dir(server)
+            new_dir = self._server_dir_for_name(new_name)
+            if new_dir.exists():
+                raise OSError("Target server directory already exists")
             if old_dir.exists():
                 old_dir.rename(new_dir)
             server.name = new_name
             server.directory = str(new_dir)
             if server.jar_path:
                 server.jar_path = str(new_dir / Path(server.jar_path).name)
-        except OSError as e:
+        except (OSError, ValueError):
             self.servers[old_name] = server  # rollback
             return False
         self.servers[new_name] = server
-        self.save_servers()
-        return True
+        try:
+            self.save_servers()
+            return True
+        except Exception:
+            self.servers.pop(new_name, None)
+            self.servers[old_name] = old_server_data
+            if old_dir and new_dir and new_dir.exists() and not old_dir.exists():
+                try:
+                    new_dir.rename(old_dir)
+                except OSError:
+                    pass
+            return False
 
     def start_instance(self, server_name: str, callbacks: ServerCallbacks):
         if self.active_instance and self.active_instance.state != ServerState.OFFLINE: return 

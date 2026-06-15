@@ -73,9 +73,18 @@ STRINGS = {
     "SETTINGS_BTN_DELETE": {"uk": "💀 Видалити сервер", "en": "💀 Delete server"},
     "SETTINGS_MSG_RAM_UPDATED": {"uk": "RAM оновлено!", "en": "RAM updated!"},
     "SETTINGS_MSG_SERVER_DELETED": {"uk": "Сервер видалено!", "en": "Server deleted!"},
+    "SETTINGS_DELETE_CONFIRM_TITLE": {"uk": "Підтвердження видалення", "en": "Confirm deletion"},
+    "SETTINGS_DELETE_CONFIRM_TEXT": {
+        "uk": "Назавжди видалити сервер '{name}' та всі його світи й файли?",
+        "en": "Permanently delete server '{name}' and all of its worlds and files?",
+    },
     "SETTINGS_MSG_STOP_BEFORE_DELETE": {
         "uk": "Зупиніть сервер перед видаленням!",
         "en": "Stop the server before deleting!",
+    },
+    "SETTINGS_MSG_DELETE_FAILED": {
+        "uk": "Не вдалося безпечно видалити сервер.",
+        "en": "Could not safely delete the server.",
     },
     "SETTINGS_SECTION_LANGUAGE": {"uk": "Мова / Language", "en": "Language / Мова"},
     "SETTINGS_LANGUAGE_LABEL": {"uk": "Мова інтерфейсу", "en": "Interface language"},

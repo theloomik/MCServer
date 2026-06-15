@@ -1333,11 +1333,25 @@ class SettingsPage(QWidget):
         self.main.show_toast(_t("SETTINGS_LANG_RESTART"), False)
 
     def delete_server(self):
+        active = self.manager.active_instance
+        if active and active.data.name == self.current_server and active.state != core.ServerState.OFFLINE:
+            self.main.show_toast(_t("SETTINGS_MSG_STOP_BEFORE_DELETE"), True)
+            return
+
+        answer = QMessageBox.question(
+            self,
+            _t("SETTINGS_DELETE_CONFIRM_TITLE"),
+            _t("SETTINGS_DELETE_CONFIRM_TEXT", name=self.current_server),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
         if self.manager.delete_server(self.current_server):
             self.main.show_home()
             self.main.show_toast(_t("SETTINGS_MSG_SERVER_DELETED"), False)
         else:
-            self.main.show_toast(_t("SETTINGS_MSG_STOP_BEFORE_DELETE"), True)
+            self.main.show_toast(_t("SETTINGS_MSG_DELETE_FAILED"), True)
     
     def go_back(self):
         self.main.show_dashboard(self.current_server)
