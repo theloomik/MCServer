@@ -58,6 +58,25 @@ def test_playit_download_rejects_untrusted_url(monkeypatch):
         PlayitDownloader.download()
 
 
+def test_network_service_rejects_out_of_range_ports():
+    assert not NetworkService.is_port_available("127.0.0.1", 0)
+    assert not NetworkService.is_port_available("127.0.0.1", 65536)
+    assert not NetworkService.is_port_available("127.0.0.1", 99999)
+
+
+def test_playit_launch_rejects_corrupt_exe(tmp_path, monkeypatch):
+    fake_exe = tmp_path / "playit.exe"
+    fake_exe.write_bytes(b"NOT_A_PE_HEADER")  # fails PE validation
+    monkeypatch.setattr(PlayitDownloader, "get_exe_path", staticmethod(lambda: fake_exe))
+
+    output: list = []
+    instance = PlayitInstance(25565, lambda line, pub: output.append(line))
+    result = instance.start()
+
+    assert result is False
+    assert any("corrupt" in (msg or "").lower() for msg in output)
+
+
 def test_playit_addr_regex():
     pattern = PlayitInstance._ADDR_RE
     assert pattern.search("tcp tunnel: try.joinmc.link:25565")

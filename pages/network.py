@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, QTimer, Slot
+from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QPlainTextEdit,
     QProgressBar, QSizePolicy, QVBoxLayout, QWidget,
@@ -57,6 +57,8 @@ def _ip_row_frame(label_text: str):
 
 
 class NetworkPage(QWidget):
+    _progress_signal = Signal(int, int)  # done_bytes, total_bytes — marshals worker→GUI thread
+
     def __init__(self, manager, bridge, main):
         super().__init__()
         self.manager = manager
@@ -72,6 +74,7 @@ class NetworkPage(QWidget):
         self.tunnel_watchdog.setInterval(1000)
         self.tunnel_watchdog.timeout.connect(self._sync_tunnel_state)
         self.bridge.tunnel_signal.connect(self.on_tunnel_data)
+        self._progress_signal.connect(self._set_progress)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(40, 40, 40, 40)
@@ -356,7 +359,7 @@ class NetworkPage(QWidget):
         self.progress_lbl.setText(_t("BORE_STATUS_DOWNLOADING"))
 
         def _do():
-            PlayitDownloader.download(on_progress=self._set_progress)
+            PlayitDownloader.download(on_progress=lambda d, t: self._progress_signal.emit(d, t))
 
         def _done(_):
             self.progress_frame.hide()

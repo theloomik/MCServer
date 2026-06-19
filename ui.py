@@ -222,7 +222,9 @@ class MainWindow(QMainWindow):
                 subprocess.Popen([sys.executable] + sys.argv)  # nosec B603
         except Exception:  # nosec B110 — restart is best-effort before quit
             pass
-        QApplication.instance().quit()
+        app = QApplication.instance()
+        if app:
+            app.quit()
 
     # --- Async runner ---
 

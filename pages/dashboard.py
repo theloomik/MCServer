@@ -32,6 +32,7 @@ class DashboardPage(QWidget):
 
         self.console_history = {}
         self.is_restarting = False
+        self._restart_server: str | None = None
         self.log_history = deque(maxlen=5000)
         self.filter_info = True
         self.filter_warn = True
@@ -410,8 +411,13 @@ class DashboardPage(QWidget):
         self.uptime_lbl.setText(_t("DASH_UPTIME_ZERO"))
 
         if self.is_restarting:
+            restart_server = self._restart_server
             self.is_restarting = False
-            QTimer.singleShot(1000, self.on_start)
+            self._restart_server = None
+            if (restart_server
+                    and restart_server == self.current_server
+                    and restart_server in self.manager.servers):
+                QTimer.singleShot(1000, self.on_start)
 
     # --- Actions ---
 
@@ -445,6 +451,7 @@ class DashboardPage(QWidget):
         self.kill_timer.start()
 
     def on_restart(self):
+        self._restart_server = self.current_server  # snapshot before stop changes state
         self.is_restarting = True
         self.on_stop()
 

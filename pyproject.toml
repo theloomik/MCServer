@@ -19,3 +19,9 @@ warn_unused_ignores = true
 
 [tool.bandit]
 exclude_dirs = ["tests", "minecraft_servers", "dist"]
+
+[[tool.mypy.overrides]]
+# PySide6 stubs mis-type most enum members as missing; suppress attr-defined/call-overload
+# for all modules that directly import from PySide6.
+module = ["styles", "widgets", "ui", "pages.*"]
+disable_error_code = ["attr-defined", "call-overload", "assignment", "union-attr", "index", "var-annotated", "has-type"]

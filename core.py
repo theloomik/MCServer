@@ -31,7 +31,7 @@ def get_java_path() -> Optional[str]:
         if bundled.exists():
             return str(bundled)
     # Fallback на системну
-    java = shutil.which('java')  # nosec B607
+    java = shutil.which('java')
     if java:
         return java
     return None
@@ -220,6 +220,12 @@ class ServerInstance:
             self.state = new_state
         self.callbacks.on_state(new_state)
 
+    def _abort_start(self) -> None:
+        """Reset state to OFFLINE after a failed start attempt."""
+        with self._lifecycle_lock:
+            self.state = ServerState.OFFLINE
+        self.callbacks.on_state(ServerState.OFFLINE)
+
     def _report_stop_once(self, exit_code: int) -> None:
         with self._lifecycle_lock:
             if self._stop_reported:
@@ -253,25 +259,36 @@ class ServerInstance:
                 return
             self._stop_event.clear()
             self._stop_reported = False
+            # Set STARTING under lock immediately to block concurrent start() calls
+            self.state = ServerState.STARTING
+        self.callbacks.on_state(ServerState.STARTING)
 
         if not self._preflight_start():
+            self._abort_start()
             return
 
         java_path = get_java_path()
         if not java_path:
             self.callbacks.on_log(_t("CORE_ERR_JAVA_NOT_FOUND"), "ERROR")
             self._report_stop_once(-1)
+            self._abort_start()
             return
 
         properties = read_properties_file(Path(self.data.directory) / "server.properties")
         try:
             port = int(properties.get("server-port", "25565"))
-        except ValueError:
-            port = 25565
+            if not (1 <= port <= 65535):
+                raise ValueError(f"Port {port} is outside the valid range 1–65535")
+        except ValueError as exc:
+            self.callbacks.on_log(_t("CORE_ERR_PORT_INVALID", error=exc), "ERROR")
+            self._report_stop_once(-1)
+            self._abort_start()
+            return
         host = properties.get("server-ip", "")
         if not NetworkService.is_port_available(host, port):
             self.callbacks.on_log(_t("CORE_ERR_PORT_BUSY", port=port), "ERROR")
             self._report_stop_once(-1)
+            self._abort_start()
             return
 
         self.start_time = time.time()
@@ -319,8 +336,7 @@ class ServerInstance:
                 except Exception as error:
                     self.callbacks.on_log(f"RAM limit could not be applied: {error}", "WARN")
 
-            self.set_state(ServerState.STARTING)
-
+            # State is already STARTING (set under lock above); threads take over from here
             threading.Thread(target=self._log_reader_thread, daemon=True).start()
             threading.Thread(target=self._monitor_thread, daemon=True).start()
 
@@ -331,6 +347,7 @@ class ServerInstance:
             with self._lifecycle_lock:
                 self.process = None
             self._report_stop_once(-1)
+            self._abort_start()
 
     def _apply_windows_limit(self, limit_mb):
         if self.job_handle:
@@ -584,12 +601,22 @@ class ServerManager:
                 if not isinstance(data, dict):
                     raise ValueError("servers_config.json must contain an object")
                 servers = {}
+                bad_names: list = []
                 for name, info in data.items():
                     if not isinstance(info, dict) or not self._is_valid_server_name(name):
-                        raise ValueError(f"Invalid server entry: {name}")
+                        bad_names.append(name)
+                        continue  # Skip corrupt entries; keep valid ones
                     server = ServerData.from_dict(info)
                     server.name = name
+                    # Reject entries whose stored directory escapes the managed tree
+                    try:
+                        self.path_policy.require_managed_directory(server.directory)
+                    except ValueError:
+                        bad_names.append(name)
+                        continue
                     servers[name] = server
+                if bad_names:
+                    self.last_config_error = f"Skipped {len(bad_names)} invalid entries: {bad_names}"
                 return servers
             except (OSError, json.JSONDecodeError, TypeError, ValueError) as error:
                 self.last_config_error = str(error)
@@ -660,7 +687,7 @@ class ServerManager:
             shutil.copy2(jar_source, s_dir / jar_name)
             with open(s_dir / "start.bat", "w", encoding="utf-8") as f:
                 f.write(f'java -Xmx{ram_mb}M -Xms{ram_mb}M -jar "{jar_name}" nogui\npause')
-            with open(s_dir / "eula.txt", "w", encoding="utf-8") as f: f.write("eula=true\n")
+            # eula.txt is NOT pre-written here; the EULA dialog in dashboard.on_start() handles consent
             new_server = ServerData(name, jar_name, str(s_dir / jar_name), ram_mb, str(s_dir))
             self.servers[name] = new_server
             try:
@@ -776,17 +803,24 @@ class ServerManager:
         path = Path(server.directory) / "server.properties"
         if not path.exists():
             return
-        with open(path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
+        # Detect encoding to match what the server originally wrote (mirrors read_properties_file)
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+            enc = "utf-8"
+        except UnicodeDecodeError:
+            lines = path.read_text(encoding="latin-1").splitlines(keepends=True)
+            enc = "latin-1"
+        # Strip newline/control chars from values to prevent line injection
+        clean = {k: re.sub(r'[\r\n]', '', v) for k, v in new_props.items()}
         tmp = None
         try:
-            with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False, suffix=".tmp") as f:
+            with tempfile.NamedTemporaryFile("w", encoding=enc, dir=path.parent, delete=False, suffix=".tmp") as f:
                 tmp = Path(f.name)
                 for line in lines:
                     if "=" in line and not line.strip().startswith("#"):
                         k = line.split("=", 1)[0].strip()
-                        if k in new_props:
-                            f.write(f"{k}={new_props[k]}\n")
+                        if k in clean:
+                            f.write(f"{k}={clean[k]}\n")
                         else:
                             f.write(line)
                     else:

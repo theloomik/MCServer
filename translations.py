@@ -149,6 +149,10 @@ STRINGS = {
         "uk": "ERROR: Порт {port} вже зайнятий. Змініть server-port або зупиніть інший сервер.\n",
         "en": "ERROR: Port {port} is already in use. Change server-port or stop the other server.\n",
     },
+    "CORE_ERR_PORT_INVALID": {
+        "uk": "ERROR: Недійсний server-port: {error}\n",
+        "en": "ERROR: Invalid server-port: {error}\n",
+    },
     "CORE_LOG_STOP_SENT": {"uk": "--- Команду stop надіслано ---\n", "en": "--- Stop command sent ---\n"},
     "CORE_ERR_KILL": {"uk": "Помилка kill: {error}\n", "en": "Kill error: {error}\n"},
     "CORE_ERR_STARTING_TIMEOUT": {

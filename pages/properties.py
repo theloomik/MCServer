@@ -98,8 +98,9 @@ class PropertiesPage(QWidget):
             return
         while self.form.count():
             item = self.form.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            w = item.widget()
+            if w:
+                w.deleteLater()
         self.widgets_map = {}
         self.card_order = []
 
@@ -123,7 +124,7 @@ class PropertiesPage(QWidget):
         rl.setContentsMargins(15, 14, 15, 14)
         rl.setSpacing(8)
 
-        meta = PROPERTY_GUIDE.get(key, {"desc_key": "", "type": "text"})
+        meta: dict = PROPERTY_GUIDE.get(key, {"desc_key": "", "type": "text"})
         t = meta["type"]
         desc_text = _t(meta["desc_key"]) if meta.get("desc_key") else key
 

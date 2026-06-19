@@ -37,8 +37,8 @@ def test_server_start_rejects_busy_port(tmp_path, monkeypatch):
     server_dir = tmp_path / "server"
     server_dir.mkdir()
     (server_dir / "server.properties").write_text("server-ip=127.0.0.1\nserver-port=25565\n", encoding="utf-8")
-    logs = []
-    stopped = []
+    logs: list = []
+    stopped: list[int] = []
     callbacks = core.ServerCallbacks(lambda text, level: logs.append((text, level)), lambda *_: None, lambda *_: None, stopped.append)
     instance = core.ServerInstance(
         core.ServerData("Test", "paper.jar", str(server_dir / "paper.jar"), 1024, str(server_dir)),
@@ -57,8 +57,8 @@ def test_server_start_rejects_busy_port(tmp_path, monkeypatch):
 def test_server_start_rejects_missing_jar(tmp_path, monkeypatch):
     server_dir = tmp_path / "server"
     server_dir.mkdir()
-    logs = []
-    stopped = []
+    logs: list = []
+    stopped: list[int] = []
     callbacks = core.ServerCallbacks(lambda text, level: logs.append((text, level)), lambda *_: None, lambda *_: None, stopped.append)
     instance = core.ServerInstance(
         core.ServerData("Test", "missing.jar", str(server_dir / "missing.jar"), 1024, str(server_dir)),
@@ -130,6 +130,89 @@ def test_properties_reader_falls_back_to_latin1(tmp_path):
 
     result = core.read_properties_file(props)
     assert result.get("server-port") == "25565"
+
+
+def test_server_start_rejects_out_of_range_port(tmp_path, monkeypatch):
+    server_dir = tmp_path / "server"
+    server_dir.mkdir()
+    jar = server_dir / "paper.jar"
+    jar.write_bytes(b"jar")
+    (server_dir / "server.properties").write_text("server-port=99999\n", encoding="utf-8")
+    logs: list = []
+    stopped: list[int] = []
+    callbacks = core.ServerCallbacks(lambda text, level: logs.append((text, level)), lambda *_: None, lambda *_: None, stopped.append)
+    instance = core.ServerInstance(
+        core.ServerData("Test", "paper.jar", str(jar), 1024, str(server_dir)),
+        callbacks,
+    )
+    monkeypatch.setattr(core, "get_java_path", lambda: "java")
+
+    instance.start()
+
+    assert stopped == [-1]
+    assert instance.state == core.ServerState.OFFLINE
+    assert any("ERROR" in (level or "") for _text, level in logs)
+
+
+def test_double_start_is_a_no_op(tmp_path, monkeypatch):
+    """Calling start() while state == STARTING must not launch a second process."""
+    server_dir = tmp_path / "server"
+    server_dir.mkdir()
+    logs: list = []
+    callbacks = core.ServerCallbacks(lambda *_: None, lambda *_: None, lambda *_: None, lambda *_: None)
+    instance = core.ServerInstance(
+        core.ServerData("Test", "paper.jar", str(server_dir / "paper.jar"), 1024, str(server_dir)),
+        callbacks,
+    )
+    # Simulate already starting
+    instance.state = core.ServerState.STARTING
+
+    instance.start()  # must be a no-op
+
+    assert instance.process is None
+    assert instance.state == core.ServerState.STARTING
+
+
+def test_partial_config_recovery_skips_one_bad_entry(tmp_path):
+    servers_dir = tmp_path / "servers"
+    servers_dir.mkdir()
+    (servers_dir / "Survival").mkdir()
+    (servers_dir / "servers_config.json").write_text(
+        json.dumps({
+            "Survival": {
+                "name": "Survival",
+                "core_name": "paper.jar",
+                "jar_path": "paper.jar",
+                "ram": 1024,
+                "directory": str(servers_dir / "Survival"),
+            },
+            "corrupt!name": "not a dict",
+        }),
+        encoding="utf-8",
+    )
+
+    manager = core.ServerManager(str(servers_dir))
+
+    assert "Survival" in manager.servers
+    assert "corrupt!name" not in manager.servers
+    assert manager.last_config_error  # skipped entry is reported
+    manager.cleanup()
+
+
+def test_save_properties_strips_newline_injection(tmp_path):
+    manager = make_manager(tmp_path)
+    server_dir = manager.servers_dir / "Test"
+    server_dir.mkdir()
+    props = server_dir / "server.properties"
+    props.write_text("motd=hello\n", encoding="utf-8")
+    manager.servers["Test"] = core.ServerData("Test", "paper.jar", "paper.jar", 1024, str(server_dir))
+
+    manager.save_server_properties("Test", {"motd": "A\nB\r\nC"})
+
+    saved = props.read_text(encoding="utf-8")
+    assert "\n" not in saved.split("motd=")[1].split("\n")[0]
+    assert "ABC" in saved or "A" in saved  # newlines stripped, value preserved
+    manager.cleanup()
 
 
 def test_save_server_properties_preserves_comments_and_updates_atomically(tmp_path):

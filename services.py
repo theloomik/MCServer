@@ -65,6 +65,8 @@ class ServerPathPolicy:
 class NetworkService:
     @staticmethod
     def is_port_available(host: str, port: int) -> bool:
+        if not (1 <= port <= 65535):
+            return False
         bind_host = host.strip() or "0.0.0.0"  # nosec B104
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -142,15 +144,14 @@ class PlayitDownloader:
         expected: str | None = None
         for line in sha_text.splitlines():
             parts = line.strip().split()
-            # Formats: "HASH  filename" (sha256sum) or bare "HASH"
+            # Standard sha256sum format: "HASH  filename" or "HASH *filename"
             if len(parts) >= 2 and parts[1].lstrip("*") == exe_name:
                 expected = parts[0].lower()
                 break
-            if len(parts) == 1 and len(parts[0]) == 64:
-                expected = parts[0].lower()
-                break
         if expected is None:
-            return  # Checksum file has no matching entry — skip
+            # Checksum file was trusted and downloaded but contains no entry for our binary.
+            # Fail closed — a missing entry is suspicious (could indicate a tampered file).
+            raise ValueError(f"SHA-256 file contains no entry for {exe_name!r}")
         h = hashlib.sha256()
         with open(path, "rb") as f:
             for chunk in iter(lambda: f.read(65536), b""):
@@ -247,6 +248,9 @@ class PlayitInstance:
         exe = PlayitDownloader.get_exe_path()
         if not exe.is_file():
             self.on_output("playit.exe not found", None)
+            return False
+        if not PlayitDownloader._is_valid_pe(exe):
+            self.on_output("playit.exe appears corrupted — please re-download", None)
             return False
         try:
             self.stop_event.clear()
