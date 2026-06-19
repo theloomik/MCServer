@@ -1,76 +1,60 @@
 # MCServer
 
-Настільний менеджер Minecraft-серверів для Windows. Дозволяє створювати, запускати та керувати
-декількома серверами через зручний графічний інтерфейс — без командного рядка.
+A desktop Minecraft server manager for Windows. It allows you to create, run, and manage
+multiple servers via a user-friendly graphical interface — without the command line.
 
-## Можливості
+## Features
 
-- Запуск PaperMC, Purpur, Spigot, Fabric, Forge та Vanilla-серверів
-- Моніторинг RAM, CPU, TPS та кількості гравців у реальному часі
-- Редагування `server.properties` прямо в додатку
-- Публічний доступ через TCP-тунель (без реєстрації та білого IP)
-- Автоматичне встановлення Java 25 під час першого запуску інсталятора
+- Run PaperMC, Purpur, Spigot, Fabric, Forge, and Vanilla servers
+- Real-time RAM, CPU, TPS, and player count monitoring
+- Edit `server.properties` directly inside the application
+- Public access via a TCP tunnel (no registration or static IP required)
+- Automatic installation of Java 25 during the first run of the installer
 
-## Вимоги
+## Requirements
 
-| Компонент | Версія |
-|-----------|--------|
-| Windows | 10 або новіша (64-bit) |
-| Java | 25+ (JRE) |
+| Component | Version |
+|-----------|---------|
+| Windows   | 10 or newer (64-bit) |
+| Java      | 25+ (JRE) |
 
-> **Інсталятор встановить Java 25 автоматично** за наявності підключення до інтернету.
-> Якщо Java вже є на комп'ютері, але її версія менша за 25, інсталятор запропонує оновити.
+> **The installer will install Java 25 automatically** if an internet connection is available.
+> If Java is already present on the computer but its version is lower than 25, the installer will prompt to update.
 
-## Встановлення
+## Installation
 
-1. Завантажте `MCServer_Setup_vX.X.X.exe` з розділу [Releases](../../releases).
-2. Запустіть інсталятор від імені адміністратора.
-3. Після завершення ярлик з'явиться на робочому столі та в меню "Пуск".
+1. Download `MCServer_Setup_vX.X.X.exe` from the [Releases](../../releases) section.
+2. Run the installer as administrator.
+3. Once completed, a shortcut will appear on the desktop and in the Start menu.
 
-## Розташування даних
+## Data Locations
 
-Всі файли, що змінюються під час роботи програми, зберігаються поза папкою інсталяції:
+All files that change during application operation are stored outside the installation folder:
 
-| Що | Шлях |
-|----|------|
-| Папки серверів (світи, плагіни, конфіги) | `%LOCALAPPDATA%\MCServer\servers\` |
-| Налаштування додатка | `%LOCALAPPDATA%\MCServer\servers\app_settings.json` |
-| Завантажений тунельний агент | `%LOCALAPPDATA%\MCServer\playit.exe` |
+| What | Path |
+|------|------|
+| Server folders (worlds, plugins, configs) | `%LOCALAPPDATA%\MCServer\servers\` |
+| Application settings | `%LOCALAPPDATA%\MCServer\servers\app_settings.json` |
+| Downloaded tunnel agent | `%LOCALAPPDATA%\MCServer\playit.exe` |
 
-> Щоб зробити резервну копію сервера — скопіюйте відповідну папку з `%LOCALAPPDATA%\MCServer\servers\`.
-> Дані зберігаються між оновленнями програми та після видалення.
+> To back up a server, copy the corresponding folder from `%LOCALAPPDATA%\MCServer\servers\`.
+> Data is preserved between application updates and after uninstallation.
 
-## Модель безпеки
+## Security Model
 
-### Тунель (публічний доступ)
+### Tunnel (Public Access)
 
-MCServer використовує [playit.gg](https://playit.gg) у гостьовому режимі — **реєстрація не потрібна**.
-Агент завантажується з GitHub Releases та перевіряється за SHA-256 контрольною сумою.
-Тунель відкриває лише вказаний порт сервера; весь інший трафік не маршрутизується.
+MCServer uses [playit.gg](https://playit.gg) in guest mode — **no registration required**.
+The agent is downloaded from GitHub Releases and verified against a SHA-256 checksum.
+The tunnel opens only the specified server port; all other traffic is not routed.
 
-### JAR-файли серверів
+### Server JAR Files
 
-MCServer запускає JAR-файл, який ви вказали під час створення сервера.
-**Не запускайте JAR-файли з невідомих джерел.** Серверний JAR виконується з тими самими
-правами, що й MCServer (рівень поточного користувача, без підвищення привілеїв).
+MCServer executes the JAR file that you specified when creating the server.
+**Do not run JAR files from unknown sources.** The server JAR runs with the same
+permissions as MCServer (current user level, without privilege elevation).
 
-### Мережа
+### Network
 
-- Інсталятор завантажує Java JRE виключно з `api.adoptium.net` і перевіряє SHA-256 після завантаження.
-- Додаток не збирає аналітику і не надсилає дані в інтернет, крім запуску тунелю та запиту публічної IP-адреси через `api.ipify.org`.
-
-## Збірка з вихідного коду
-
-```powershell
-# Встановити залежності
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
-
-# Запустити тести
-python -m pytest
-
-# Зібрати інсталятор (потрібен Inno Setup 6)
-.\build.ps1 -Version 1.0.0
-```
-
-Результат: `dist\installer\MCServer_Setup_v1.0.0.exe`
+- The installer downloads the Java JRE exclusively from `api.adoptium.net` and verifies the SHA-256 after downloading.
+- The application does not collect analytics and does not send data to the internet, except for launching the tunnel and requesting the public IP address via `api.ipify.org`.
