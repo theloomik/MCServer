@@ -206,9 +206,25 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# MCServer dir
+# MCServer local runtime data
+minecraft_servers/
+server_log_*
+*.log.gz
+hs_err_pid*.log
+replay_pid*.log
+*.hprof
+*.dump
+*.tmp
+.trash/
+
+# MCServer local binaries and server artifacts
 playit.exe
 *.exe
-server_log_*
+*.jar
+*.bat
+jre/
+java/
+
+# MCServer local app assets/build inputs
 icon.ico
-minecraft_servers/
+*.spec
