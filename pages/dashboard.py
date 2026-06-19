@@ -284,6 +284,10 @@ class DashboardPage(QWidget):
     # --- Load ---
 
     def load(self, name):
+        if name not in self.manager.servers:
+            self.main.show_home()
+            self.main.show_toast(_t("DASH_MSG_FOLDER_ERR"), True)
+            return
         if self.current_server != name:
             self.clear_console()
             self.current_server = name
@@ -466,6 +470,9 @@ class DashboardPage(QWidget):
         if self.current_server:
             path = self.manager.servers[self.current_server].directory
             try:
-                os.startfile(path)
+                server_dir = self.manager.path_policy.require_managed_directory(path)
+                if not server_dir.is_dir():
+                    raise OSError("Server directory is missing")
+                os.startfile(server_dir)
             except Exception:
                 self.main.show_toast(_t("DASH_MSG_FOLDER_ERR"), True)
