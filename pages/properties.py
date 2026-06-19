@@ -51,16 +51,16 @@ class PropertiesPage(QWidget):
         self.loading_lbl.hide()
         layout.addWidget(self.loading_lbl)
 
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setStyleSheet("background: transparent; border: none;")
+        self.properties_scroll = QScrollArea()
+        self.properties_scroll.setWidgetResizable(True)
+        self.properties_scroll.setStyleSheet("background: transparent; border: none;")
         self.container = QWidget()
         self.form = QGridLayout(self.container)
         self.form.setSpacing(15)
         self.form.setContentsMargins(0, 0, 0, 0)
         self.form.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
-        self.scroll.setWidget(self.container)
-        layout.addWidget(self.scroll)
+        self.properties_scroll.setWidget(self.container)
+        layout.addWidget(self.properties_scroll)
 
         self.btn_save = ModernButton(_t("PROPS_BTN_SAVE"), bg_color=COLOR_ACCENT, text_color="white", is_accent=True)
         self.btn_save.setFixedHeight(52)
@@ -81,7 +81,7 @@ class PropertiesPage(QWidget):
         self._load_seq += 1
         seq = self._load_seq
         self.loading_lbl.show()
-        self.scroll.hide()
+        self.properties_scroll.hide()
         self.btn_save.setEnabled(False)
         self.search_bar.setEnabled(False)
         self.search_bar.blockSignals(True)
@@ -104,7 +104,7 @@ class PropertiesPage(QWidget):
             self._add_row(key, props[key])
         self._reflow("")
 
-        self.scroll.show()
+        self.properties_scroll.show()
         self.loading_lbl.hide()
         self.btn_save.setEnabled(True)
         self.search_bar.setEnabled(True)

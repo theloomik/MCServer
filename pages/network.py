@@ -149,8 +149,12 @@ class NetworkPage(QWidget):
     def _browse_playit(self):
         f, _ = QFileDialog.getOpenFileName(self, _t("NETWORK_DLG_FIND_PLAYIT"), "", "Executable (*.exe)")
         if f:
+            try:
+                self.manager.set_playit_path(f)
+            except ValueError:
+                self.main.show_toast(_t("NETWORK_MSG_BAD_PLAYIT_PATH"), True)
+                return
             self.inp_playit_path.setText(f)
-            self.manager.set_playit_path(f)
 
     def _toggle_playit(self):
         if self.is_running:
@@ -161,7 +165,11 @@ class NetworkPage(QWidget):
             if not path or not os.path.exists(path):
                 self.main.show_toast(_t("NETWORK_MSG_BAD_PLAYIT_PATH"), True)
                 return
-            self.manager.set_playit_path(path)
+            try:
+                self.manager.set_playit_path(path)
+            except ValueError:
+                self.main.show_toast(_t("NETWORK_MSG_BAD_PLAYIT_PATH"), True)
+                return
             self.playit_log.clear()
             started = self.manager.toggle_playit(self.bridge.on_playit_output)
             if not started:
@@ -179,7 +187,6 @@ class NetworkPage(QWidget):
 
         def _do():
             url, tag = PlayitDownloader.fetch_latest_windows_asset()
-            self.playit_log.appendPlainText(_t("NETWORK_DL_PROGRESS", version=tag))
             sha = PlayitDownloader.download_to(url, Path(dest))
             return tag, sha, dest
 
@@ -187,7 +194,10 @@ class NetworkPage(QWidget):
             tag, sha, path = result
             self.playit_log.appendPlainText(_t("NETWORK_DL_OK", version=tag, sha=sha))
             self.inp_playit_path.setText(path)
-            self.manager.set_playit_path(path)
+            try:
+                self.manager.set_playit_path(path)
+            except ValueError as error:
+                self.playit_log.appendPlainText(_t("NETWORK_DL_ERR", error=error))
             self.btn_dl.setEnabled(True)
 
         def _err(error):
