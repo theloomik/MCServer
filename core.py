@@ -4,7 +4,7 @@ import json
 import time
 import shutil
 import threading
-import subprocess
+import subprocess  # nosec B404
 import tempfile
 import urllib.request
 import re
@@ -14,7 +14,7 @@ from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Dict, Any, Optional, Callable, Tuple
 from translations import _t, Translator
-from services import AtomicJsonStore, NetworkService, PlayitDownloader, ServerPathPolicy
+from services import AtomicJsonStore, PlayitDownloader, PlayitInstance, NetworkService, ServerPathPolicy
 
 try:
     import psutil
@@ -31,7 +31,7 @@ def get_java_path() -> Optional[str]:
         if bundled.exists():
             return str(bundled)
     # Fallback на системну
-    java = shutil.which('java')
+    java = shutil.which('java')  # nosec B607
     if java:
         return java
     return None
@@ -110,7 +110,7 @@ def get_directory_size_gb(start_path: str) -> float:
                         for f in filenames:
                             fp = os.path.join(dirpath, f)
                             try: total_size += os.path.getsize(fp)
-                            except: pass
+                            except OSError: pass
     except Exception:
         return 0.0
     return total_size / (1024 * 1024 * 1024)
@@ -126,12 +126,16 @@ def read_properties_file(path: Path) -> Dict[str, str]:
         return {}
     props = {}
     try:
-        with open(path, "r", encoding="utf-8") as properties_file:
-            for line in properties_file:
-                if "=" in line and not line.strip().startswith("#"):
-                    key, value = line.strip().split("=", 1)
-                    props[key] = value
-    except (OSError, UnicodeDecodeError):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            # server.properties files created on non-UTF-8 systems use latin-1
+            text = path.read_text(encoding="latin-1")
+        for line in text.splitlines():
+            if "=" in line and not line.strip().startswith("#"):
+                key, value = line.strip().split("=", 1)
+                props[key] = value
+    except OSError:
         return {}
     return props
 
@@ -291,7 +295,7 @@ class ServerInstance:
             if sys.platform == 'win32':
                 creation_flags = CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB
 
-            process = subprocess.Popen(
+            process = subprocess.Popen(  # nosec B603
                 cmd,
                 cwd=os.path.abspath(self.data.directory),
                 stdin=subprocess.PIPE,
@@ -384,7 +388,7 @@ class ServerInstance:
         if self.job_handle:
             try:
                 ctypes.windll.kernel32.CloseHandle(self.job_handle)
-            except Exception:
+            except Exception:  # nosec B110 — ctypes raises opaque OSError variants
                 pass
             self.job_handle = None
 
@@ -449,7 +453,7 @@ class ServerInstance:
         if self.job_handle:
             try:
                 ctypes.windll.kernel32.CloseHandle(self.job_handle)
-            except Exception:
+            except Exception:  # nosec B110
                 pass
             self.job_handle = None
         with self._lifecycle_lock:
@@ -461,6 +465,9 @@ class ServerInstance:
             exit_code = -1
         self._report_stop_once(exit_code)
 
+    # Maximum time (seconds) a server may stay in STARTING before we kill it
+    _STARTING_TIMEOUT = 600
+
     def _monitor_thread(self):
         tick_counter = 0
         current_disk_gb = get_directory_size_gb(self.data.directory)
@@ -468,7 +475,7 @@ class ServerInstance:
         while self.state != ServerState.OFFLINE and not self._stop_event.is_set():
             ram_mb = 0.0
             cpu_percent = 0.0
-            
+
             if self.psutil_proc:
                 try:
                     mem = self.psutil_proc.memory_info()
@@ -481,10 +488,18 @@ class ServerInstance:
                     ram_mb = 0.0
                     cpu_percent = 0.0
 
+            # STARTING timeout: kill if "Done (…)!" never arrives within the window
+            if self.state == ServerState.STARTING and self.start_time:
+                elapsed = time.time() - self.start_time
+                if elapsed > self._STARTING_TIMEOUT:
+                    self.callbacks.on_log(_t("CORE_ERR_STARTING_TIMEOUT"), "ERROR")
+                    self.kill()
+
             if self.state == ServerState.ONLINE and self.supports_tps and tick_counter % 8 == 0:
                 self.write_command("tps")
-            
-            if tick_counter % 20 == 0:
+
+            # Full directory walk is expensive on large worlds — scan every 5 minutes
+            if tick_counter % 300 == 0:
                 current_disk_gb = get_directory_size_gb(self.data.directory)
 
             tps_val = self.current_tps if self.supports_tps else -1.0
@@ -502,89 +517,18 @@ class ServerInstance:
             time.sleep(1.0)
             tick_counter += 1
 
-# --- PLAYIT MANAGER ---
-
-class PlayitInstance:
-    def __init__(self, exe_path: str, on_output: Optional[Callable[[str, Optional[str]], None]]):
-        self.exe_path = exe_path
-        self.on_output = on_output
-        self.process: Optional[subprocess.Popen[str]] = None
-        self.stop_event = threading.Event()
-        self.public_address: Optional[str] = None
-
-    def start(self):
-        if self.process: return
-        exe = Path(self.exe_path)
-        if not PlayitDownloader.is_valid_windows_executable(exe):
-            if self.on_output:
-                self.on_output("Invalid playit executable. Please choose a valid Windows .exe.", None)
-            return False
-        try:
-            self.stop_event.clear()
-            creation_flags = 0
-            if sys.platform == 'win32':
-                creation_flags = CREATE_NO_WINDOW
-            
-            # IMPORTANT: Set CWD to the executable's directory
-            work_dir = os.path.dirname(os.path.abspath(self.exe_path))
-            
-            self.process = subprocess.Popen(
-                [self.exe_path],
-                cwd=work_dir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                creationflags=creation_flags,
-                errors='replace',
-                bufsize=1
-            )
-            threading.Thread(target=self._read_loop, daemon=True).start()
-            return True
-        except Exception as e:
-            print(f"Playit launch error: {e}")
-            if self.on_output:
-                self.on_output(_t("CORE_PLAYIT_START_ERR", error=e), None)
-            return False
-
-    def stop(self):
-        self.stop_event.set()
-        if self.process:
-            try:
-                self.process.kill()
-                self.process.wait(timeout=5)
-            except Exception as error:
-                if self.on_output:
-                    self.on_output(f"Could not stop playit: {error}", None)
-            self.process = None
-            self.public_address = None
-
-    def _read_loop(self):
-        if not self.process or not self.process.stdout:
-            return
-        addr_regex = re.compile(r'(\S+\.playit\.gg(?::\d+)?)')
-        for line in iter(self.process.stdout.readline, ''):
-            if self.stop_event.is_set():
-                break
-            if not line:
-                break
-            clean_line = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', line.strip())
-            match = addr_regex.search(clean_line)
-            if match:
-                self.public_address = match.group(1)
-                if self.on_output:
-                    self.on_output(clean_line, self.public_address)
-            else:
-                if self.on_output:
-                    self.on_output(clean_line, None)
-        if self.process and not self.stop_event.is_set():
-            if self.on_output:
-                self.on_output(_t("CORE_PLAYIT_EXITED"), None)
-        self.process = None
 
 # --- MANAGER ---
 
 class ServerManager:
-    def __init__(self, base_dir: str = "minecraft_servers"):
+    def __init__(self, base_dir: str | None = None):
+        if base_dir is None:
+            if getattr(sys, "frozen", False):
+                # Packaged exe → store user data in %LOCALAPPDATA%\MCServer\servers
+                local_app = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
+                base_dir = str(local_app / "MCServer" / "servers")
+            else:
+                base_dir = "minecraft_servers"
         self.servers_dir = Path(base_dir).resolve()
         self.servers_dir.mkdir(parents=True, exist_ok=True)
         self.path_policy = ServerPathPolicy(self.servers_dir)
@@ -597,7 +541,7 @@ class ServerManager:
         Translator().set_language(self.settings.get("language", "uk"))
         
         self.active_instance: Optional[ServerInstance] = None
-        self.playit_instance: Optional[PlayitInstance] = None
+        self.tunnel_instance: Optional[PlayitInstance] = None
         self._cleanup_lock = threading.Lock()
         self._cleaned_up = False
         
@@ -615,8 +559,8 @@ class ServerManager:
             and self.active_instance.process.poll() is None
         ):
             self.active_instance.shutdown()
-        if self.playit_instance:
-            self.playit_instance.stop()
+        if self.tunnel_instance:
+            self.tunnel_instance.stop()
 
     @staticmethod
     def _is_valid_server_name(name: str) -> bool:
@@ -666,13 +610,12 @@ class ServerManager:
                     settings = json.load(f)
                     if not isinstance(settings, dict):
                         raise ValueError("app_settings.json must contain an object")
-                    settings.setdefault("playit_path", "")
                     settings.setdefault("language", "uk")
                     return settings
             except (OSError, json.JSONDecodeError, TypeError, ValueError) as error:
                 self.last_config_error = str(error)
                 self._backup_corrupt_file(self.settings_file)
-        return {"playit_path": "", "language": "uk"}
+        return {"language": "uk"}
 
     @staticmethod
     def _backup_corrupt_file(path: Path) -> None:
@@ -686,38 +629,23 @@ class ServerManager:
     def save_settings(self):
         self._atomic_write_json(self.settings_file, self.settings)
 
-    def set_playit_path(self, path: str):
-        if path and not PlayitDownloader.is_valid_windows_executable(Path(path)):
-            raise ValueError("Invalid playit executable")
-        self.settings["playit_path"] = path
-        self.save_settings()
-
-    def get_playit_path(self) -> str:
-        return self.settings.get("playit_path", "")
-
     def set_language(self, lang_code: str):
         lang = "en" if lang_code == "en" else "uk"
         self.settings["language"] = lang
         self.save_settings()
         Translator().set_language(lang)
 
-    def toggle_playit(self, on_output: Optional[Callable[[str, Optional[str]], None]]) -> bool:
-        """Returns True if started, False if stopped or failed"""
-        if self.playit_instance and self.playit_instance.process:
-            self.playit_instance.stop()
-            self.playit_instance = None
+    def toggle_tunnel(self, port: int, on_output: Callable[[str, Optional[str]], None]) -> bool:
+        """Start or stop the playit tunnel. Returns True if started, False if stopped/failed."""
+        if self.tunnel_instance and self.tunnel_instance.process:
+            self.tunnel_instance.stop()
+            self.tunnel_instance = None
             return False
-        
-        path = self.get_playit_path()
-        if not path or not PlayitDownloader.is_valid_windows_executable(Path(path)):
-            return False
-            
-        self.playit_instance = PlayitInstance(path, on_output)
-        success = self.playit_instance.start()
-        if not success:
-            self.playit_instance = None
-            return False
-        return True
+        self.tunnel_instance = PlayitInstance(port, on_output)
+        ok = self.tunnel_instance.start()
+        if not ok:
+            self.tunnel_instance = None
+        return ok
 
     def create_server(self, name: str, jar_source: str, ram_mb: int) -> bool:
         if name in self.servers:
@@ -780,7 +708,7 @@ class ServerManager:
                     trash_dir.rename(server_dir)
                     self.servers[name] = server
                     self.save_servers()
-                except Exception:
+                except Exception:  # nosec B110 — last-resort rollback, nothing more to do
                     pass
             return False
 
@@ -889,6 +817,6 @@ class ServerManager:
     def get_public_ip() -> str:
         import urllib.request
         try:
-            return urllib.request.urlopen('https://api.ipify.org', timeout=5).read().decode('utf8')
+            return urllib.request.urlopen('https://api.ipify.org', timeout=5).read().decode('utf8')  # nosec B310
         except Exception:
             return _t("CORE_UNAVAILABLE")

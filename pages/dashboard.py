@@ -473,6 +473,6 @@ class DashboardPage(QWidget):
                 server_dir = self.manager.path_policy.require_managed_directory(path)
                 if not server_dir.is_dir():
                     raise OSError("Server directory is missing")
-                os.startfile(server_dir)
+                os.startfile(server_dir)  # nosec B606 — path validated by require_managed_directory
             except Exception:
                 self.main.show_toast(_t("DASH_MSG_FOLDER_ERR"), True)

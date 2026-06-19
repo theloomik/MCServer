@@ -59,6 +59,7 @@ STRINGS = {
     "PROPS_LOADING": {"uk": "Завантаження конфігурації...", "en": "Loading configuration..."},
     "PROPS_BTN_SAVE": {"uk": "Зберегти зміни", "en": "Save changes"},
     "PROPS_MSG_SAVED": {"uk": "Конфігурацію збережено!", "en": "Configuration saved!"},
+    "PROPS_MSG_SAVE_ERR": {"uk": "Помилка збереження: {error}", "en": "Save failed: {error}"},
     "PROPS_BOOL_ENABLED": {"uk": "Увімкнено", "en": "Enabled"},
 
     "SETTINGS_TITLE": {"uk": "Налаштування", "en": "Settings"},
@@ -110,22 +111,31 @@ STRINGS = {
     "CREATE_MSG_CREATE_ERR": {"uk": "Помилка створення", "en": "Creation failed"},
 
     "NETWORK_TITLE": {"uk": "Мережа та Доступ", "en": "Network & Access"},
-    "NETWORK_IP_CARD_TITLE": {"uk": "IP Адреси (Виділіть, щоб скопіювати)", "en": "IP Addresses (Select to copy)"},
-    "NETWORK_LOCAL_LABEL": {"uk": "🏠 Локальна:  {ip}", "en": "🏠 Local:  {ip}"},
-    "NETWORK_LOCAL_DOTS": {"uk": "Локальна: ...", "en": "Local: ..."},
-    "NETWORK_PUBLIC_OFF": {"uk": "Публічна (Playit): Тунель вимкнено", "en": "Public (Playit): Tunnel is off"},
-    "NETWORK_PLAYIT_TITLE": {"uk": "Playit.gg (Віддалений доступ)", "en": "Playit.gg (Remote access)"},
-    "NETWORK_PLAYIT_DESC": {"uk": "Грайте з друзями без відкриття портів.", "en": "Play with friends without opening ports."},
-    "NETWORK_BTN_DOWNLOAD": {"uk": "Завантажити", "en": "Download"},
-    "NETWORK_PH_PLAYIT": {"uk": "Шлях до playit.exe", "en": "Path to playit.exe"},
-    "NETWORK_BTN_RUN": {"uk": "🚀 Запустити Тунель", "en": "🚀 Start Tunnel"},
-    "NETWORK_BTN_STOP": {"uk": "⏹ Зупинити Тунель", "en": "⏹ Stop Tunnel"},
-    "NETWORK_PH_LOGS": {"uk": "Логи Playit...", "en": "Playit logs..."},
-    "NETWORK_DLG_FIND_PLAYIT": {"uk": "Знайти playit.exe", "en": "Find playit.exe"},
-    "NETWORK_MSG_BAD_PLAYIT_PATH": {"uk": "Вкажіть правильний шлях до playit.exe!", "en": "Specify a valid path to playit.exe!"},
-    "NETWORK_MSG_PLAYIT_START_FAIL": {"uk": "Не вдалося запустити playit.exe", "en": "Failed to start playit.exe"},
-    "NETWORK_PUBLIC_LABEL": {"uk": "🌍 Публічна: {ip}", "en": "🌍 Public: {ip}"},
+    "NETWORK_IP_CARD_TITLE": {"uk": "IP Адреси", "en": "IP Addresses"},
+    "NETWORK_PUBLIC_OFF": {"uk": "Тунель вимкнено", "en": "Tunnel inactive"},
+    "NETWORK_PUBLIC_LABEL": {"uk": "{ip}", "en": "{ip}"},
     "NETWORK_MSG_IP_COPIED": {"uk": "IP скопійовано!", "en": "IP copied!"},
+
+    "BORE_TITLE": {"uk": "Публічний доступ (playit.gg)", "en": "Public access (playit.gg)"},
+    "BORE_DESC": {
+        "uk": "Безкоштовний тунель через playit.gg. Без реєстрації — просто натисни кнопку.",
+        "en": "Free tunnel via playit.gg. No registration — just press the button.",
+    },
+    "BORE_BTN_START": {"uk": "🚀 Дати публічний доступ", "en": "🚀 Enable public access"},
+    "BORE_BTN_STOP": {"uk": "⏹ Зупинити", "en": "⏹ Stop"},
+    "BORE_STATUS_DOWNLOADING": {"uk": "Завантаження playit...", "en": "Downloading playit..."},
+    "BORE_STATUS_CONNECTING": {"uk": "Підключення до playit.gg...", "en": "Connecting to playit.gg..."},
+    "BORE_STATUS_ACTIVE": {"uk": "● Тунель активний", "en": "● Tunnel active"},
+    "BORE_STATUS_INACTIVE": {"uk": "○ Публічний доступ вимкнено", "en": "○ Public access inactive"},
+    "BORE_DL_PROGRESS": {"uk": "Завантаження... {done}/{total} МБ", "en": "Downloading... {done}/{total} MB"},
+    "BORE_DL_ERR": {"uk": "Помилка завантаження: {error}", "en": "Download error: {error}"},
+    "BORE_START_ERR": {"uk": "Не вдалось запустити playit", "en": "Failed to start playit"},
+    "BORE_CONNECT_ERR": {
+        "uk": "Не вдалось підключитись до playit.gg. Перевірте інтернет-з'єднання.",
+        "en": "Could not connect to playit.gg. Check your internet connection.",
+    },
+    "BORE_LOGS_LABEL": {"uk": "Деталі підключення", "en": "Connection details"},
+    "BORE_PH_LOGS": {"uk": "Інформація з'явиться після запуску...", "en": "Details will appear after start..."},
 
     "HOME_NAV_BACK": {"uk": "Назад", "en": "Back"},
     "FILTER_INFO": {"uk": "INFO", "en": "INFO"},
@@ -141,10 +151,12 @@ STRINGS = {
     },
     "CORE_LOG_STOP_SENT": {"uk": "--- Команду stop надіслано ---\n", "en": "--- Stop command sent ---\n"},
     "CORE_ERR_KILL": {"uk": "Помилка kill: {error}\n", "en": "Kill error: {error}\n"},
+    "CORE_ERR_STARTING_TIMEOUT": {
+        "uk": "ERROR: Сервер не запустився протягом 10 хвилин — примусово зупинено.\n",
+        "en": "ERROR: Server did not start within 10 minutes — forcibly terminated.\n",
+    },
     "CORE_UPTIME_FMT": {"uk": "{h} год {m} хв {s} с", "en": "{h} h {m} m {s} s"},
     "CORE_UPTIME_ZERO": {"uk": "0 год 0 хв 0 с", "en": "0 h 0 m 0 s"},
-    "CORE_PLAYIT_EXITED": {"uk": "Процес Playit завершився неочікувано.", "en": "Playit process exited unexpectedly."},
-    "CORE_PLAYIT_START_ERR": {"uk": "Помилка запуску playit: {error}", "en": "Error starting playit: {error}"},
     "CORE_UNAVAILABLE": {"uk": "Недоступно", "en": "Unavailable"},
 
     "CORE_TYPE_PAPER": {"uk": "Paper", "en": "Paper"},
@@ -197,14 +209,16 @@ STRINGS = {
         "en": "To start the server you must accept the Minecraft End User License Agreement (EULA).\n\nFull text: https://aka.ms/MinecraftEULA\n\nDo you agree to the terms?",
     },
 
-    "NETWORK_DLG_SAVE_PLAYIT": {"uk": "Зберегти playit.exe", "en": "Save playit.exe"},
-    "NETWORK_DL_CHECKING": {"uk": "Перевірка останнього релізу на GitHub...", "en": "Checking latest release on GitHub..."},
-    "NETWORK_DL_PROGRESS": {"uk": "Завантаження {version}...", "en": "Downloading {version}..."},
-    "NETWORK_DL_OK": {
-        "uk": "✓ Завантажено ({version})\nSHA-256: {sha}\n(збережіть хеш для перевірки цілісності)",
-        "en": "✓ Downloaded ({version})\nSHA-256: {sha}\n(save this hash to verify file integrity)",
+    "NETWORK_LOCAL_ADDR_LABEL": {"uk": "🏠 Локальна мережа", "en": "🏠 Local network"},
+    "NETWORK_PUBLIC_ADDR_LABEL": {"uk": "🌍 Публічна (playit)", "en": "🌍 Public (playit)"},
+    "NETWORK_TUNNEL_ACTIVE": {"uk": "● Тунель активний", "en": "● Tunnel active"},
+    "NETWORK_TUNNEL_INACTIVE": {"uk": "○ Тунель вимкнено", "en": "○ Tunnel inactive"},
+    "NETWORK_BTN_COPY": {"uk": "📋", "en": "📋"},
+    "LANG_RESTART_CONFIRM_TITLE": {"uk": "Зміна мови", "en": "Language change"},
+    "LANG_RESTART_CONFIRM_MSG": {
+        "uk": "Активний сервер буде зупинено. Перезапустити програму для зміни мови?",
+        "en": "Active server will be stopped. Restart the app to change language?",
     },
-    "NETWORK_DL_ERR": {"uk": "Помилка завантаження: {error}", "en": "Download error: {error}"},
 }
 
 

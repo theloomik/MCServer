@@ -3,8 +3,8 @@ import sys
 from PySide6.QtCore import Qt, QThreadPool
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
-    QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
+    QApplication, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
+    QMessageBox, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 import core
@@ -12,6 +12,7 @@ from pages import CreatePage, DashboardPage, NetworkPage, PropertiesPage, Settin
 from styles import (
     COLOR_ACCENT, COLOR_BG_CARD, COLOR_BG_SIDEBAR, COLOR_BORDER,
     COLOR_TEXT_MAIN, COLOR_TEXT_SEC, FONT_FAMILY, STYLESHEET, fade_in,
+    disable_wheel_value_change,
 )
 from translations import _t, Translator
 from widgets import ServerBridge, ServerListItem, ToastNotification, WorkerTask
@@ -72,6 +73,36 @@ class MainWindow(QMainWindow):
         btn_new = _Btn(_t("SIDEBAR_NEW_SERVER"), bg_color="#27272a")
         btn_new.clicked.connect(lambda: self.stack.setCurrentIndex(1))
         sb.addWidget(btn_new)
+
+        # --- Language selector ---
+        lang_sep = QFrame()
+        lang_sep.setFixedHeight(1)
+        lang_sep.setStyleSheet(f"background-color: {COLOR_BORDER}; border: none;")
+        sb.addWidget(lang_sep)
+
+        lang_frame = QFrame()
+        lang_frame.setStyleSheet(f"background-color: {COLOR_BG_CARD}; border-radius: 8px;")
+        lang_row = QHBoxLayout(lang_frame)
+        lang_row.setContentsMargins(10, 8, 10, 8)
+        lang_row.setSpacing(8)
+        lang_icon = QLabel("🌐")
+        lang_icon.setStyleSheet(f"font-size: 14px; color: {COLOR_TEXT_SEC}; background: transparent; border: none;")
+        lang_row.addWidget(lang_icon)
+        self.sidebar_lang_combo = QComboBox()
+        self.sidebar_lang_combo.addItem(_t("SETTINGS_LANG_UK"), "uk")
+        self.sidebar_lang_combo.addItem(_t("SETTINGS_LANG_EN"), "en")
+        saved_lang = self.manager.settings.get("language", "uk")
+        _idx = self.sidebar_lang_combo.findData(saved_lang)
+        self.sidebar_lang_combo.setCurrentIndex(_idx if _idx >= 0 else 0)
+        self.sidebar_lang_combo.setStyleSheet(
+            f"QComboBox {{ background-color: transparent; border: none; color: {COLOR_TEXT_SEC}; font-size: 12px; font-weight: 600; }}"
+            f"QComboBox::drop-down {{ border: none; width: 16px; }}"
+        )
+        disable_wheel_value_change(self.sidebar_lang_combo)
+        self.sidebar_lang_combo.currentIndexChanged.connect(self._on_sidebar_lang_changed)
+        lang_row.addWidget(self.sidebar_lang_combo, 1)
+        sb.addWidget(lang_frame)
+
         main_layout.addWidget(self.sidebar)
 
         # --- Page stack ---
@@ -104,6 +135,8 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.stack)
 
         self.refresh_sidebar()
+        if self.manager.last_config_error:
+            self.show_toast(f"Configuration was reset: {self.manager.last_config_error}", True)
 
     # --- Navigation ---
 
@@ -160,6 +193,36 @@ class MainWindow(QMainWindow):
 
     def _on_sidebar_click(self, name):
         self.show_dashboard(name)
+
+    def _on_sidebar_lang_changed(self):
+        import subprocess  # nosec B404
+        import sys
+        lang = self.sidebar_lang_combo.currentData()
+        current = self.manager.settings.get("language", "uk")
+        if lang == current:
+            return
+        active = self.manager.active_instance
+        if active and active.state != core.ServerState.OFFLINE:
+            if QMessageBox.question(
+                self, _t("LANG_RESTART_CONFIRM_TITLE"),
+                _t("LANG_RESTART_CONFIRM_MSG"),
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            ) != QMessageBox.Yes:
+                self.sidebar_lang_combo.blockSignals(True)
+                self.sidebar_lang_combo.setCurrentIndex(
+                    self.sidebar_lang_combo.findData(current)
+                )
+                self.sidebar_lang_combo.blockSignals(False)
+                return
+        self.manager.set_language(lang)
+        try:
+            if getattr(sys, "frozen", False):
+                subprocess.Popen([sys.executable])  # nosec B603
+            else:
+                subprocess.Popen([sys.executable] + sys.argv)  # nosec B603
+        except Exception:  # nosec B110 — restart is best-effort before quit
+            pass
+        QApplication.instance().quit()
 
     # --- Async runner ---
 

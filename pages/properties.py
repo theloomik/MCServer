@@ -41,7 +41,11 @@ class PropertiesPage(QWidget):
 
         self.search_bar = QLineEdit()
         self.search_bar.setPlaceholderText(_t("PROPS_SEARCH"))
-        self.search_bar.setStyleSheet(f"background-color: {COLOR_BG_CARD}; border: 1px solid {COLOR_BORDER}; padding: 10px; border-radius: 8px;")
+        self.search_bar.setFixedHeight(42)
+        self.search_bar.setStyleSheet(
+            f"background-color: {COLOR_BG_CARD}; border: 1px solid {COLOR_BORDER};"
+            f" padding: 10px 14px; border-radius: 10px; font-size: 13px;"
+        )
         self.search_bar.textChanged.connect(self._filter)
         layout.addWidget(self.search_bar)
 
@@ -111,10 +115,12 @@ class PropertiesPage(QWidget):
 
     def _add_row(self, key, value):
         row = QFrame(self.container)
-        row.setStyleSheet(f"background-color: {COLOR_BG_CARD}; border-radius: 10px;")
-        row.setFixedSize(340, 170)
+        row.setStyleSheet(
+            f"background-color: {COLOR_BG_CARD}; border-radius: 10px; border: 1px solid {COLOR_BORDER};"
+        )
+        row.setFixedSize(345, 175)
         rl = QVBoxLayout(row)
-        rl.setContentsMargins(15, 15, 15, 15)
+        rl.setContentsMargins(15, 14, 15, 14)
         rl.setSpacing(8)
 
         meta = PROPERTY_GUIDE.get(key, {"desc_key": "", "type": "text"})
@@ -123,10 +129,12 @@ class PropertiesPage(QWidget):
 
         hl = QHBoxLayout()
         hl.setSpacing(12)
+        is_known = key in PROPERTY_GUIDE
         lbl_key = QLabel(key, row)
-        lbl_key.setStyleSheet("font-size: 14px; font-weight: bold; color: white;")
+        key_color = COLOR_ACCENT if is_known else "#e4e4e7"
+        lbl_key.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {key_color}; background: transparent; border: none;")
         lbl_desc = QLabel(desc_text, row)
-        lbl_desc.setStyleSheet(f"font-size: 12px; color: {COLOR_TEXT_SEC};")
+        lbl_desc.setStyleSheet(f"font-size: 11px; color: {COLOR_TEXT_SEC}; background: transparent; border: none;")
         lbl_desc.setWordWrap(True)
 
         if t == "bool":
@@ -195,8 +203,11 @@ class PropertiesPage(QWidget):
             else:
                 val = w.text()
             new_props[key] = val
-        self.manager.save_server_properties(self.current_server, new_props)
-        self.main.show_toast(_t("PROPS_MSG_SAVED"), False)
+        try:
+            self.manager.save_server_properties(self.current_server, new_props)
+            self.main.show_toast(_t("PROPS_MSG_SAVED"), False)
+        except OSError as exc:
+            self.main.show_toast(_t("PROPS_MSG_SAVE_ERR", error=exc), True)
 
     def go_back(self):
         self.main.show_dashboard(self.current_server)

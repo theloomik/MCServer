@@ -1,4 +1,5 @@
 from collections import deque
+import traceback
 
 from PySide6.QtCore import (
     QEasingCurve, QEvent, QObject, QPoint, QPropertyAnimation,
@@ -323,13 +324,13 @@ class ServerBridge(QObject):
     stats_signal = Signal(float, float, float, str, int, float)  # ram, tps, disk, uptime, players, cpu
     state_signal = Signal(str)
     stop_signal = Signal(int)
-    playit_signal = Signal(str, str)
+    tunnel_signal = Signal(str, str)
 
     def on_log(self, text, type_): self.log_signal.emit(text, type_)
     def on_stats(self, ram, tps, disk, uptime, players, cpu): self.stats_signal.emit(ram, tps, disk, uptime, players, cpu)
     def on_state(self, state): self.state_signal.emit(state)
     def on_stop(self, code): self.stop_signal.emit(code)
-    def on_playit_output(self, line, pub_ip): self.playit_signal.emit(line, pub_ip or "")
+    def on_tunnel_output(self, line, pub_ip): self.tunnel_signal.emit(line, pub_ip or "")
 
 
 class WorkerSignals(QObject):
@@ -349,7 +350,7 @@ class WorkerTask(QRunnable):
         try:
             result = self.function()
         except Exception as error:
-            self.signals.error.emit(str(error))
+            self.signals.error.emit(f"{error}\n{traceback.format_exc()}")
         else:
             self.signals.result.emit(result)
         finally:
