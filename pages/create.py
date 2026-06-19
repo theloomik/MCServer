@@ -81,7 +81,7 @@ class CreatePage(QWidget):
             _t("CREATE_BTN_CREATE"), bg_color=COLOR_ACCENT,
             hover_color=COLOR_ACCENT_HOVER, text_color="white", is_accent=True,
         )
-        self.btn_create.clicked.connect(self.create)
+        self.btn_create.clicked.connect(self.create_server_clicked)
         cl.addWidget(self.btn_create)
 
         btn_cancel = ModernButton(_t("CREATE_BTN_CANCEL"), bg_color="transparent")
@@ -95,7 +95,7 @@ class CreatePage(QWidget):
         if f:
             self.inp_jar.setText(f)
 
-    def create(self):
+    def create_server_clicked(self):
         name = self.inp_name.text()
         jar = self.inp_jar.text()
         if not name or not jar:
