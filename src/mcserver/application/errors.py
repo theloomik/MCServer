@@ -17,3 +17,12 @@ class ServerStartFailed(RuntimeError):
         """Describe the server whose start request failed."""
         self.server_id = server_id
         super().__init__(f"Could not start server '{server_id}'.")
+
+
+class ServerStopFailed(RuntimeError):
+    """Raised when a requested server shutdown cannot be completed."""
+
+    def __init__(self, server_id: str) -> None:
+        """Describe the server whose shutdown request failed."""
+        self.server_id = server_id
+        super().__init__(f"Could not stop server '{server_id}'.")
