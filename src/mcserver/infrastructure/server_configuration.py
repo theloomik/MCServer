@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from mcserver.application.ports import ServerRunner
+from mcserver.application.ports import ServerOutputSink, ServerRunner
 from mcserver.infrastructure.process_runner import MinecraftProcessConfig, SubprocessServerRunner
 
 
@@ -93,10 +93,16 @@ class LegacyServerConfigurationRepository:
 class ConfiguredServerRunnerFactory:
     """Create subprocess runners from stored server settings and an explicit Java path."""
 
-    def __init__(self, repository: LegacyServerConfigurationRepository, java_executable: str) -> None:
-        """Use ``java_executable`` for each runner created from repository settings."""
+    def __init__(
+        self,
+        repository: LegacyServerConfigurationRepository,
+        java_executable: str,
+        output_sink: ServerOutputSink | None = None,
+    ) -> None:
+        """Use ``java_executable`` and forward runner output to ``output_sink`` when given."""
         self._repository = repository
         self._java_executable = java_executable
+        self._output_sink = output_sink
 
     def create(self, server_id: str) -> ServerRunner:
         """Create a runner with conventional Minecraft memory arguments and ``nogui``."""
@@ -108,4 +114,4 @@ class ConfiguredServerRunnerFactory:
             working_directory=settings.working_directory,
             server_arguments=("nogui",),
         )
-        return SubprocessServerRunner(config)
+        return SubprocessServerRunner(config, output_sink=self._output_sink)

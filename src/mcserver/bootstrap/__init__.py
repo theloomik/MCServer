@@ -1,5 +1,5 @@
 """Application composition root for manual dependency injection."""
 
-from mcserver.bootstrap.server_runtime import build_server_coordinator
+from mcserver.bootstrap.server_runtime import ServerRuntime, build_server_coordinator, build_server_runtime
 
-__all__ = ["build_server_coordinator"]
+__all__ = ["ServerRuntime", "build_server_coordinator", "build_server_runtime"]

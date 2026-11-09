@@ -3,9 +3,12 @@
 import sys
 from pathlib import Path
 from threading import Event
+from typing import Any
 
 import pytest
 
+from mcserver.application.ports import OutputStream, ServerOutputLine
+from mcserver.application.server_output import ServerOutputBuffer
 from mcserver.domain.lifecycle import ServerState
 from mcserver.infrastructure.process_runner import (
     InvalidProcessConfiguration,
@@ -22,7 +25,24 @@ def make_fake_java(tmp_path: Path, behavior: str) -> Path:
     return script
 
 
-def make_runner(tmp_path: Path, behavior: str) -> SubprocessServerRunner:
+class RecordingSink:
+    """Collect published output lines for assertions."""
+
+    def __init__(self) -> None:
+        self.lines: list[tuple[str, OutputStream, str]] = []
+
+    def publish(self, server_id: str, stream: OutputStream, text: str) -> None:
+        self.lines.append((server_id, stream, text))
+
+
+class FailingSink:
+    """A sink whose failures must not stop the runner from draining output."""
+
+    def publish(self, server_id: str, stream: OutputStream, text: str) -> None:
+        raise RuntimeError("sink bug")
+
+
+def make_runner(tmp_path: Path, behavior: str, **runner_options: Any) -> SubprocessServerRunner:
     """Build a runner using Python as a deterministic fake Java executable."""
     fake_java = make_fake_java(tmp_path, behavior)
     jar = tmp_path / "server.jar"
@@ -34,7 +54,7 @@ def make_runner(tmp_path: Path, behavior: str) -> SubprocessServerRunner:
         working_directory=tmp_path,
         server_arguments=("--test-mode",),
     )
-    return SubprocessServerRunner(config)
+    return SubprocessServerRunner(config, **runner_options)
 
 
 def test_runner_uses_configured_working_directory_arguments_and_streams(tmp_path: Path) -> None:
@@ -116,6 +136,88 @@ def test_runner_reports_missing_executable_as_start_error(tmp_path: Path) -> Non
         runner.start("survival", lambda _code: None)
 
     assert runner.state is ServerState.STOPPED
+
+
+def test_runner_publishes_output_to_sink_before_reporting_exit(tmp_path: Path) -> None:
+    sink = RecordingSink()
+    runner = make_runner(
+        tmp_path,
+        "import sys\nprint('hello', flush=True)\nprint('oops', file=sys.stderr, flush=True)\n",
+        output_sink=sink,
+    )
+    lines_at_exit: list[tuple[str, OutputStream, str]] = []
+    exited = Event()
+
+    runner.start("survival", lambda _code: (lines_at_exit.extend(sink.lines), exited.set()))
+
+    assert exited.wait(3)
+    assert sorted(lines_at_exit, key=lambda item: item[1].value) == [
+        ("survival", OutputStream.STDERR, "oops"),
+        ("survival", OutputStream.STDOUT, "hello"),
+    ]
+
+
+def test_runner_feeds_output_buffer_in_stream_order(tmp_path: Path) -> None:
+    buffer = ServerOutputBuffer()
+    runner = make_runner(tmp_path, "for i in range(5):\n    print(f'line {i}', flush=True)\n", output_sink=buffer)
+    exited = Event()
+
+    runner.start("survival", lambda _code: exited.set())
+
+    assert exited.wait(3)
+    assert [line.text for line in buffer.snapshot("survival")] == [f"line {i}" for i in range(5)]
+
+
+def test_blocked_output_listener_does_not_stall_the_process(tmp_path: Path) -> None:
+    buffer = ServerOutputBuffer(capacity=100_000)
+    release = Event()
+    received: list[ServerOutputLine] = []
+
+    def blocked_listener(line: ServerOutputLine) -> None:
+        release.wait(10)
+        received.append(line)
+
+    buffer.subscribe(blocked_listener)
+    # Enough output to fill an OS pipe buffer if nothing drained it.
+    runner = make_runner(tmp_path, "for i in range(20000):\n    print('x' * 64, i)\n", output_sink=buffer)
+    exited = Event()
+
+    try:
+        runner.start("survival", lambda _code: exited.set())
+        assert exited.wait(5), "process stalled behind a blocked listener"
+        assert runner.return_code == 0
+        assert len(buffer.snapshot()) == 20000
+    finally:
+        release.set()
+        assert buffer.flush(5)
+        buffer.close(5)
+    assert len(received) == 20000
+
+
+def test_runner_keeps_draining_when_sink_fails(tmp_path: Path) -> None:
+    runner = make_runner(tmp_path, "for i in range(3):\n    print(i, flush=True)\n", output_sink=FailingSink())
+    exited = Event()
+
+    runner.start("survival", lambda _code: exited.set())
+
+    assert exited.wait(3)
+    assert runner.return_code == 0
+    assert runner.stdout_lines == ("0", "1", "2")
+
+
+def test_runner_diagnostic_buffer_is_bounded(tmp_path: Path) -> None:
+    runner = make_runner(tmp_path, "for i in range(50):\n    print(i, flush=True)\n", diagnostic_line_limit=5)
+    exited = Event()
+
+    runner.start("survival", lambda _code: exited.set())
+
+    assert exited.wait(3)
+    assert runner.stdout_lines == ("45", "46", "47", "48", "49")
+
+
+def test_runner_rejects_non_positive_diagnostic_limit(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="Diagnostic line limit"):
+        make_runner(tmp_path, "", diagnostic_line_limit=0)
 
 
 def test_runner_rejects_empty_java_executable(tmp_path: Path) -> None:
