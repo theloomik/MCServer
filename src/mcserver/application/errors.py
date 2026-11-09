@@ -142,6 +142,32 @@ class ProvisioningRollbackFailed(ServerProvisioningError):
         )
 
 
+class ServerCreationRollbackFailed(RuntimeError):
+    """Raised when server creation failed and its configuration record could not be removed.
+
+    ``provisioning_error`` is the failure that triggered the rollback.
+    ``rollback_error`` is why removing the record failed, or ``None`` when the
+    record was deliberately kept because it had been changed by someone else
+    in the meantime. The record for ``server_id`` may still exist and point to
+    a server that was never fully provisioned.
+    """
+
+    def __init__(self, server_id: str, provisioning_error: Exception, rollback_error: Exception | None) -> None:
+        """Describe both failures and the state left behind."""
+        self.server_id = server_id
+        self.provisioning_error = provisioning_error
+        self.rollback_error = rollback_error
+        reason = (
+            f"removing it failed: {rollback_error}"
+            if rollback_error is not None
+            else "it was changed by another operation and was kept"
+        )
+        super().__init__(
+            f"Creating server '{server_id}' failed ({provisioning_error}); its configuration record may still "
+            f"exist because {reason}."
+        )
+
+
 class ServerStopFailed(RuntimeError):
     """Raised when a requested server shutdown cannot be completed."""
 
