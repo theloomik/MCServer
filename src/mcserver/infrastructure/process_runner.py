@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-# This Infrastructure module is the project's process adapter.
 from subprocess import PIPE, Popen, TimeoutExpired  # nosec B404
 from threading import Lock, Thread
 from typing import TextIO
