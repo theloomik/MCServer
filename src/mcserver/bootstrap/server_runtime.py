@@ -6,9 +6,10 @@ from types import TracebackType
 
 from mcserver.application.ports import ServerConfigurationRepository
 from mcserver.application.server_coordinator import ServerCoordinator
+from mcserver.application.server_management import ServerManagement
 from mcserver.application.server_output import DEFAULT_OUTPUT_CAPACITY, ServerOutputBuffer
 from mcserver.infrastructure.java_runtime import JavaRuntimeResolver
-from mcserver.infrastructure.legacy_import import LegacyServerConfigurationImporter
+from mcserver.infrastructure.legacy_import import LegacyFileServerConfigurationSource
 from mcserver.infrastructure.server_configuration import (
     ConfiguredServerRunnerFactory,
     LaunchSettingsSource,
@@ -31,6 +32,8 @@ class ServerRuntime:
     coordinator: ServerCoordinator
     output: ServerOutputBuffer
     configurations: ServerConfigurationRepository
+    management: ServerManagement
+    """Configuration use cases sharing ``configurations`` (the same repository instance)."""
 
     def close(self, timeout: float = 10.0) -> bool:
         """Stop the active server, then end output delivery.
@@ -80,17 +83,27 @@ def build_server_runtime(
         settings_source = LegacyServerConfigurationRepository(servers_directory)
     resolver = java_resolver or JavaRuntimeResolver.for_current_application()
     factory = ConfiguredServerRunnerFactory(settings_source, str(resolver.resolve().executable), output_sink=output)
-    return ServerRuntime(coordinator=ServerCoordinator(factory), output=output, configurations=configurations)
+    return ServerRuntime(
+        coordinator=ServerCoordinator(factory),
+        output=output,
+        configurations=configurations,
+        management=build_server_management(servers_directory, configurations),
+    )
 
 
-def build_legacy_importer(
-    servers_directory: Path, target: ServerConfigurationRepository
-) -> LegacyServerConfigurationImporter:
-    """Build an importer from the legacy ``servers_config.json`` into ``target``.
+def build_server_management(
+    servers_directory: Path, repository: ServerConfigurationRepository | None = None
+) -> ServerManagement:
+    """Build configuration use cases for ``servers_directory`` without resolving Java.
 
-    Nothing runs automatically: the caller decides when to call ``import_all``.
+    Pass ``repository`` to share an existing repository instance (as
+    ``build_server_runtime`` does); within one process, use a single instance
+    per servers directory so writes stay serialised. Legacy import only runs
+    when ``import_legacy_servers`` is called.
     """
-    return LegacyServerConfigurationImporter(LegacyServerConfigurationRepository(servers_directory), target)
+    configurations = JsonServerConfigurationRepository(servers_directory) if repository is None else repository
+    legacy_source = LegacyFileServerConfigurationSource(LegacyServerConfigurationRepository(servers_directory))
+    return ServerManagement(configurations, legacy_source)
 
 
 def build_server_coordinator(

@@ -55,6 +55,23 @@ class ServerConfigurationStorageError(RuntimeError):
     """
 
 
+class LegacyConfigurationUnavailable(RuntimeError):
+    """Raised when legacy configuration data exists but cannot be read at all.
+
+    A legacy import stops without importing anything when this is raised.
+    """
+
+
+class LegacyServerEntryInvalid(ValueError):
+    """Raised when one legacy server entry cannot be converted to a configuration."""
+
+    def __init__(self, server_id: str, reason: str) -> None:
+        """Describe the rejected entry and why."""
+        self.server_id = server_id
+        self.reason = reason
+        super().__init__(f"Legacy server '{server_id}' is invalid: {reason}")
+
+
 class ServerStopFailed(RuntimeError):
     """Raised when a requested server shutdown cannot be completed."""
 

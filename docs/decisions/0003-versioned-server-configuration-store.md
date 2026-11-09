@@ -22,7 +22,7 @@ Server configurations are stored in `<servers root>/server_configurations.json`:
 - `ServerConfiguration` (Domain) holds only what cannot be derived: identifier, server folder name relative to the root, JAR file name inside that folder, and memory. Absolute paths, JVM arguments, `nogui`, the Java executable and lifecycle state are derived or runtime-only and never stored.
 - `ServerConfigurationRepository` (Application port) offers `list_all`, `get`, `add`, `update` and `remove`. `add` and `update` are separate so creating a server can never silently overwrite another; directories must be unique (case-insensitively).
 - `JsonServerConfigurationRepository` (Infrastructure) validates the whole file strictly. A corrupt file or an unknown `format_version` makes every operation fail and nothing is written, so damaged or newer data is never overwritten. Writes use a temporary file, `fsync` and atomic `os.replace`.
-- Legacy data is imported only on explicit request through `LegacyServerConfigurationImporter`, which never modifies `servers_config.json` and skips servers already present, so it can be repeated safely.
+- Legacy data is imported only on explicit request through `ServerManagement.import_legacy_servers` (Application), which reads entries via the `LegacyServerConfigurationSource` port, never modifies `servers_config.json` and skips servers already present, so it can be repeated safely. The Infrastructure adapter `LegacyFileServerConfigurationSource` only converts legacy entries.
 - Bootstrap exposes the store as `ServerRuntime.configurations`. Launching still reads the legacy file by default; `launch_from_configuration_store=True` switches launching to the new store.
 
 ## Consequences
