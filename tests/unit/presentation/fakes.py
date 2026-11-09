@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from threading import Event
 
 from mcserver.application.errors import (
     ServerConfigurationAlreadyExists,
@@ -70,15 +71,38 @@ class UnusedFilesystem:
 
 
 class FakeRunner:
+    """Process stand-in: start/stop succeed immediately unless told otherwise."""
+
     def __init__(self) -> None:
         self.on_exit: Callable[[int], None] | None = None
+        self.start_gate: Event | None = None
+        self.start_error: Exception | None = None
+        self.stop_error: Exception | None = None
+        self.crash_on_start = False
+        self.started: list[str] = []
+        self.stopped: list[float] = []
 
     def start(self, server_id: str, on_exit: Callable[[int], None]) -> None:
+        self.started.append(server_id)
+        if self.start_gate is not None:
+            self.start_gate.wait(5)
+        if self.start_error is not None:
+            raise self.start_error
         self.on_exit = on_exit
+        if self.crash_on_start:
+            self.exit(1)  # the process dies before anyone could poll it
 
     def stop(self, timeout: float) -> None:
-        if self.on_exit is not None:
-            self.on_exit(0)
+        self.stopped.append(timeout)
+        if self.stop_error is not None:
+            raise self.stop_error
+        self.exit(0)
+
+    def exit(self, code: int) -> None:
+        """Simulate the process ending (normally or by crashing)."""
+        on_exit, self.on_exit = self.on_exit, None
+        if on_exit is not None:
+            on_exit(code)
 
 
 class FakeRunnerFactory:
@@ -93,8 +117,8 @@ def management_for(repository: InMemoryRepository) -> ServerManagement:
     return ServerManagement(repository, NoLegacySource())
 
 
-def coordinator() -> ServerCoordinator:
-    return ServerCoordinator(FakeRunnerFactory())
+def coordinator(factory: FakeRunnerFactory | None = None) -> ServerCoordinator:
+    return ServerCoordinator(factory or FakeRunnerFactory())
 
 
 def services_for(
@@ -104,6 +128,7 @@ def services_for(
     java: bool = True,
     closes: list[str] | None = None,
     server_coordinator: ServerCoordinator | None = None,
+    output: ServerOutputBuffer | None = None,
 ) -> PresentationServices:
     calls = closes if closes is not None else []
     management = management_for(repository)
@@ -112,7 +137,7 @@ def services_for(
         management=management,
         server_creation=ServerCreation(management, ServerProvisioning(repository, UnusedFilesystem())),
         coordinator=(server_coordinator or coordinator()) if java else None,
-        output=ServerOutputBuffer() if java else None,
+        output=(output or ServerOutputBuffer()) if java else None,
         java_problem=None if java else "No usable Java runtime was found.",
         closer=lambda: calls.append("closed"),
     )

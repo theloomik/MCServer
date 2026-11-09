@@ -37,6 +37,13 @@ _STATE_TO_STATUS = {
 }
 
 
+def status_for(server_id: str, state: ServerState, active_server_id: str | None) -> ServerStatus:
+    """Return a server's status from the coordinator's state; only the active server is not stopped."""
+    if active_server_id != server_id:
+        return ServerStatus.STOPPED
+    return _STATE_TO_STATUS[state]
+
+
 @dataclass(frozen=True, slots=True)
 class ServerRow:
     """A configured server as shown in the list and the details panel."""
@@ -122,15 +129,23 @@ class ServerListController(QObject):
         servers = tuple(row if existing.server_id == server_id else existing for existing in self._state.servers)
         self._publish(ServerListState(servers=servers, selected=row))
 
+    def update_statuses(self) -> None:
+        """Re-read statuses from the coordinator without reloading configurations."""
+        state = self._state
+        servers = tuple(ServerRow(row.configuration, self._status(row.server_id)) for row in state.servers)
+        selected = None
+        if state.selected is not None:
+            selected = ServerRow(state.selected.configuration, self._status(state.selected.server_id))
+        if servers != state.servers or selected != state.selected:
+            self._publish(ServerListState(servers, selected, state.list_error_key, state.details_error_key))
+
     def _row(self, configuration: ServerConfiguration) -> ServerRow:
         return ServerRow(configuration=configuration, status=self._status(configuration.server_id))
 
     def _status(self, server_id: str) -> ServerStatus:
         if self._coordinator is None:
             return ServerStatus.UNKNOWN
-        if self._coordinator.active_server_id != server_id:
-            return ServerStatus.STOPPED
-        return _STATE_TO_STATUS[self._coordinator.state]
+        return status_for(server_id, self._coordinator.state, self._coordinator.active_server_id)
 
     def _publish(self, state: ServerListState) -> None:
         self._state = state
