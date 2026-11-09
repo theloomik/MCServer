@@ -1,4 +1,4 @@
-"""Tests for importing legacy servers_config.json entries into the new store."""
+"""Tests for the read-only legacy servers_config.json source adapter."""
 
 import json
 from pathlib import Path
@@ -6,16 +6,11 @@ from typing import Any
 
 import pytest
 
+from mcserver.application.errors import LegacyConfigurationUnavailable, LegacyServerEntryInvalid
+from mcserver.domain.errors import InvalidServerConfiguration
 from mcserver.domain.server_configuration import ServerConfiguration
-from mcserver.infrastructure.legacy_import import LegacyServerConfigurationImporter
-from mcserver.infrastructure.server_configuration import (
-    LegacyServerConfigurationRepository,
-    ServerConfigurationError,
-)
-from mcserver.infrastructure.server_configuration_store import (
-    CorruptServerConfigurationFile,
-    JsonServerConfigurationRepository,
-)
+from mcserver.infrastructure.legacy_import import LegacyFileServerConfigurationSource
+from mcserver.infrastructure.server_configuration import LegacyServerConfigurationRepository
 
 LEGACY_FILE = "servers_config.json"
 
@@ -41,125 +36,77 @@ def write_legacy(root: Path, entries: dict[str, Any]) -> Path:
     return path
 
 
-def importer(root: Path) -> tuple[LegacyServerConfigurationImporter, JsonServerConfigurationRepository]:
-    target = JsonServerConfigurationRepository(root)
-    return LegacyServerConfigurationImporter(LegacyServerConfigurationRepository(root), target), target
+def source(root: Path) -> LegacyFileServerConfigurationSource:
+    return LegacyFileServerConfigurationSource(LegacyServerConfigurationRepository(root))
 
 
-def test_imports_legacy_entries_as_relative_configurations(root: Path) -> None:
-    legacy_path = write_legacy(
+def test_lists_ids_in_file_order_and_converts_to_relative_configuration(root: Path) -> None:
+    path = write_legacy(
         root,
         {"survival": legacy_entry(root, "survival", ram=4096), "creative": legacy_entry(root, "creative", "f.jar")},
     )
-    legacy_before = legacy_path.read_bytes()
-    run, target = importer(root)
+    before = path.read_bytes()
+    legacy = source(root)
 
-    report = run.import_all()
-
-    assert report.imported == ("survival", "creative")
-    assert report.already_present == ()
-    assert report.rejected == ()
-    assert target.list_all() == (
-        ServerConfiguration("survival", "survival", "paper.jar", 4096),
-        ServerConfiguration("creative", "creative", "f.jar", 2048),
-    )
-    assert legacy_path.read_bytes() == legacy_before
+    assert legacy.list_server_ids() == ("survival", "creative")
+    assert legacy.read_server("survival") == ServerConfiguration("survival", "survival", "paper.jar", 4096)
+    assert legacy.read_server("creative") == ServerConfiguration("creative", "creative", "f.jar", 2048)
+    assert path.read_bytes() == before
 
 
-def test_import_is_repeatable_and_never_overwrites_existing_configurations(root: Path) -> None:
-    write_legacy(root, {"survival": legacy_entry(root, "survival", ram=4096)})
-    run, target = importer(root)
-    run.import_all()
-    edited = ServerConfiguration("survival", "survival", "paper.jar", 8192)
-    target.update(edited)
-
-    report = run.import_all()
-
-    assert report.imported == ()
-    assert report.already_present == ("survival",)
-    assert target.list_all() == (edited,)
+def test_missing_legacy_file_lists_no_servers(root: Path) -> None:
+    assert source(root).list_server_ids() == ()
+    assert not (root / LEGACY_FILE).exists()
 
 
-def test_import_clamps_legacy_memory_like_the_legacy_launcher(root: Path) -> None:
+@pytest.mark.parametrize("content", ["{broken", "[1, 2]"])
+def test_unreadable_legacy_file_raises_unavailable(root: Path, content: str) -> None:
+    (root / LEGACY_FILE).write_text(content, encoding="utf-8")
+
+    with pytest.raises(LegacyConfigurationUnavailable):
+        source(root).list_server_ids()
+    assert (root / LEGACY_FILE).read_text(encoding="utf-8") == content
+
+
+def test_memory_is_clamped_like_the_legacy_launcher(root: Path) -> None:
     write_legacy(root, {"small": legacy_entry(root, "small", ram=128), "big": legacy_entry(root, "big", ram=10**9)})
-    run, target = importer(root)
+    legacy = source(root)
 
-    run.import_all()
-
-    assert target.get("small").memory_mb == 512
-    assert target.get("big").memory_mb == 262144
+    assert legacy.read_server("small").memory_mb == 512
+    assert legacy.read_server("big").memory_mb == 262144
 
 
-def test_import_accepts_relative_jar_path_like_legacy_core_name(root: Path) -> None:
+def test_relative_core_name_is_accepted_when_jar_path_is_empty(root: Path) -> None:
     entry = legacy_entry(root, "survival")
     entry["jar_path"] = ""
     write_legacy(root, {"survival": entry})
-    run, target = importer(root)
 
-    run.import_all()
-
-    assert target.get("survival").jar_file == "paper.jar"
+    assert source(root).read_server("survival").jar_file == "paper.jar"
 
 
-def test_invalid_legacy_entries_are_rejected_and_valid_ones_still_imported(root: Path, tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("server_id", "make_entry"),
+    [
+        ("no-ram", lambda root, outside: {**legacy_entry(root, "no-ram"), "ram": "lots"}),
+        ("escaped", lambda root, outside: {"core_name": "paper.jar", "ram": 1024, "directory": str(outside)}),
+        ("not-an-object", lambda root, outside: "survival"),
+    ],
+)
+def test_invalid_legacy_entry_raises_entry_invalid_with_reason(
+    root: Path, tmp_path: Path, server_id: str, make_entry: Any
+) -> None:
     outside = tmp_path / "outside"
     outside.mkdir()
-    write_legacy(
-        root,
-        {
-            "survival": legacy_entry(root, "survival"),
-            "escaped": {"core_name": "paper.jar", "ram": 1024, "directory": str(outside)},
-            "no-ram": {**legacy_entry(root, "no-ram"), "ram": "lots"},
-            "not-an-object": "survival",
-            "CON": {**legacy_entry(root, "survival"), "directory": str(root / "survival")},
-        },
-    )
-    run, target = importer(root)
+    write_legacy(root, {server_id: make_entry(root, outside)})
 
-    report = run.import_all()
-
-    assert report.imported == ("survival",)
-    assert [server_id for server_id, _reason in report.rejected] == ["escaped", "no-ram", "not-an-object", "CON"]
-    assert all(reason for _server_id, reason in report.rejected)
-    assert [configuration.server_id for configuration in target.list_all()] == ["survival"]
+    with pytest.raises(LegacyServerEntryInvalid) as error:
+        source(root).read_server(server_id)
+    assert error.value.server_id == server_id
+    assert error.value.reason
 
 
-def test_legacy_entry_sharing_a_directory_is_rejected(root: Path) -> None:
-    first = legacy_entry(root, "survival")
-    write_legacy(root, {"survival": first, "copy": dict(first)})
-    run, _target = importer(root)
+def test_entry_breaking_domain_rules_raises_domain_error(root: Path) -> None:
+    write_legacy(root, {"CON": {**legacy_entry(root, "survival")}})
 
-    report = run.import_all()
-
-    assert report.imported == ("survival",)
-    assert report.rejected[0][0] == "copy"
-    assert "already used" in report.rejected[0][1]
-
-
-def test_missing_legacy_file_imports_nothing(root: Path) -> None:
-    run, target = importer(root)
-
-    report = run.import_all()
-
-    assert report.imported == report.already_present == report.rejected == ()
-    assert not target.path.exists()
-
-
-def test_corrupt_legacy_file_stops_import_without_changes(root: Path) -> None:
-    (root / LEGACY_FILE).write_text("{broken", encoding="utf-8")
-    run, target = importer(root)
-
-    with pytest.raises(ServerConfigurationError):
-        run.import_all()
-    assert not target.path.exists()
-    assert (root / LEGACY_FILE).read_text(encoding="utf-8") == "{broken"
-
-
-def test_corrupt_target_store_stops_import_and_is_left_untouched(root: Path) -> None:
-    write_legacy(root, {"survival": legacy_entry(root, "survival")})
-    run, target = importer(root)
-    target.path.write_text("{broken", encoding="utf-8")
-
-    with pytest.raises(CorruptServerConfigurationFile):
-        run.import_all()
-    assert target.path.read_text(encoding="utf-8") == "{broken"
+    with pytest.raises(InvalidServerConfiguration):
+        source(root).read_server("CON")

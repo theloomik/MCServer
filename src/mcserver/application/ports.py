@@ -82,3 +82,19 @@ class ServerConfigurationRepository(Protocol):
 
     def remove(self, server_id: str) -> None:
         """Delete the configuration stored for ``server_id``."""
+
+
+class LegacyServerConfigurationSource(Protocol):
+    """Read-only access to server configurations kept in the legacy format.
+
+    ``list_server_ids`` raises ``LegacyConfigurationUnavailable`` when legacy
+    data exists but cannot be read, and returns an empty tuple when there is
+    none. ``read_server`` raises ``LegacyServerEntryInvalid`` (or the domain's
+    ``InvalidServerConfiguration``) for an entry that cannot be converted.
+    """
+
+    def list_server_ids(self) -> tuple[str, ...]:
+        """Return the identifiers of all legacy server entries, in source order."""
+
+    def read_server(self, server_id: str) -> ServerConfiguration:
+        """Convert one legacy entry into a configuration."""
