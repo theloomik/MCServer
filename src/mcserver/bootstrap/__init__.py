@@ -3,6 +3,7 @@
 from mcserver.bootstrap.server_runtime import (
     ServerRuntime,
     build_server_coordinator,
+    build_server_creation,
     build_server_management,
     build_server_provisioning,
     build_server_runtime,
@@ -11,6 +12,7 @@ from mcserver.bootstrap.server_runtime import (
 __all__ = [
     "ServerRuntime",
     "build_server_coordinator",
+    "build_server_creation",
     "build_server_management",
     "build_server_provisioning",
     "build_server_runtime",

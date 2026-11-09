@@ -6,6 +6,7 @@ from types import TracebackType
 
 from mcserver.application.ports import ServerConfigurationRepository
 from mcserver.application.server_coordinator import ServerCoordinator
+from mcserver.application.server_creation import ServerCreation
 from mcserver.application.server_management import ServerManagement
 from mcserver.application.server_output import DEFAULT_OUTPUT_CAPACITY, ServerOutputBuffer
 from mcserver.application.server_provisioning import ServerProvisioning
@@ -38,6 +39,8 @@ class ServerRuntime:
     """Configuration use cases sharing ``configurations`` (the same repository instance)."""
     provisioning: ServerProvisioning
     """Server file preparation reading from ``configurations`` (the same repository instance)."""
+    server_creation: ServerCreation
+    """One-step creation built from ``management`` and ``provisioning`` above."""
 
     def close(self, timeout: float = 10.0) -> bool:
         """Stop the active server, then end output delivery.
@@ -87,12 +90,30 @@ def build_server_runtime(
         settings_source = LegacyServerConfigurationRepository(servers_directory)
     resolver = java_resolver or JavaRuntimeResolver.for_current_application()
     factory = ConfiguredServerRunnerFactory(settings_source, str(resolver.resolve().executable), output_sink=output)
+    management = build_server_management(servers_directory, configurations)
+    provisioning = build_server_provisioning(servers_directory, configurations)
     return ServerRuntime(
         coordinator=ServerCoordinator(factory),
         output=output,
         configurations=configurations,
-        management=build_server_management(servers_directory, configurations),
-        provisioning=build_server_provisioning(servers_directory, configurations),
+        management=management,
+        provisioning=provisioning,
+        server_creation=ServerCreation(management, provisioning),
+    )
+
+
+def build_server_creation(
+    servers_directory: Path, repository: ServerConfigurationRepository | None = None
+) -> ServerCreation:
+    """Build one-step server creation for ``servers_directory`` without resolving Java.
+
+    Management and provisioning share one repository instance; pass
+    ``repository`` to share an existing one, as ``build_server_runtime`` does.
+    """
+    configurations = JsonServerConfigurationRepository(servers_directory) if repository is None else repository
+    return ServerCreation(
+        build_server_management(servers_directory, configurations),
+        build_server_provisioning(servers_directory, configurations),
     )
 
 

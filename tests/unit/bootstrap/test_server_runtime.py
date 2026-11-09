@@ -5,15 +5,17 @@ from pathlib import Path
 
 import pytest
 
-from mcserver.application.errors import ServerDirectoryAlreadyExists, ServerStopFailed
+from mcserver.application.errors import InvalidSourceJar, ServerDirectoryAlreadyExists, ServerStopFailed
 from mcserver.application.ports import OutputStream, ProcessExitHandler, ServerRunner
 from mcserver.application.server_coordinator import ServerCoordinator
+from mcserver.application.server_creation import ServerCreation
 from mcserver.application.server_management import ServerManagement
 from mcserver.application.server_output import ServerOutputBuffer
 from mcserver.application.server_provisioning import ProvisionedServer, ServerProvisioning
 from mcserver.bootstrap.server_runtime import (
     ServerRuntime,
     build_server_coordinator,
+    build_server_creation,
     build_server_management,
     build_server_provisioning,
     build_server_runtime,
@@ -74,6 +76,7 @@ def runtime_with(runner: FakeRunner) -> ServerRuntime:
         configurations=configurations,
         management=build_server_management(unused_root, configurations),
         provisioning=build_server_provisioning(unused_root, configurations),
+        server_creation=build_server_creation(unused_root, configurations),
     )
 
 
@@ -157,6 +160,69 @@ def test_provisioning_existing_directory_keeps_user_files(tmp_path: Path) -> Non
     with pytest.raises(ServerDirectoryAlreadyExists):
         build_server_provisioning(tmp_path).provision_server("survival", str(source))
     assert sorted(path.name for path in (tmp_path / "survival").iterdir()) == ["level.dat"]
+
+
+def test_runtime_server_creation_reuses_runtime_management_and_provisioning(tmp_path: Path) -> None:
+    root = tmp_path / "servers"
+    source = make_source_jar(tmp_path)
+
+    with build_server_runtime(root, StubJavaResolver(), launch_from_configuration_store=True) as runtime:
+        creation = runtime.server_creation
+        assert isinstance(creation, ServerCreation)
+        assert creation._management is runtime.management  # type: ignore[attr-defined]
+        assert creation._provisioning is runtime.provisioning  # type: ignore[attr-defined]
+
+        result = creation.create_server(
+            server_id="survival", directory="survival", jar_file="paper.jar", memory_mb=2048, source_jar=str(source)
+        )
+
+        assert runtime.configurations.get("survival") == result.configuration
+        assert (root / "survival" / "paper.jar").read_bytes() == b"jar bytes"
+        runner = runtime.coordinator._runner_factory.create("survival")  # type: ignore[attr-defined]
+        assert Path(runner.command[-2]) == (root / "survival" / "paper.jar").resolve()
+
+
+def test_server_creation_builds_and_works_without_java(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def no_java(_self: JavaRuntimeResolver) -> JavaRuntime:
+        raise JavaRuntimeNotFound("No usable Java runtime was found.")
+
+    monkeypatch.setattr(JavaRuntimeResolver, "resolve", no_java)
+    source = make_source_jar(tmp_path)
+    creation = build_server_creation(tmp_path)
+
+    creation.create_server(
+        server_id="survival", directory="survival", jar_file="server.jar", memory_mb=2048, source_jar=str(source)
+    )
+
+    assert build_server_management(tmp_path).get_server("survival").jar_file == "server.jar"
+    assert (tmp_path / "survival" / "server.jar").read_bytes() == b"jar bytes"
+
+
+def test_server_creation_failure_on_real_files_leaves_no_record_and_keeps_user_data(tmp_path: Path) -> None:
+    source = make_source_jar(tmp_path)
+    management = build_server_management(tmp_path)
+    management.create_server(server_id="lobby", directory="lobby", jar_file="velocity.jar", memory_mb=1024)
+    (tmp_path / "survival").mkdir()
+    (tmp_path / "survival" / "level.dat").write_bytes(b"world")
+    creation = build_server_creation(tmp_path)
+
+    with pytest.raises(ServerDirectoryAlreadyExists):
+        creation.create_server(
+            server_id="survival", directory="survival", jar_file="paper.jar", memory_mb=2048, source_jar=str(source)
+        )
+    with pytest.raises(InvalidSourceJar):
+        creation.create_server(
+            server_id="creative",
+            directory="creative",
+            jar_file="paper.jar",
+            memory_mb=2048,
+            source_jar=str(tmp_path / "missing.jar"),
+        )
+
+    assert [server.server_id for server in management.list_servers()] == ["lobby"]
+    assert sorted(path.name for path in (tmp_path / "survival").iterdir()) == ["level.dat"]
+    assert not (tmp_path / "creative").exists()
+    assert source.read_bytes() == b"jar bytes"
 
 
 def test_runtime_shares_one_output_buffer_with_runner_factory(tmp_path: Path) -> None:

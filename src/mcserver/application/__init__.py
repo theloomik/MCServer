@@ -9,6 +9,7 @@ from mcserver.application.errors import (
     ServerConfigurationAlreadyExists,
     ServerConfigurationNotFound,
     ServerConfigurationStorageError,
+    ServerCreationRollbackFailed,
     ServerDirectoryAlreadyExists,
     ServerDirectoryInUse,
     ServerFilesystemError,
@@ -27,6 +28,7 @@ from mcserver.application.ports import (
     ServerProvisioningFilesystem,
 )
 from mcserver.application.server_coordinator import ServerCoordinator
+from mcserver.application.server_creation import ServerCreation
 from mcserver.application.server_management import LegacyImportResult, RejectedLegacyServer, ServerManagement
 from mcserver.application.server_output import ServerOutputBuffer
 from mcserver.application.server_provisioning import ProvisionedServer, ServerProvisioning
@@ -47,6 +49,8 @@ __all__ = [
     "ServerConfigurationRepository",
     "ServerConfigurationStorageError",
     "ServerCoordinator",
+    "ServerCreation",
+    "ServerCreationRollbackFailed",
     "ServerDirectoryAlreadyExists",
     "ServerDirectoryInUse",
     "ServerFilesystemError",
