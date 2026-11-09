@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from mcserver.application.ports import ServerOutputSink, ServerRunner
 from mcserver.infrastructure.process_runner import MinecraftProcessConfig, SubprocessServerRunner
@@ -25,6 +25,13 @@ class ServerLaunchSettings:
     memory_megabytes: int
 
 
+class LaunchSettingsSource(Protocol):
+    """Anything that can provide validated launch settings for a server."""
+
+    def get_launch_settings(self, server_id: str) -> ServerLaunchSettings:
+        """Return launch settings for ``server_id``."""
+
+
 class LegacyServerConfigurationRepository:
     """Read existing MCServer ``servers_config.json`` data without modifying it."""
 
@@ -32,6 +39,12 @@ class LegacyServerConfigurationRepository:
         """Use the directory that owns the legacy server configuration file."""
         self._servers_directory = servers_directory.resolve()
         self._config_path = self._servers_directory / "servers_config.json"
+
+    def list_server_ids(self) -> tuple[str, ...]:
+        """Return the configured server identifiers; empty when the legacy file does not exist."""
+        if not self._config_path.exists():
+            return ()
+        return tuple(self._read_config())
 
     def get_launch_settings(self, server_id: str) -> ServerLaunchSettings:
         """Return validated launch settings for the selected configured server."""
@@ -95,7 +108,7 @@ class ConfiguredServerRunnerFactory:
 
     def __init__(
         self,
-        repository: LegacyServerConfigurationRepository,
+        repository: LaunchSettingsSource,
         java_executable: str,
         output_sink: ServerOutputSink | None = None,
     ) -> None:
