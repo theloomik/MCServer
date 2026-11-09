@@ -4,12 +4,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 
+from mcserver.application.ports import ServerConfigurationRepository
 from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_output import DEFAULT_OUTPUT_CAPACITY, ServerOutputBuffer
 from mcserver.infrastructure.java_runtime import JavaRuntimeResolver
+from mcserver.infrastructure.legacy_import import LegacyServerConfigurationImporter
 from mcserver.infrastructure.server_configuration import (
     ConfiguredServerRunnerFactory,
+    LaunchSettingsSource,
     LegacyServerConfigurationRepository,
+)
+from mcserver.infrastructure.server_configuration_store import (
+    JsonServerConfigurationRepository,
+    StoredServerLaunchSettings,
 )
 
 
@@ -23,6 +30,7 @@ class ServerRuntime:
 
     coordinator: ServerCoordinator
     output: ServerOutputBuffer
+    configurations: ServerConfigurationRepository
 
     def close(self, timeout: float = 10.0) -> bool:
         """Stop the active server, then end output delivery.
@@ -53,13 +61,36 @@ def build_server_runtime(
     servers_directory: Path,
     java_resolver: JavaRuntimeResolver | None = None,
     output_capacity: int = DEFAULT_OUTPUT_CAPACITY,
+    *,
+    launch_from_configuration_store: bool = False,
 ) -> ServerRuntime:
-    """Build a coordinator whose runners publish console output to a shared buffer."""
+    """Build a coordinator whose runners publish console output to a shared buffer.
+
+    ``runtime.configurations`` always exposes the versioned configuration
+    store. Servers are launched from the legacy ``servers_config.json`` unless
+    ``launch_from_configuration_store`` is set, which switches launching to the
+    new store (for use once configurations have been imported).
+    """
     output = ServerOutputBuffer(output_capacity)
-    repository = LegacyServerConfigurationRepository(servers_directory)
+    configurations = JsonServerConfigurationRepository(servers_directory)
+    settings_source: LaunchSettingsSource
+    if launch_from_configuration_store:
+        settings_source = StoredServerLaunchSettings(configurations, servers_directory)
+    else:
+        settings_source = LegacyServerConfigurationRepository(servers_directory)
     resolver = java_resolver or JavaRuntimeResolver.for_current_application()
-    factory = ConfiguredServerRunnerFactory(repository, str(resolver.resolve().executable), output_sink=output)
-    return ServerRuntime(coordinator=ServerCoordinator(factory), output=output)
+    factory = ConfiguredServerRunnerFactory(settings_source, str(resolver.resolve().executable), output_sink=output)
+    return ServerRuntime(coordinator=ServerCoordinator(factory), output=output, configurations=configurations)
+
+
+def build_legacy_importer(
+    servers_directory: Path, target: ServerConfigurationRepository
+) -> LegacyServerConfigurationImporter:
+    """Build an importer from the legacy ``servers_config.json`` into ``target``.
+
+    Nothing runs automatically: the caller decides when to call ``import_all``.
+    """
+    return LegacyServerConfigurationImporter(LegacyServerConfigurationRepository(servers_directory), target)
 
 
 def build_server_coordinator(

@@ -64,6 +64,16 @@ def test_factory_builds_runner_with_server_memory_and_nogui(tmp_path: Path) -> N
     assert runner.command == ("java", "-Xms2048M", "-Xmx2048M", "-jar", str(jar.resolve()), "nogui")
 
 
+def test_lists_legacy_server_ids_and_treats_missing_file_as_empty(tmp_path: Path) -> None:
+    servers_directory = tmp_path / "servers"
+    servers_directory.mkdir()
+    repository = LegacyServerConfigurationRepository(servers_directory)
+
+    assert repository.list_server_ids() == ()
+    write_config(servers_directory, {"core_name": "paper.jar", "ram": 1024})
+    assert repository.list_server_ids() == ("survival",)
+
+
 def test_factory_passes_output_sink_to_runner(tmp_path: Path) -> None:
     servers_directory = tmp_path / "servers"
     server_directory = servers_directory / "survival"

@@ -19,6 +19,42 @@ class ServerStartFailed(RuntimeError):
         super().__init__(f"Could not start server '{server_id}'.")
 
 
+class ServerConfigurationNotFound(LookupError):
+    """Raised when no stored configuration has the requested server identifier."""
+
+    def __init__(self, server_id: str) -> None:
+        """Describe the missing server."""
+        self.server_id = server_id
+        super().__init__(f"Server configuration '{server_id}' does not exist.")
+
+
+class ServerConfigurationAlreadyExists(RuntimeError):
+    """Raised when adding a configuration whose server identifier is already stored."""
+
+    def __init__(self, server_id: str) -> None:
+        """Describe the conflicting server."""
+        self.server_id = server_id
+        super().__init__(f"Server configuration '{server_id}' already exists.")
+
+
+class ServerDirectoryInUse(RuntimeError):
+    """Raised when a configuration names a directory already used by another server."""
+
+    def __init__(self, directory: str, owner_server_id: str) -> None:
+        """Describe the directory and the server that already uses it."""
+        self.directory = directory
+        self.owner_server_id = owner_server_id
+        super().__init__(f"Server directory '{directory}' is already used by server '{owner_server_id}'.")
+
+
+class ServerConfigurationStorageError(RuntimeError):
+    """Base for failures of the storage behind a configuration repository.
+
+    Infrastructure adapters raise subclasses with technical detail; use cases
+    can handle this type without knowing the storage technology.
+    """
+
+
 class ServerStopFailed(RuntimeError):
     """Raised when a requested server shutdown cannot be completed."""
 

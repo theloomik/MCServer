@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol
 
+from mcserver.domain.server_configuration import ServerConfiguration
+
 ProcessExitHandler = Callable[[int], None]
 
 
@@ -54,3 +56,29 @@ class ServerRunnerFactory(Protocol):
 
     def create(self, server_id: str) -> ServerRunner:
         """Return a new runner configured for ``server_id``."""
+
+
+class ServerConfigurationRepository(Protocol):
+    """Store server configurations by ``server_id``.
+
+    ``get``, ``update`` and ``remove`` raise ``ServerConfigurationNotFound``
+    for an unknown identifier; ``add`` raises ``ServerConfigurationAlreadyExists``
+    for a taken one. ``add`` and ``update`` raise ``ServerDirectoryInUse`` when
+    another server already uses the same directory (compared case-insensitively,
+    as on Windows). Storage failures raise ``ServerConfigurationStorageError``.
+    """
+
+    def list_all(self) -> tuple[ServerConfiguration, ...]:
+        """Return every stored configuration in a stable order."""
+
+    def get(self, server_id: str) -> ServerConfiguration:
+        """Return the configuration stored for ``server_id``."""
+
+    def add(self, configuration: ServerConfiguration) -> None:
+        """Store a configuration for a new server."""
+
+    def update(self, configuration: ServerConfiguration) -> None:
+        """Replace the stored configuration with the same ``server_id``."""
+
+    def remove(self, server_id: str) -> None:
+        """Delete the configuration stored for ``server_id``."""
