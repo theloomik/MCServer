@@ -11,6 +11,7 @@ from mcserver.infrastructure.server_configuration_store import (
     JsonServerConfigurationRepository,
     StoredServerLaunchSettings,
 )
+from mcserver.infrastructure.server_files import LocalServerFilesystem
 
 __all__ = [
     "ConfiguredServerRunnerFactory",
@@ -20,6 +21,7 @@ __all__ = [
     "JsonServerConfigurationRepository",
     "LegacyFileServerConfigurationSource",
     "LegacyServerConfigurationRepository",
+    "LocalServerFilesystem",
     "MinecraftProcessConfig",
     "StoredServerLaunchSettings",
     "SubprocessServerRunner",

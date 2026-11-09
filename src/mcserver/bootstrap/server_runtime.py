@@ -8,6 +8,7 @@ from mcserver.application.ports import ServerConfigurationRepository
 from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_management import ServerManagement
 from mcserver.application.server_output import DEFAULT_OUTPUT_CAPACITY, ServerOutputBuffer
+from mcserver.application.server_provisioning import ServerProvisioning
 from mcserver.infrastructure.java_runtime import JavaRuntimeResolver
 from mcserver.infrastructure.legacy_import import LegacyFileServerConfigurationSource
 from mcserver.infrastructure.server_configuration import (
@@ -19,6 +20,7 @@ from mcserver.infrastructure.server_configuration_store import (
     JsonServerConfigurationRepository,
     StoredServerLaunchSettings,
 )
+from mcserver.infrastructure.server_files import LocalServerFilesystem
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +36,8 @@ class ServerRuntime:
     configurations: ServerConfigurationRepository
     management: ServerManagement
     """Configuration use cases sharing ``configurations`` (the same repository instance)."""
+    provisioning: ServerProvisioning
+    """Server file preparation reading from ``configurations`` (the same repository instance)."""
 
     def close(self, timeout: float = 10.0) -> bool:
         """Stop the active server, then end output delivery.
@@ -88,7 +92,20 @@ def build_server_runtime(
         output=output,
         configurations=configurations,
         management=build_server_management(servers_directory, configurations),
+        provisioning=build_server_provisioning(servers_directory, configurations),
     )
+
+
+def build_server_provisioning(
+    servers_directory: Path, repository: ServerConfigurationRepository | None = None
+) -> ServerProvisioning:
+    """Build server file provisioning for ``servers_directory`` without resolving Java.
+
+    Pass ``repository`` to share an existing repository instance, as
+    ``build_server_runtime`` does.
+    """
+    configurations = JsonServerConfigurationRepository(servers_directory) if repository is None else repository
+    return ServerProvisioning(configurations, LocalServerFilesystem(servers_directory))
 
 
 def build_server_management(
