@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QSplitter
 from pytestqt.qtbot import QtBot
 
 from mcserver.application.server_coordinator import ServerCoordinator
@@ -108,9 +108,10 @@ def test_window_shows_title_folder_and_java_status_from_catalog(qtbot: QtBot, tm
     assert window.windowTitle() == messages.text("app.title")
     assert window.servers_folder_label.text() == messages.text("status.servers_folder", path=str(tmp_path))
     assert window.java_status_label.text() == messages.text("status.java_available")
-    placeholder = window.centralWidget()
-    assert isinstance(placeholder, QLabel)
-    assert placeholder.text() == messages.text("main.placeholder")
+    content = window.centralWidget()
+    assert isinstance(content, QSplitter)
+    assert content.widget(0) is window.server_list_view
+    assert content.widget(1) is window.server_details_view
 
 
 def test_window_explains_degraded_mode_with_details_on_hover(qtbot: QtBot, tmp_path: Path) -> None:
@@ -127,8 +128,8 @@ def test_exit_action_closes_window(qtbot: QtBot, tmp_path: Path) -> None:
     qtbot.addWidget(window)
     window.show()
 
-    exit_action = window.menuBar().actions()[0].menu().actions()[0]  # type: ignore[union-attr]
-    exit_action.trigger()
+    assert window.exit_action.text() == messages_for().text("menu.file.exit")
+    window.exit_action.trigger()
 
     assert not window.isVisible()
 
