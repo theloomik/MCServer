@@ -5,6 +5,7 @@ from mcserver.presentation.i18n.catalog import Catalog
 MESSAGES: Catalog = {
     "app.title": "MCServer",
     "menu.file": "&File",
+    "menu.file.new_server": "&New server…",
     "menu.file.refresh": "&Refresh servers",
     "menu.file.exit": "E&xit",
     "status.servers_folder": "Servers folder: {path}",
@@ -17,6 +18,7 @@ MESSAGES: Catalog = {
     "status.server.unknown": "Status unavailable",
     "server_list.title": "All servers",
     "server_list.refresh": "Refresh",
+    "server_list.create": "+  Create server",
     "server_list.item": "{server_id}\n{status}",
     "server_list.subtitle": "{status} · {memory}",
     "server_list.empty": "No servers yet.\nServers you create will appear here.",
@@ -43,6 +45,7 @@ MESSAGES: Catalog = {
     "dashboard.hint.other_running": "Stop {server_id} first: MCServer runs one server at a time.",
     "dashboard.hint.running": "Stopping sends the stop command and waits for the server to save.",
     "dashboard.notice.stopped_unexpectedly": "{server_id} stopped unexpectedly. Check the console for details.",
+    "dashboard.success.created": "{server_id} was created. Press Start when you're ready.",
     "dashboard.info.title": "Server",
     "dashboard.open_folder": "Open folder",
     "dashboard.open_folder_failed": "Couldn't open {path}. The folder may not exist yet.",
@@ -57,6 +60,57 @@ MESSAGES: Catalog = {
         "java.exe before starting it again. Hover here for technical details."
     ),
     "errors.unexpected": "Something went wrong. Hover here for technical details.",
+    "errors.server_id_taken": "A server with the ID {server_id} already exists. Choose another ID.",
+    "errors.directory_in_use": "The folder {directory} is already used by {server_id}. Choose another folder.",
+    "errors.directory_exists": (
+        "A folder named {directory} already exists in the servers folder. Its files were not changed; "
+        "choose another folder name."
+    ),
+    "errors.jar_exists": "{directory} already contains {jar_file}; it was not overwritten.",
+    "errors.invalid_source_jar": "The selected file can't be used: {reason}.",
+    "errors.invalid_configuration": "These settings can't be used: {reason}",
+    "errors.provisioning_failed": "The server files couldn't be prepared. Nothing was kept from this attempt.",
+    "errors.storage_failed": "MCServer couldn't save the server list. Nothing was created.",
+    "errors.provisioning_rollback_failed": (
+        "Creating {server_id} failed and some files could not be cleaned up: {leftovers}. You can delete them manually."
+    ),
+    "errors.creation_rollback_failed": (
+        "Creating {server_id} failed and cleanup was incomplete: its configuration may still be listed. "
+        "Files left on disk: {leftovers}. Check the details below and remove what is left manually."
+    ),
+    "create.title": "Create server",
+    "create.subtitle": "Set up a new server from a server JAR you already have (Paper, Fabric, Vanilla…).",
+    "create.server_id.label": "Server ID",
+    "create.server_id.placeholder": "e.g. survival",
+    "create.server_id.hint": "Shown in the server list. Must be unique.",
+    "create.directory.label": "Folder",
+    "create.directory.placeholder": "Same as the server ID",
+    "create.directory.hint": "Created inside the servers folder. Defaults to the server ID.",
+    "create.source_jar.label": "Server JAR",
+    "create.jar.placeholder": "No file selected",
+    "create.jar.browse": "Browse…",
+    "create.jar.dialog_title": "Choose the server JAR",
+    "create.jar.dialog_filter": "Java archives (*.jar)",
+    "create.source_jar.hint": "Copied into the server folder; the original file is not changed.",
+    "create.memory_mb.label": "Memory",
+    "create.memory_mb.hint": "How much RAM the server may use.",
+    "create.memory.suffix": " MB",
+    "create.cancel": "Cancel",
+    "create.submit": "Create server",
+    "create.submitting": "Creating…",
+    "create.progress": "Creating the server folder and copying the JAR. This can't be cancelled once it has started.",
+    "create.done": "{server_id} was created.",
+    "create.error.server_id_required": "Enter a server ID.",
+    "create.error.server_id_invalid": (
+        'Use letters, numbers, spaces, dots or dashes; no \\ / : * ? " < > | and no leading or trailing spaces.'
+    ),
+    "create.error.server_id_taken": "This ID is already used by another server.",
+    "create.error.directory_required": "Enter a folder name.",
+    "create.error.directory_invalid": "This folder name isn't allowed. Use a simple name without \\ / : * ? \" < > |.",
+    "create.error.directory_taken": "This folder is already used by {server_id}.",
+    "create.error.jar_required": "Choose the server JAR file.",
+    "create.error.jar_invalid": "Choose a .jar file whose name has no special characters.",
+    "create.error.memory_range": "Choose between {minimum} and {maximum} MB.",
     "exit.confirm.title": "Stop the server?",
     "exit.confirm.text": "{server_id} is still running. Stop it and exit MCServer?",
     "exit.stopping": "Stopping {server_id} before exiting…",

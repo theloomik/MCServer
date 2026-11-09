@@ -9,12 +9,15 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMainWindow, QMessageBox, QWidget
 
+from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.presentation import theme
 from mcserver.presentation.adapters.output_bridge import OutputBridge
 from mcserver.presentation.adapters.status_poller import StatusPoller
 from mcserver.presentation.controllers.console import ConsoleController
+from mcserver.presentation.controllers.server_creation import ServerCreationController
 from mcserver.presentation.controllers.server_dashboard import ServerDashboardController
 from mcserver.presentation.controllers.server_list import ServerListController, ServerListState
+from mcserver.presentation.dialogs.create_server_dialog import CreateServerDialog
 from mcserver.presentation.i18n import Messages
 from mcserver.presentation.services import PresentationServices
 from mcserver.presentation.views.server_dashboard_view import ServerDashboardView
@@ -23,6 +26,7 @@ from mcserver.presentation.workers import BackgroundRunner
 
 ConfirmExit = Callable[[str], bool]
 FolderOpener = Callable[[Path], bool]
+CreateDialogFactory = Callable[[ServerCreationController, Messages, QWidget], CreateServerDialog]
 
 
 def open_folder_with_system(path: Path) -> bool:
@@ -46,6 +50,7 @@ class MainWindow(QMainWindow):
         *,
         confirm_exit: ConfirmExit | None = None,
         open_folder: FolderOpener = open_folder_with_system,
+        create_dialog: CreateDialogFactory = CreateServerDialog,
     ) -> None:
         """Build the window from already-created services and messages, then load the servers."""
         super().__init__(parent)
@@ -53,6 +58,8 @@ class MainWindow(QMainWindow):
         self._messages = messages
         self._confirm_exit = confirm_exit or self._ask_to_stop_and_exit
         self._open_folder = open_folder
+        self._create_dialog_factory = create_dialog
+        self.create_dialog: CreateServerDialog | None = None
         self._exit_after_stop = False
         self._torn_down = False
         self.setWindowTitle(messages.text("app.title"))
@@ -67,6 +74,10 @@ class MainWindow(QMainWindow):
         self.server_list_controller = ServerListController(services.management, coordinator, self)
         self.dashboard_controller = ServerDashboardController(coordinator, self.poller, self.background, self)
         self.console_controller = ConsoleController(self.output_bridge, parent=self)
+        # Creation needs no Java: it is available in configuration-only mode as well.
+        self.creation_controller = ServerCreationController(
+            services.server_creation, services.management, self.background, self
+        )
 
         self.server_list_view = ServerListView(messages)
         self.dashboard_view = ServerDashboardView(messages, services.servers_root, self.console_controller.available)
@@ -83,6 +94,8 @@ class MainWindow(QMainWindow):
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu(self._messages.text("menu.file"))
+        self.new_server_action = file_menu.addAction(self._messages.text("menu.file.new_server"))
+        self.new_server_action.setShortcut(QKeySequence(QKeySequence.StandardKey.New))
         self.refresh_action = file_menu.addAction(self._messages.text("menu.file.refresh"))
         self.refresh_action.setShortcut(QKeySequence(QKeySequence.StandardKey.Refresh))
         file_menu.addSeparator()
@@ -124,6 +137,9 @@ class MainWindow(QMainWindow):
         self.server_list_view.server_selected.connect(servers.select)
         self.server_list_view.refresh_requested.connect(servers.refresh)
         self.refresh_action.triggered.connect(servers.refresh)
+        self.server_list_view.create_requested.connect(self.open_create_dialog)
+        self.new_server_action.triggered.connect(self.open_create_dialog)
+        self.creation_controller.created.connect(self._on_server_created)
         if self.poller is not None:
             self.poller.changed.connect(lambda _snapshot: servers.update_statuses())
 
@@ -147,6 +163,30 @@ class MainWindow(QMainWindow):
         self.dashboard_view.show_details_error(state.details_error_key)
         self.console_controller.show_server(state.selected.server_id if state.selected else None)
 
+    def open_create_dialog(self) -> None:
+        """Show the create-server dialog (only one at a time)."""
+        if self.create_dialog is not None:
+            self.create_dialog.raise_()
+            self.create_dialog.activateWindow()
+            return
+        dialog = self._create_dialog_factory(self.creation_controller, self._messages, self)
+        dialog.finished.connect(self._on_create_dialog_finished)
+        self.create_dialog = dialog
+        dialog.open()
+
+    def _on_create_dialog_finished(self, _result: int) -> None:
+        dialog, self.create_dialog = self.create_dialog, None
+        if dialog is not None:
+            dialog.deleteLater()
+
+    def _on_server_created(self, configuration: ServerConfiguration) -> None:
+        """Show the new server: reload the list, select it and confirm on its dashboard."""
+        server_id = configuration.server_id
+        self.server_list_controller.refresh()
+        self.server_list_controller.select(server_id)
+        self.dashboard_controller.report_created(server_id)
+        self.statusBar().showMessage(self._messages.text("create.done", server_id=server_id), 6000)
+
     def _open_server_folder(self, path: Path) -> None:
         if not self._open_folder(path):
             self.statusBar().showMessage(self._messages.text("dashboard.open_folder_failed", path=str(path)), 6000)
@@ -168,7 +208,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Stop a running server (after confirmation) before closing; release GUI resources."""
-        if self.dashboard_controller.busy:
+        if self.dashboard_controller.busy or self.creation_controller.busy:
             event.ignore()
             self.statusBar().showMessage(self._messages.text("exit.wait_for_operation"), 6000)
             return

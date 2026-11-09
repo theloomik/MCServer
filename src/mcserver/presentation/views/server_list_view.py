@@ -86,6 +86,7 @@ class ServerListView(QWidget):
 
     server_selected = Signal(object)  # str | None
     refresh_requested = Signal()
+    create_requested = Signal()
 
     def __init__(self, messages: Messages, parent: QWidget | None = None) -> None:
         """Build the sidebar; content arrives through ``show_state``."""
@@ -135,6 +136,11 @@ class ServerListView(QWidget):
         self.pages.addWidget(self.empty_label)
         self.pages.addWidget(self.error_label)
 
+        self.create_button = QPushButton(messages.text("server_list.create"))
+        self.create_button.setObjectName("createServerButton")
+        self.create_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.create_button.clicked.connect(self.create_requested)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 20, 14, 14)
         layout.setSpacing(14)
@@ -142,6 +148,7 @@ class ServerListView(QWidget):
         layout.addSpacing(10)
         layout.addLayout(header)
         layout.addWidget(self.pages, 1)
+        layout.addWidget(self.create_button)
 
     def show_state(self, state: ServerListState) -> None:
         """Replace the list content and selection with ``state``."""

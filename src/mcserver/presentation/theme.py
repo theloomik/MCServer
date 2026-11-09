@@ -73,6 +73,43 @@ QListWidget#serverList {{ background: transparent; border: none; outline: none; 
 QListWidget#serverList::item {{ border: none; }}
 QLabel#serverListEmpty, QLabel#serverListError {{ color: {TEXT_MUTED}; padding: 16px; }}
 QLabel#serverListError {{ color: {DANGER}; }}
+QPushButton#createServerButton {{
+    background-color: {CARD}; color: {TEXT}; border: 1px solid {BORDER};
+    border-radius: 10px; padding: 11px 14px; font-size: 14px; font-weight: 600;
+}}
+QPushButton#createServerButton:hover {{ border-color: {ACCENT_DIM}; color: {ACCENT}; background-color: {CARD_RAISED}; }}
+
+/* Dialogs and forms */
+QDialog#createServerDialog {{ background-color: {BACKGROUND}; }}
+QLabel#dialogTitle {{ font-size: 24px; font-weight: 700; }}
+QLabel#dialogSubtitle {{ color: {TEXT_MUTED}; font-size: 13px; }}
+QLabel#formLabel {{ color: {TEXT}; font-size: 13px; font-weight: 600; padding-bottom: 2px; }}
+QLabel#fieldHint {{ color: {TEXT_FAINT}; font-size: 12px; }}
+QLabel#fieldError {{ color: {CONSOLE_ERROR}; font-size: 12px; }}
+QLabel#errorDetails {{
+    color: {TEXT_MUTED}; font-family: {MONO_FAMILY}; font-size: 11px;
+    background-color: {CONSOLE}; border-radius: 6px; padding: 8px;
+}}
+QLineEdit, QSpinBox {{
+    background-color: {SIDEBAR}; color: {TEXT}; border: 1px solid {BORDER};
+    border-radius: 8px; padding: 9px 12px; font-size: 13px; selection-background-color: {ACCENT_DIM};
+}}
+QLineEdit:hover, QSpinBox:hover {{ border-color: #3f3f46; }}
+QLineEdit:focus, QSpinBox:focus {{ border-color: {ACCENT}; }}
+QLineEdit:disabled, QSpinBox:disabled {{ color: {TEXT_FAINT}; background-color: {BACKGROUND}; }}
+QLineEdit[readOnly="true"] {{ color: {TEXT_MUTED}; }}
+QSpinBox QLineEdit {{ background: transparent; border: none; padding: 0px 0px 0px 6px; }}
+QPushButton#primaryButton, QPushButton#secondaryButton {{
+    border-radius: 9px; padding: 9px 20px; font-size: 13px; font-weight: 600;
+}}
+QPushButton#primaryButton {{ background-color: {ACCENT}; color: #04120c; border: 1px solid {ACCENT}; }}
+QPushButton#primaryButton:hover {{ background-color: {ACCENT_HOVER}; border-color: {ACCENT_HOVER}; }}
+QPushButton#primaryButton:disabled {{ background-color: {CARD_RAISED}; color: {TEXT_FAINT}; border-color: {BORDER}; }}
+QPushButton#secondaryButton {{ background-color: {CARD_RAISED}; color: {TEXT}; border: 1px solid {BORDER}; }}
+QPushButton#secondaryButton:hover {{ border-color: #3f3f46; background-color: #26262b; }}
+QPushButton#secondaryButton:disabled {{ color: {TEXT_FAINT}; }}
+QProgressBar#creationProgress {{ background-color: {CARD_RAISED}; border: none; border-radius: 2px; }}
+QProgressBar#creationProgress::chunk {{ background-color: {ACCENT}; border-radius: 2px; }}
 
 /* Cards */
 QFrame[card="true"] {{ background-color: {CARD}; border: 1px solid {BORDER}; border-radius: 14px; }}
@@ -108,6 +145,7 @@ QPushButton#openFolderButton:hover {{ border-color: #3f3f46; background-color: #
 QLabel#banner {{ border-radius: 8px; padding: 10px 12px; }}
 QLabel#banner[tone="error"] {{ background-color: {DANGER_DIM}; color: #fecaca; border: 1px solid #5b2121; }}
 QLabel#banner[tone="notice"] {{ background-color: #2a1f0a; color: #fde68a; border: 1px solid #4a3410; }}
+QLabel#banner[tone="success"] {{ background-color: #0b2a20; color: #a7f3d0; border: 1px solid {ACCENT_DIM}; }}
 
 /* Console */
 QLabel#consoleTitle {{ font-family: {MONO_FAMILY}; color: {TEXT_MUTED}; font-weight: 700; }}

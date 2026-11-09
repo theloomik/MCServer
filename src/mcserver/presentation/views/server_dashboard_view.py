@@ -241,8 +241,10 @@ class ServerDashboardView(QWidget):
         self.hint_label.setText(self._hint(state))
         if state.error is not None:
             self._show_banner(state.error, "error")
-        else:
+        elif state.notice is not None:
             self._show_banner(state.notice, "notice")
+        else:
+            self._show_banner(state.success, "success")
         self.pages.setCurrentWidget(self.dashboard_page)
 
     def _hint(self, state: DashboardState) -> str:

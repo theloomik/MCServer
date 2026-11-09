@@ -7,9 +7,12 @@ from pathlib import Path
 from threading import Event
 
 from mcserver.application.errors import (
+    InvalidSourceJar,
     ServerConfigurationAlreadyExists,
     ServerConfigurationNotFound,
     ServerConfigurationStorageError,
+    ServerDirectoryAlreadyExists,
+    ServerProvisioningError,
 )
 from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_creation import ServerCreation
@@ -31,6 +34,7 @@ class InMemoryRepository:
         self.items = {configuration.server_id: configuration for configuration in configurations}
         self.broken = False
         self.broken_get = False
+        self.broken_remove = False
 
     def list_all(self) -> tuple[ServerConfiguration, ...]:
         if self.broken:
@@ -54,6 +58,8 @@ class InMemoryRepository:
         self.items[configuration.server_id] = configuration
 
     def remove(self, server_id: str) -> None:
+        if self.broken_remove:
+            raise BrokenStorage("server_configurations.json could not be written: disk full.")
         self.items.pop(server_id)
 
 
@@ -68,6 +74,44 @@ class NoLegacySource:
 class UnusedFilesystem:
     def __getattr__(self, name: str) -> Callable[..., None]:
         raise AssertionError(f"filesystem must not be used: {name}")
+
+
+class MemoryFilesystem:
+    """In-memory ``ServerProvisioningFilesystem``: folders map JAR names to their source path."""
+
+    def __init__(self, *existing_directories: str) -> None:
+        self.tree: dict[str, dict[str, str]] = {name: {} for name in existing_directories}
+        self.calls: list[str] = []
+        self.install_gate: Event | None = None
+        self.install_error: ServerProvisioningError | None = None
+        self.remove_error: ServerProvisioningError | None = None
+        self.missing_sources: set[str] = set()
+
+    def check_source_jar(self, source_jar: str) -> None:
+        self.calls.append(f"check:{source_jar}")
+        if source_jar in self.missing_sources:
+            raise InvalidSourceJar(source_jar, "the file does not exist")
+
+    def create_directory(self, directory: str) -> None:
+        self.calls.append(f"create:{directory}")
+        if directory in self.tree:
+            raise ServerDirectoryAlreadyExists(directory)
+        self.tree[directory] = {}
+
+    def install_jar(self, directory: str, jar_file: str, source_jar: str) -> None:
+        self.calls.append(f"install:{directory}/{jar_file}")
+        if self.install_gate is not None:
+            self.install_gate.wait(5)
+        if self.install_error is not None:
+            raise self.install_error
+        self.tree[directory][jar_file] = source_jar
+
+    def remove_created_directory(self, directory: str) -> None:
+        self.calls.append(f"remove:{directory}")
+        if self.remove_error is not None:
+            raise self.remove_error
+        if not self.tree.get(directory):
+            self.tree.pop(directory, None)
 
 
 class FakeRunner:
@@ -121,6 +165,12 @@ def coordinator(factory: FakeRunnerFactory | None = None) -> ServerCoordinator:
     return ServerCoordinator(factory or FakeRunnerFactory())
 
 
+def creation_for(repository: InMemoryRepository, filesystem: object) -> ServerCreation:
+    """The real creation use case over in-memory storage and files."""
+    management = management_for(repository)
+    return ServerCreation(management, ServerProvisioning(repository, filesystem))  # type: ignore[arg-type]
+
+
 def services_for(
     repository: InMemoryRepository,
     *,
@@ -129,13 +179,14 @@ def services_for(
     closes: list[str] | None = None,
     server_coordinator: ServerCoordinator | None = None,
     output: ServerOutputBuffer | None = None,
+    filesystem: object | None = None,
 ) -> PresentationServices:
     calls = closes if closes is not None else []
     management = management_for(repository)
     return PresentationServices(
         servers_root=root,
         management=management,
-        server_creation=ServerCreation(management, ServerProvisioning(repository, UnusedFilesystem())),
+        server_creation=creation_for(repository, filesystem or UnusedFilesystem()),
         coordinator=(server_coordinator or coordinator()) if java else None,
         output=(output or ServerOutputBuffer()) if java else None,
         java_problem=None if java else "No usable Java runtime was found.",

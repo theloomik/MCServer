@@ -38,6 +38,8 @@ class DashboardState:
     """Another server that is active, which prevents starting this one (single active server)."""
     error: UserMessage | None = None
     notice: UserMessage | None = None
+    success: UserMessage | None = None
+    """A confirmation such as "server created"; cleared when the server is started."""
 
     @property
     def can_start(self) -> bool:
@@ -89,6 +91,7 @@ class ServerDashboardController(QObject):
         self._operation: Operation | None = None
         self._errors: dict[str, UserMessage] = {}
         self._notices: dict[str, UserMessage] = {}
+        self._successes: dict[str, UserMessage] = {}
         self._stop_requested: set[str] = set()
         self._state = DashboardState()
         if poller is not None:
@@ -118,6 +121,11 @@ class ServerDashboardController(QObject):
         self._row = row
         self._publish()
 
+    def report_created(self, server_id: str) -> None:
+        """Confirm on the dashboard that ``server_id`` was just created."""
+        self._successes[server_id] = UserMessage("dashboard.success.created", {"server_id": server_id})
+        self._publish()
+
     def start(self) -> None:
         """Start the selected server in the background."""
         if not self._state.can_start or self._coordinator is None or self._row is None:
@@ -126,6 +134,7 @@ class ServerDashboardController(QObject):
         coordinator = self._coordinator
         self._errors.pop(server_id, None)
         self._notices.pop(server_id, None)
+        self._successes.pop(server_id, None)
         self._stop_requested.discard(server_id)
         self._begin(Operation.STARTING)
         self._runner.run(
@@ -215,5 +224,6 @@ class ServerDashboardController(QObject):
             other_active_server=other_active,
             error=self._errors.get(row.server_id) if row else None,
             notice=self._notices.get(row.server_id) if row else None,
+            success=self._successes.get(row.server_id) if row else None,
         )
         self.state_changed.emit(self._state)
