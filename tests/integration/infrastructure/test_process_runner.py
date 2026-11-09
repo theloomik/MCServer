@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from mcserver.application.ports import OutputStream
+from mcserver.application.ports import OutputStream, ServerOutputLine
 from mcserver.application.server_output import ServerOutputBuffer
 from mcserver.domain.lifecycle import ServerState
 from mcserver.infrastructure.process_runner import (
@@ -166,6 +166,32 @@ def test_runner_feeds_output_buffer_in_stream_order(tmp_path: Path) -> None:
 
     assert exited.wait(3)
     assert [line.text for line in buffer.snapshot("survival")] == [f"line {i}" for i in range(5)]
+
+
+def test_blocked_output_listener_does_not_stall_the_process(tmp_path: Path) -> None:
+    buffer = ServerOutputBuffer(capacity=100_000)
+    release = Event()
+    received: list[ServerOutputLine] = []
+
+    def blocked_listener(line: ServerOutputLine) -> None:
+        release.wait(10)
+        received.append(line)
+
+    buffer.subscribe(blocked_listener)
+    # Enough output to fill an OS pipe buffer if nothing drained it.
+    runner = make_runner(tmp_path, "for i in range(20000):\n    print('x' * 64, i)\n", output_sink=buffer)
+    exited = Event()
+
+    try:
+        runner.start("survival", lambda _code: exited.set())
+        assert exited.wait(5), "process stalled behind a blocked listener"
+        assert runner.return_code == 0
+        assert len(buffer.snapshot()) == 20000
+    finally:
+        release.set()
+        assert buffer.flush(5)
+        buffer.close(5)
+    assert len(received) == 20000
 
 
 def test_runner_keeps_draining_when_sink_fails(tmp_path: Path) -> None:
