@@ -37,9 +37,21 @@ class FakeServerRunner:
             self._on_exit(exit_code)
 
 
+class FakeServerRunnerFactory:
+    """Return deterministic fake runners by server identifier."""
+
+    def __init__(self, runner: FakeServerRunner) -> None:
+        self.runner = runner
+        self.created_server_ids: list[str] = []
+
+    def create(self, server_id: str) -> FakeServerRunner:
+        self.created_server_ids.append(server_id)
+        return self.runner
+
+
 def test_starts_selected_server_and_marks_it_running() -> None:
     runner = FakeServerRunner()
-    coordinator = ServerCoordinator(runner)
+    coordinator = ServerCoordinator(FakeServerRunnerFactory(runner))
 
     coordinator.start_server("survival")
 
@@ -50,7 +62,7 @@ def test_starts_selected_server_and_marks_it_running() -> None:
 
 def test_rejects_another_start_while_a_server_is_active() -> None:
     runner = FakeServerRunner()
-    coordinator = ServerCoordinator(runner)
+    coordinator = ServerCoordinator(FakeServerRunnerFactory(runner))
     coordinator.start_server("survival")
 
     with pytest.raises(ActiveServerAlreadyExists) as error:
@@ -64,7 +76,7 @@ def test_rejects_another_start_while_a_server_is_active() -> None:
 
 def test_failed_start_releases_the_server_and_restores_stopped_state() -> None:
     runner = FakeServerRunner(start_failure=RuntimeError("launcher unavailable"))
-    coordinator = ServerCoordinator(runner)
+    coordinator = ServerCoordinator(FakeServerRunnerFactory(runner))
 
     with pytest.raises(ServerStartFailed) as error:
         coordinator.start_server("survival")
@@ -77,7 +89,7 @@ def test_failed_start_releases_the_server_and_restores_stopped_state() -> None:
 
 def test_process_exit_releases_reservation_and_allows_another_start() -> None:
     runner = FakeServerRunner()
-    coordinator = ServerCoordinator(runner)
+    coordinator = ServerCoordinator(FakeServerRunnerFactory(runner))
     coordinator.start_server("survival")
 
     runner.emit_exit(1)
@@ -90,7 +102,7 @@ def test_process_exit_releases_reservation_and_allows_another_start() -> None:
 
 def test_graceful_stop_releases_the_server() -> None:
     runner = FakeServerRunner()
-    coordinator = ServerCoordinator(runner)
+    coordinator = ServerCoordinator(FakeServerRunnerFactory(runner))
     coordinator.start_server("survival")
 
     assert coordinator.stop_server(timeout=3.0)
@@ -102,7 +114,7 @@ def test_graceful_stop_releases_the_server() -> None:
 
 def test_repeated_stop_requests_are_safe() -> None:
     runner = FakeServerRunner()
-    coordinator = ServerCoordinator(runner)
+    coordinator = ServerCoordinator(FakeServerRunnerFactory(runner))
 
     assert not coordinator.stop_server()
     coordinator.start_server("survival")
@@ -112,7 +124,7 @@ def test_repeated_stop_requests_are_safe() -> None:
 
 def test_failed_stop_releases_the_server() -> None:
     runner = FakeServerRunner(stop_failure=RuntimeError("shutdown failed"))
-    coordinator = ServerCoordinator(runner)
+    coordinator = ServerCoordinator(FakeServerRunnerFactory(runner))
     coordinator.start_server("survival")
 
     with pytest.raises(ServerStopFailed) as error:

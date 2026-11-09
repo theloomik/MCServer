@@ -3,16 +3,17 @@
 from threading import RLock
 
 from mcserver.application.errors import ActiveServerAlreadyExists, ServerStartFailed, ServerStopFailed
-from mcserver.application.ports import ServerRunner
+from mcserver.application.ports import ServerRunner, ServerRunnerFactory
 from mcserver.domain.lifecycle import ServerLifecycle, ServerState
 
 
 class ServerCoordinator:
     """Coordinate starting one server while enforcing the single-active-server policy."""
 
-    def __init__(self, server_runner: ServerRunner, lifecycle: ServerLifecycle | None = None) -> None:
-        """Create a coordinator with an injected runner and optional lifecycle instance."""
-        self._server_runner = server_runner
+    def __init__(self, runner_factory: ServerRunnerFactory, lifecycle: ServerLifecycle | None = None) -> None:
+        """Create a coordinator with an injected runner factory and optional lifecycle."""
+        self._runner_factory = runner_factory
+        self._server_runner: ServerRunner | None = None
         self._lifecycle = lifecycle or ServerLifecycle()
         self._active_server_id: str | None = None
         self._lock = RLock()
@@ -43,7 +44,9 @@ class ServerCoordinator:
             self._lifecycle.transition_to(ServerState.STARTING)
             self._active_server_id = server_id
             try:
-                self._server_runner.start(server_id, lambda exit_code: self._on_process_exit(server_id, exit_code))
+                runner = self._runner_factory.create(server_id)
+                self._server_runner = runner
+                runner.start(server_id, lambda exit_code: self._on_process_exit(server_id, exit_code))
             except Exception as error:
                 self._release_active_server(server_id)
                 raise ServerStartFailed(server_id) from error
@@ -64,7 +67,10 @@ class ServerCoordinator:
                 self._lifecycle.transition_to(ServerState.STOPPING)
 
         try:
-            self._server_runner.stop(timeout)
+            runner = self._server_runner
+            if runner is None:
+                return False
+            runner.stop(timeout)
         except Exception as error:
             with self._lock:
                 self._release_active_server(server_id)
@@ -86,3 +92,4 @@ class ServerCoordinator:
         if self._lifecycle.state is not ServerState.STOPPED:
             self._lifecycle.transition_to(ServerState.STOPPED)
         self._active_server_id = None
+        self._server_runner = None

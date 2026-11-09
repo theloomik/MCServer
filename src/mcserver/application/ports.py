@@ -14,3 +14,10 @@ class ServerRunner(Protocol):
 
     def stop(self, timeout: float) -> None:
         """Request graceful shutdown, forcing termination after ``timeout`` seconds."""
+
+
+class ServerRunnerFactory(Protocol):
+    """Create a runner configured for a selected server."""
+
+    def create(self, server_id: str) -> ServerRunner:
+        """Return a new runner configured for ``server_id``."""

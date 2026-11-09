@@ -88,6 +88,11 @@ class SubprocessServerRunner:
             return self._return_code
 
     @property
+    def command(self) -> tuple[str, ...]:
+        """Return the configured shell-free command for diagnostics and verification."""
+        return self._config.command()
+
+    @property
     def stdout_lines(self) -> tuple[str, ...]:
         """Return all captured standard-output lines observed so far."""
         with self._lock:
