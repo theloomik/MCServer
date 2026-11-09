@@ -44,6 +44,10 @@ module = ["mcserver.domain", "mcserver.domain.*"]
 strict = true
 
 [[tool.mypy.overrides]]
+module = ["mcserver.application", "mcserver.application.*"]
+strict = true
+
+[[tool.mypy.overrides]]
 # PySide6 stubs mis-type most enum members as missing; suppress attr-defined/call-overload
 # for all modules that directly import from PySide6.
 module = ["styles", "widgets", "ui", "pages.*"]
