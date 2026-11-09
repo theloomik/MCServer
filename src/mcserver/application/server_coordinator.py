@@ -58,18 +58,21 @@ class ServerCoordinator:
         """Stop the active server and return whether a stop request was made.
 
         Calling this method when no server is active is safe and returns ``False``.
+        A negative ``timeout`` is rejected before any state changes.
         """
+        if timeout < 0:
+            raise ValueError("Shutdown timeout must not be negative.")
         with self._lock:
             server_id = self._active_server_id
-            if server_id is None:
+            # Capture the runner together with its server: once the lock is released,
+            # the process may exit and another server may be started in its place.
+            runner = self._server_runner
+            if server_id is None or runner is None:
                 return False
             if self._lifecycle.state is ServerState.RUNNING:
                 self._lifecycle.transition_to(ServerState.STOPPING)
 
         try:
-            runner = self._server_runner
-            if runner is None:
-                return False
             runner.stop(timeout)
         except Exception as error:
             with self._lock:

@@ -6,7 +6,7 @@ import pytest
 
 from mcserver.application.errors import ActiveServerAlreadyExists, ServerStartFailed, ServerStopFailed
 from mcserver.application.server_coordinator import ServerCoordinator
-from mcserver.domain.lifecycle import ServerState
+from mcserver.domain.lifecycle import ServerLifecycle, ServerState
 
 
 class FakeServerRunner:
@@ -47,6 +47,60 @@ class FakeServerRunnerFactory:
     def create(self, server_id: str) -> FakeServerRunner:
         self.created_server_ids.append(server_id)
         return self.runner
+
+
+class PerServerFactory:
+    """Create a separate fake runner for every start, keyed by server identifier."""
+
+    def __init__(self) -> None:
+        self.runners: dict[str, FakeServerRunner] = {}
+
+    def create(self, server_id: str) -> FakeServerRunner:
+        runner = FakeServerRunner()
+        self.runners[server_id] = runner
+        return runner
+
+
+def test_stop_never_reaches_a_server_started_after_the_stopped_one_exited() -> None:
+    """Regression: the runner to stop is captured together with the active server.
+
+    The lifecycle hook simulates the race where, right after ``stop_server``
+    reads the active server, its process exits and another caller starts a
+    different server before ``runner.stop`` is called.
+    """
+    factory = PerServerFactory()
+    coordinator: ServerCoordinator
+
+    class RacingLifecycle(ServerLifecycle):
+        def transition_to(self, target: ServerState) -> None:
+            super().transition_to(target)
+            if target is ServerState.STOPPING:
+                factory.runners["survival"].emit_exit(0)  # survival exits on its own
+                coordinator.start_server("creative")  # another caller starts creative
+
+    coordinator = ServerCoordinator(factory, RacingLifecycle())
+    coordinator.start_server("survival")
+
+    coordinator.stop_server(timeout=5)
+
+    assert factory.runners["survival"].stop_timeouts == [5]
+    assert factory.runners["creative"].stop_timeouts == []
+    assert coordinator.active_server_id == "creative"
+    assert coordinator.state is ServerState.RUNNING
+
+
+def test_negative_stop_timeout_is_rejected_without_releasing_the_server() -> None:
+    """Regression: an invalid timeout must not mark a still-running server as stopped."""
+    runner = FakeServerRunner()
+    coordinator = ServerCoordinator(FakeServerRunnerFactory(runner))
+    coordinator.start_server("survival")
+
+    with pytest.raises(ValueError, match="negative"):
+        coordinator.stop_server(timeout=-1)
+
+    assert runner.stop_timeouts == []
+    assert coordinator.active_server_id == "survival"
+    assert coordinator.state is ServerState.RUNNING
 
 
 def test_starts_selected_server_and_marks_it_running() -> None:
