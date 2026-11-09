@@ -2,7 +2,8 @@
 
 from collections.abc import Callable, Iterator
 from threading import Barrier, Event, Thread
-from time import monotonic
+from threading import enumerate as enumerate_threads
+from time import monotonic, sleep
 
 import pytest
 
@@ -122,6 +123,44 @@ def test_failing_listener_does_not_block_other_listeners_or_buffering(buffer: Se
     assert texts(buffer.snapshot()) == ["still delivered"]
 
 
+def test_failing_listener_counts_line_as_delivered_and_keeps_receiving(
+    buffer: ServerOutputBuffer, caplog: pytest.LogCaptureFixture
+) -> None:
+    attempts: list[int] = []
+    healthy: list[ServerOutputLine] = []
+
+    def always_fails(line: ServerOutputLine) -> None:
+        attempts.append(line.sequence)
+        raise ValueError(f"cannot handle {line.text}")
+
+    buffer.subscribe(always_fails)
+    buffer.subscribe(healthy.append)
+    for index in range(3):
+        buffer.publish("survival", OutputStream.STDOUT, str(index))
+
+    assert buffer.flush(WAIT)
+    assert attempts == [1, 2, 3]  # one attempt per line, no retry, still subscribed
+    assert sequences(healthy) == [1, 2, 3]
+    assert caplog.text.count("Server output listener failed.") == 3
+
+
+def test_listener_raising_base_exception_does_not_kill_dispatcher(buffer: ServerOutputBuffer) -> None:
+    healthy: list[ServerOutputLine] = []
+
+    def exits(line: ServerOutputLine) -> None:
+        if line.sequence == 1:
+            raise SystemExit(1)
+
+    buffer.subscribe(exits)
+    buffer.subscribe(healthy.append)
+    buffer.publish("survival", OutputStream.STDOUT, "first")
+    assert buffer.flush(WAIT)
+    buffer.publish("survival", OutputStream.STDOUT, "second")
+
+    assert buffer.flush(WAIT)
+    assert texts(healthy) == ["first", "second"]
+
+
 def test_clear_discards_lines_but_keeps_subscriptions_and_sequence(buffer: ServerOutputBuffer) -> None:
     received: list[ServerOutputLine] = []
     buffer.subscribe(received.append)
@@ -137,18 +176,60 @@ def test_clear_discards_lines_but_keeps_subscriptions_and_sequence(buffer: Serve
     assert texts(received) == ["before", "after"]
 
 
+def dispatcher_threads() -> list[Thread]:
+    return [thread for thread in enumerate_threads() if thread.name == "server-output-dispatcher"]
+
+
 def test_close_stops_dispatcher_and_rejects_new_subscriptions() -> None:
     buffer = ServerOutputBuffer()
     received: list[ServerOutputLine] = []
     buffer.subscribe(received.append)
+    dispatcher = buffer._dispatcher
+    assert dispatcher is not None and dispatcher.is_alive()
 
-    buffer.close(WAIT)
+    assert buffer.close(WAIT) is True
     buffer.publish("survival", OutputStream.STDOUT, "after close")
 
+    assert not dispatcher.is_alive()
+    assert dispatcher not in dispatcher_threads()
     assert received == []
     assert texts(buffer.snapshot()) == ["after close"]
+    assert buffer.close(WAIT) is True  # idempotent
     with pytest.raises(RuntimeError, match="closed"):
         buffer.subscribe(received.append)
+
+
+def test_close_without_subscribers_starts_no_thread() -> None:
+    before = len(dispatcher_threads())
+    buffer = ServerOutputBuffer()
+    buffer.publish("survival", OutputStream.STDOUT, "x")
+
+    assert len(dispatcher_threads()) == before
+    assert buffer.close(WAIT) is True
+
+
+def test_close_reports_listener_still_blocked_then_thread_ends_after_release() -> None:
+    buffer = ServerOutputBuffer()
+    in_listener = Event()
+    release = Event()
+    after_first: list[ServerOutputLine] = []
+
+    def blocked(line: ServerOutputLine) -> None:
+        if line.sequence == 1:
+            in_listener.set()
+            release.wait(WAIT)
+        else:
+            after_first.append(line)
+
+    buffer.subscribe(blocked)
+    buffer.publish("survival", OutputStream.STDOUT, "first")
+    assert in_listener.wait(WAIT)
+    buffer.publish("survival", OutputStream.STDOUT, "dropped on close")
+
+    assert buffer.close(0.05) is False
+    release.set()
+    assert buffer.close(WAIT) is True
+    assert after_first == []
 
 
 # --- slow listener --------------------------------------------------------
@@ -173,6 +254,40 @@ def test_slow_listener_does_not_block_publishers(buffer: ServerOutputBuffer) -> 
     release.set()
     assert buffer.flush(WAIT)
     assert sequences(received) == list(range(1, 201))
+
+
+def test_blocked_listener_delays_other_listeners_but_not_publish(buffer: ServerOutputBuffer) -> None:
+    """Documents the shared-dispatcher trade-off: others wait, the process reader never does."""
+    in_listener = Event()
+    release = Event()
+    slow_received: list[ServerOutputLine] = []
+    other_received: list[ServerOutputLine] = []
+
+    def slow(line: ServerOutputLine) -> None:
+        in_listener.set()
+        release.wait(WAIT)
+        slow_received.append(line)
+
+    buffer.subscribe(slow)
+    buffer.subscribe(other_received.append)
+    buffer.publish("survival", OutputStream.STDOUT, "0")
+    assert in_listener.wait(WAIT)
+
+    started = monotonic()
+    for index in range(1, 500):
+        buffer.publish("survival", OutputStream.STDOUT, str(index))
+    publish_duration = monotonic() - started
+    sleep(0.1)  # give the dispatcher a chance to (wrongly) deliver to the other listener
+
+    try:
+        assert publish_duration < 1.0
+        assert len(buffer.snapshot()) == 500
+        assert other_received == []
+    finally:
+        release.set()
+    assert buffer.flush(WAIT)
+    assert sequences(slow_received) == list(range(1, 501))
+    assert sequences(other_received) == list(range(1, 501))
 
 
 def test_slow_listener_does_not_block_buffer_reads_from_other_threads(buffer: ServerOutputBuffer) -> None:

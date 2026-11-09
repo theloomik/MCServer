@@ -33,9 +33,7 @@ class ServerOutputBuffer:
     records a line and wakes a single dispatcher thread, so process reader
     threads never wait for listeners. Listeners run on that dispatcher thread
     with no buffer lock held: they may call any buffer method except
-    ``flush`` and ``close``. A presentation adapter should still hand lines
-    over to its own thread (for example through a Qt signal), because one slow
-    listener delays delivery to the others.
+    ``flush`` and ``close``.
 
     Delivery guarantees per subscription:
 
@@ -44,6 +42,21 @@ class ServerOutputBuffer:
       by every later line, with no gap or duplicate between replay and live;
     * a listener that falls more than ``capacity`` lines behind loses the
       evicted lines. The skipped range is visible as a jump in ``sequence``.
+
+    Listener failures: a line counts as delivered once its callback has been
+    invoked, whether the callback returns or raises. The error is logged, the
+    line is never retried, the listener stays subscribed and keeps receiving
+    later lines, and other listeners are unaffected.
+
+    Slow listeners: listeners share one dispatcher thread, so a listener that
+    blocks delays delivery to every other listener until it returns. It never
+    delays ``publish``, so stdout/stderr draining of the server process goes on.
+    A presentation adapter should therefore hand lines over to its own thread
+    (for example through a Qt signal) instead of doing work inline.
+
+    Lifecycle: the dispatcher starts with the first subscription and is a
+    daemon thread. The owner of the buffer (the composition root's
+    ``ServerRuntime``) calls ``close`` on shutdown to end it.
     """
 
     def __init__(self, capacity: int = DEFAULT_OUTPUT_CAPACITY) -> None:
@@ -118,19 +131,24 @@ class ServerOutputBuffer:
         with self._lock:
             return self._changed.wait_for(self._is_idle, timeout)
 
-    def close(self, timeout: float | None = None) -> None:
+    def close(self, timeout: float | None = None) -> bool:
         """Stop delivering to listeners and end the dispatcher thread.
 
-        Lines already handed to a listener finish; undelivered lines are not
-        delivered. ``publish`` and ``snapshot`` keep working afterwards.
+        A callback already running is allowed to finish; undelivered lines are
+        dropped. Returns whether the dispatcher has ended (``False`` only if a
+        listener is still blocked after ``timeout``; the daemon thread then
+        ends as soon as that callback returns). Closing again is safe.
+        ``publish`` and ``snapshot`` keep working afterwards.
         """
         self._reject_dispatcher_thread("close")
         with self._lock:
             self._closed = True
             self._changed.notify_all()
             dispatcher = self._dispatcher
-        if dispatcher is not None:
-            dispatcher.join(timeout)
+        if dispatcher is None:
+            return True
+        dispatcher.join(timeout)
+        return not dispatcher.is_alive()
 
     def _start_dispatcher(self) -> None:
         """Start the delivery thread on first subscription; caller holds the lock."""
@@ -188,8 +206,13 @@ class ServerOutputBuffer:
 
     @staticmethod
     def _notify(listener: ServerOutputListener, line: ServerOutputLine) -> None:
-        """Deliver one line, isolating the buffer and other listeners from failures."""
+        """Deliver one line, isolating the buffer and other listeners from failures.
+
+        ``BaseException`` is caught as well: a listener raising ``SystemExit``
+        (or similar) would otherwise end the shared dispatcher thread and stop
+        delivery to every subscriber.
+        """
         try:
             listener(line)
-        except Exception:
+        except BaseException:
             _logger.exception("Server output listener failed.")
