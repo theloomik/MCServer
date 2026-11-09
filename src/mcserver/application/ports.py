@@ -98,3 +98,33 @@ class LegacyServerConfigurationSource(Protocol):
 
     def read_server(self, server_id: str) -> ServerConfiguration:
         """Convert one legacy entry into a configuration."""
+
+
+class ServerProvisioningFilesystem(Protocol):
+    """Prepare server files inside the managed servers root.
+
+    ``directory`` and ``jar_file`` are names relative to the root, as stored in
+    ``ServerConfiguration``; ``source_jar`` is a path chosen by the user. All
+    failures raise ``ServerProvisioningError`` subclasses. An operation that
+    fails cleans up what it created itself; whatever it could not remove is
+    reported in the error's ``leftovers``.
+    """
+
+    def check_source_jar(self, source_jar: str) -> None:
+        """Raise ``InvalidSourceJar`` unless ``source_jar`` is an existing regular ``.jar`` file."""
+
+    def create_directory(self, directory: str) -> None:
+        """Create a new, empty server directory.
+
+        Raises ``ServerDirectoryAlreadyExists`` if anything with that name exists.
+        """
+
+    def install_jar(self, directory: str, jar_file: str, source_jar: str) -> None:
+        """Copy ``source_jar`` to ``directory/jar_file`` without overwriting.
+
+        Raises ``ServerJarAlreadyExists`` if the destination exists. A partial
+        copy is removed on failure.
+        """
+
+    def remove_created_directory(self, directory: str) -> None:
+        """Remove a directory created by ``create_directory``, only if it is still empty."""

@@ -72,6 +72,76 @@ class LegacyServerEntryInvalid(ValueError):
         super().__init__(f"Legacy server '{server_id}' is invalid: {reason}")
 
 
+class ServerProvisioningError(RuntimeError):
+    """Base for failures while preparing a server's files.
+
+    ``leftovers`` lists paths, relative to the servers root, that the failed
+    operation created but could not remove. It is empty when nothing was left
+    behind.
+    """
+
+    def __init__(self, message: str, leftovers: tuple[str, ...] = ()) -> None:
+        """Describe the failure and anything it left on disk."""
+        self.leftovers = leftovers
+        super().__init__(message)
+
+
+class InvalidSourceJar(ServerProvisioningError):
+    """Raised when the selected source is not an existing regular ``.jar`` file."""
+
+    def __init__(self, source_jar: str, reason: str) -> None:
+        """Describe the rejected source and why."""
+        self.source_jar = source_jar
+        self.reason = reason
+        super().__init__(f"Cannot use '{source_jar}' as the server JAR: {reason}")
+
+
+class UnsafeServerPath(ServerProvisioningError):
+    """Raised when a directory or file name would resolve outside the servers root."""
+
+
+class ServerDirectoryAlreadyExists(ServerProvisioningError):
+    """Raised when the server directory (or anything with that name) already exists."""
+
+    def __init__(self, directory: str) -> None:
+        """Describe the existing directory; its contents are left untouched."""
+        self.directory = directory
+        super().__init__(f"Server directory '{directory}' already exists; it was not modified.")
+
+
+class ServerJarAlreadyExists(ServerProvisioningError):
+    """Raised when the destination JAR file already exists; it is never overwritten."""
+
+    def __init__(self, directory: str, jar_file: str) -> None:
+        """Describe the existing destination file."""
+        self.directory = directory
+        self.jar_file = jar_file
+        super().__init__(f"'{directory}/{jar_file}' already exists; it was not overwritten.")
+
+
+class ServerFilesystemError(ServerProvisioningError):
+    """Raised when the operating system refuses or fails a provisioning step."""
+
+
+class ProvisioningRollbackFailed(ServerProvisioningError):
+    """Raised when provisioning failed and its own changes could not all be undone.
+
+    ``original`` is the failure that triggered the rollback; ``leftovers``
+    names what remains on disk and needs manual attention. Nothing that
+    existed before the operation is ever removed.
+    """
+
+    def __init__(self, server_id: str, original: ServerProvisioningError, leftovers: tuple[str, ...]) -> None:
+        """Describe the original failure and what was left behind."""
+        self.server_id = server_id
+        self.original = original
+        left = ", ".join(leftovers)
+        super().__init__(
+            f"Provisioning server '{server_id}' failed ({original}) and could not be fully undone; left on disk: {left}.",
+            leftovers,
+        )
+
+
 class ServerStopFailed(RuntimeError):
     """Raised when a requested server shutdown cannot be completed."""
 
