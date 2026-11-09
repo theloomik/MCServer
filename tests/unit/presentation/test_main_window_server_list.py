@@ -1,4 +1,4 @@
-"""Offscreen Qt tests for the main window's server list and details panel."""
+"""Offscreen Qt tests for the sidebar server list and how selection reaches the dashboard."""
 
 from pathlib import Path
 
@@ -10,7 +10,7 @@ from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.presentation.controllers.server_list import ServerStatus
 from mcserver.presentation.i18n import en, messages_for
 from mcserver.presentation.main_window import MainWindow
-from mcserver.presentation.views.server_details_view import DETAIL_FIELDS
+from mcserver.presentation.views.server_dashboard_view import INFO_FIELDS
 from mcserver.presentation.views.status_text import STATUS_KEYS
 
 SURVIVAL = ServerConfiguration("survival", "survival", "paper.jar", 4096)
@@ -19,7 +19,11 @@ MESSAGES = messages_for()
 
 
 def window_for(qtbot: QtBot, repository: InMemoryRepository, root: Path, **options: object) -> MainWindow:
-    window = MainWindow(services_for(repository, root=root, **options), MESSAGES)  # type: ignore[arg-type]
+    window = MainWindow(
+        services_for(repository, root=root, **options),  # type: ignore[arg-type]
+        MESSAGES,
+        confirm_exit=lambda _server_id: True,
+    )
     qtbot.addWidget(window)
     return window
 
@@ -40,23 +44,22 @@ def test_lists_servers_with_status_on_open(qtbot: QtBot, tmp_path: Path) -> None
         MESSAGES.text("server_list.item", server_id="survival", status=stopped),
         MESSAGES.text("server_list.item", server_id="creative", status=stopped),
     ]
-    assert window.server_details_view.pages.currentWidget() is window.server_details_view.empty_label
+    assert window.dashboard_view.pages.currentWidget() is window.dashboard_view.welcome_page
 
 
-def test_selecting_an_item_shows_its_configuration(qtbot: QtBot, tmp_path: Path) -> None:
+def test_selecting_an_item_opens_its_dashboard(qtbot: QtBot, tmp_path: Path) -> None:
     window = window_for(qtbot, InMemoryRepository(SURVIVAL, CREATIVE), tmp_path)
 
     window.server_list_view.list_widget.setCurrentRow(1)
 
-    details = window.server_details_view
-    assert details.pages.currentWidget() is details.details_page
-    assert details.title_label.text() == "creative"
-    assert details.values["server_id"].text() == "creative"
-    assert details.values["directory"].text() == "creative-files"
-    assert details.values["location"].text() == str(tmp_path / "creative-files")
-    assert details.values["jar_file"].text() == "fabric.jar"
-    assert details.values["memory"].text() == MESSAGES.text("server_details.memory_value", memory_mb=2048)
-    assert details.values["status"].text() == MESSAGES.text("status.server.stopped")
+    dashboard = window.dashboard_view
+    assert dashboard.pages.currentWidget() is dashboard.dashboard_page
+    assert dashboard.title_label.text() == "creative"
+    assert dashboard.info_values["directory"].text() == "creative-files"
+    assert dashboard.info_values["location"].toolTip() == str(tmp_path / "creative-files")
+    assert dashboard.info_values["jar_file"].text() == "fabric.jar"
+    assert dashboard.info_values["memory"].text() == MESSAGES.text("server_details.memory_value", memory_mb=2048)
+    assert dashboard.status_pill.text() == MESSAGES.text("status.server.stopped").upper()
     assert window.server_list_view.list_widget.currentRow() == 1
 
 
@@ -66,7 +69,7 @@ def test_empty_collection_shows_empty_states(qtbot: QtBot, tmp_path: Path) -> No
     view = window.server_list_view
     assert view.pages.currentWidget() is view.empty_label
     assert view.empty_label.text() == MESSAGES.text("server_list.empty")
-    assert window.server_details_view.empty_label.text() == MESSAGES.text("server_details.empty")
+    assert window.dashboard_view.welcome_text.text() == MESSAGES.text("welcome.text")
 
 
 def test_refresh_action_and_button_reload_and_keep_selection(qtbot: QtBot, tmp_path: Path) -> None:
@@ -79,14 +82,14 @@ def test_refresh_action_and_button_reload_and_keep_selection(qtbot: QtBot, tmp_p
 
     assert window.server_list_view.server_ids() == ["survival", "creative"]
     assert window.server_list_view.list_widget.currentRow() == 0
-    assert window.server_details_view.title_label.text() == "survival"
+    assert window.dashboard_view.title_label.text() == "survival"
 
     repository.items.pop("survival")
     qtbot.mouseClick(window.server_list_view.refresh_button, Qt.MouseButton.LeftButton)
 
     assert window.server_list_view.server_ids() == ["creative"]
     assert window.server_list_view.list_widget.currentRow() == -1
-    assert window.server_details_view.pages.currentWidget() is window.server_details_view.empty_label
+    assert window.dashboard_view.pages.currentWidget() is window.dashboard_view.welcome_page
 
 
 def test_storage_error_shows_message_instead_of_crashing(qtbot: QtBot, tmp_path: Path) -> None:
@@ -100,25 +103,23 @@ def test_storage_error_shows_message_instead_of_crashing(qtbot: QtBot, tmp_path:
     assert view.error_label.text() == MESSAGES.text("server_list.error.load")
 
 
-def test_server_deleted_elsewhere_shows_details_message(qtbot: QtBot, tmp_path: Path) -> None:
+def test_server_deleted_elsewhere_shows_message(qtbot: QtBot, tmp_path: Path) -> None:
     repository = InMemoryRepository(SURVIVAL, CREATIVE)
     window = window_for(qtbot, repository, tmp_path)
     repository.items.pop("creative")
 
     window.server_list_view.list_widget.setCurrentRow(1)
 
-    details = window.server_details_view
-    assert details.pages.currentWidget() is details.error_label
-    assert details.error_label.text() == MESSAGES.text("server_details.error.gone")
+    dashboard = window.dashboard_view
+    assert dashboard.pages.currentWidget() is dashboard.welcome_page
+    assert dashboard.welcome_text.text() == MESSAGES.text("server_details.error.gone")
 
 
 def test_java_unavailable_mode_lists_servers_with_unknown_status(qtbot: QtBot, tmp_path: Path) -> None:
     window = window_for(qtbot, InMemoryRepository(SURVIVAL), tmp_path, java=False)
     window.server_list_view.list_widget.setCurrentRow(0)
 
-    status = window.server_details_view.values["status"]
-    assert status.text() == MESSAGES.text("status.server.unknown")
-    assert status.toolTip() == MESSAGES.text("status.server.unknown_hint")
+    assert window.dashboard_view.status_pill.text() == MESSAGES.text("status.server.unknown").upper()
     assert window.java_status_label.text() == MESSAGES.text("status.java_missing")
 
 
@@ -129,7 +130,7 @@ def test_active_server_shows_running(qtbot: QtBot, tmp_path: Path) -> None:
 
     window.server_list_view.list_widget.setCurrentRow(0)
 
-    assert window.server_details_view.values["status"].text() == MESSAGES.text("status.server.running")
+    assert window.dashboard_view.status_pill.text() == MESSAGES.text("status.server.running").upper()
 
 
 def test_many_servers_fit_in_a_scrollable_list(qtbot: QtBot, tmp_path: Path) -> None:
@@ -163,7 +164,7 @@ def test_window_texts_come_from_catalog(qtbot: QtBot, tmp_path: Path) -> None:
 
 
 def test_all_dynamically_built_keys_exist_in_catalog() -> None:
-    dynamic = {f"server_details.field.{field}" for field in DETAIL_FIELDS}
+    dynamic = {f"server_details.field.{field}" for field in INFO_FIELDS}
     dynamic |= set(STATUS_KEYS.values())
 
     assert set(STATUS_KEYS) == set(ServerStatus)

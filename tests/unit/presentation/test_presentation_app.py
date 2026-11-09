@@ -3,8 +3,7 @@
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication, QSplitter
+from PySide6.QtWidgets import QApplication
 from pytestqt.qtbot import QtBot
 
 from mcserver.application.server_coordinator import ServerCoordinator
@@ -108,10 +107,9 @@ def test_window_shows_title_folder_and_java_status_from_catalog(qtbot: QtBot, tm
     assert window.windowTitle() == messages.text("app.title")
     assert window.servers_folder_label.text() == messages.text("status.servers_folder", path=str(tmp_path))
     assert window.java_status_label.text() == messages.text("status.java_available")
-    content = window.centralWidget()
-    assert isinstance(content, QSplitter)
-    assert content.widget(0) is window.server_list_view
-    assert content.widget(1) is window.server_details_view
+    layout = window.centralWidget().layout()
+    assert layout.itemAt(0).widget() is window.server_list_view
+    assert layout.itemAt(1).widget() is window.dashboard_view
 
 
 def test_window_explains_degraded_mode_with_details_on_hover(qtbot: QtBot, tmp_path: Path) -> None:
@@ -148,14 +146,31 @@ def test_window_does_not_close_services(qtbot: QtBot, tmp_path: Path) -> None:
 # --- run (event loop lifetime) ------------------------------------------------------------
 
 
-def test_run_closes_services_exactly_once_after_event_loop(qapp: QApplication, tmp_path: Path) -> None:
+class EventLoopStub:
+    """Stands in for ``QApplication.exec``: running the real loop on the shared test
+    QApplication puts it into its closing state and breaks later cross-thread signal tests."""
+
+    def __init__(self, qapp: QApplication) -> None:
+        self.qapp = qapp
+        self.windows_seen: list[str] = []
+
+    def exec(self) -> int:
+        self.windows_seen = [widget.windowTitle() for widget in self.qapp.topLevelWidgets() if widget.isVisible()]
+        for widget in self.qapp.topLevelWidgets():
+            if isinstance(widget, MainWindow) and widget.isVisible():
+                widget.close()
+        return 0
+
+
+def test_run_shows_window_and_closes_services_exactly_once_after_event_loop(qapp: QApplication, tmp_path: Path) -> None:
     closes: list[str] = []
     services = fake_services(tmp_path, java=True, closes=closes)
-    QTimer.singleShot(0, qapp.quit)
+    loop = EventLoopStub(qapp)
 
-    exit_code = run(qapp, services, messages_for())
+    exit_code = run(loop, services, messages_for())  # type: ignore[arg-type]
 
     assert exit_code == 0
+    assert messages_for().text("app.title") in loop.windows_seen
     assert closes == ["closed"]
 
 
