@@ -3,6 +3,8 @@
 A desktop Minecraft server manager for Windows. It allows you to create, run, and manage
 multiple servers via a user-friendly graphical interface — without the command line.
 
+> MCServer 2.0 is under active development. Its new Clean-lite architecture is being introduced incrementally while the legacy implementation remains available.
+
 ## Features
 
 - Run PaperMC, Purpur, Spigot, Fabric, Forge, and Vanilla servers

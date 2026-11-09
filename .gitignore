@@ -139,6 +139,8 @@ celerybeat.pid
 .env
 .envrc
 .venv
+.uv-cache/
+.uv-python/
 env/
 venv/
 ENV/
