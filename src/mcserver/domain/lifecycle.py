@@ -19,7 +19,9 @@ class ServerState(str, Enum):
 _ALLOWED_TRANSITIONS: MappingProxyType[ServerState, frozenset[ServerState]] = MappingProxyType(
     {
         ServerState.STOPPED: frozenset({ServerState.STARTING}),
-        ServerState.STARTING: frozenset({ServerState.RUNNING, ServerState.STOPPED, ServerState.KILLING}),
+        ServerState.STARTING: frozenset(
+            {ServerState.RUNNING, ServerState.STOPPING, ServerState.STOPPED, ServerState.KILLING}
+        ),
         ServerState.RUNNING: frozenset({ServerState.STOPPING, ServerState.STOPPED, ServerState.KILLING}),
         ServerState.STOPPING: frozenset({ServerState.STOPPED, ServerState.KILLING}),
         ServerState.KILLING: frozenset({ServerState.STOPPED}),

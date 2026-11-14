@@ -41,14 +41,25 @@ class ServerCreation:
         self._provisioning = provisioning
 
     def create_server(
-        self, *, server_id: str, directory: str, jar_file: str, memory_mb: int, source_jar: str
+        self,
+        *,
+        server_id: str,
+        directory: str,
+        jar_file: str,
+        memory_mb: int,
+        source_jar: str,
+        accept_eula: bool = False,
     ) -> ProvisionedServer:
-        """Store the configuration, provision its directory and JAR, and return the result."""
+        """Store the configuration, provision its directory and JAR, and return the result.
+
+        ``accept_eula`` must come from the user's explicit consent; without it
+        the server is created but cannot start until the EULA is accepted.
+        """
         configuration = self._management.create_server(
             server_id=server_id, directory=directory, jar_file=jar_file, memory_mb=memory_mb
         )
         try:
-            return self._provisioning.provision_server(configuration.server_id, source_jar)
+            return self._provisioning.provision_server(configuration.server_id, source_jar, accept_eula=accept_eula)
         except (ServerProvisioningError, ServerConfigurationStorageError) as error:
             self._roll_back_configuration(configuration, error)
             raise

@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
+from mcserver.application.errors import ServerCommandFailed
 from mcserver.application.ports import OutputStream, ServerOutputLine
 from mcserver.application.server_output import ServerOutputBuffer
-from mcserver.domain.lifecycle import ServerState
 from mcserver.infrastructure.process_runner import (
     InvalidProcessConfiguration,
     MinecraftProcessConfig,
@@ -70,7 +70,7 @@ def test_runner_uses_configured_working_directory_arguments_and_streams(tmp_path
     runner.start("survival", lambda _code: exited.set())
 
     assert exited.wait(3)
-    assert runner.state is ServerState.STOPPED
+    assert not runner.running
     assert runner.return_code == 0
     assert f"cwd={tmp_path}" in runner.stdout_lines
     assert "stderr-ready" in runner.stderr_lines
@@ -87,8 +87,8 @@ def test_runner_reports_unexpected_process_exit(tmp_path: Path) -> None:
     assert exited.wait(3)
     assert exit_codes == [7]
     assert runner.return_code == 7
-    assert runner.state is ServerState.STOPPED
     assert runner.stderr_lines == ("failed",)
+    assert runner.output_tail() == ("failed",)
 
 
 def test_runner_sends_graceful_stop_command(tmp_path: Path) -> None:
@@ -104,23 +104,25 @@ def test_runner_sends_graceful_stop_command(tmp_path: Path) -> None:
     exited = Event()
 
     runner.start("survival", lambda _code: exited.set())
-    runner.stop(timeout=2)
+    assert runner.stop(timeout=5) is True
 
     assert exited.wait(3)
     assert runner.return_code == 0
     assert "stopped" in runner.stdout_lines
 
 
-def test_runner_forces_termination_after_timeout(tmp_path: Path) -> None:
+def test_stop_timeout_never_kills_and_kill_is_explicit(tmp_path: Path) -> None:
     runner = make_runner(tmp_path, "import time\nprint('ready', flush=True)\ntime.sleep(30)\n")
     exited = Event()
 
     runner.start("survival", lambda _code: exited.set())
-    runner.stop(timeout=0.01)
 
-    assert exited.wait(3)
+    assert runner.stop(timeout=0.2) is False
+    assert runner.running and not exited.is_set()
+    assert runner.wait_for_exit(0.1) is False
+    runner.kill()
+    assert exited.wait(5)
     assert runner.return_code is not None
-    assert runner.state is ServerState.STOPPED
 
 
 def test_runner_reports_missing_executable_as_start_error(tmp_path: Path) -> None:
@@ -135,7 +137,7 @@ def test_runner_reports_missing_executable_as_start_error(tmp_path: Path) -> Non
     with pytest.raises(ProcessStartError):
         runner.start("survival", lambda _code: None)
 
-    assert runner.state is ServerState.STOPPED
+    assert not runner.running and runner.process_id is None
 
 
 def test_runner_publishes_output_to_sink_before_reporting_exit(tmp_path: Path) -> None:
@@ -223,3 +225,36 @@ def test_runner_rejects_non_positive_diagnostic_limit(tmp_path: Path) -> None:
 def test_runner_rejects_empty_java_executable(tmp_path: Path) -> None:
     with pytest.raises(InvalidProcessConfiguration, match="Java executable"):
         MinecraftProcessConfig("", (), tmp_path / "server.jar", tmp_path)
+
+
+def test_commands_reach_stdin_and_are_echoed_to_the_sink(tmp_path: Path) -> None:
+    sink = RecordingSink()
+    runner = make_runner(
+        tmp_path,
+        "import sys\n"
+        "print('ready', flush=True)\n"
+        "for line in sys.stdin:\n"
+        "    if line.strip() == 'stop':\n"
+        "        sys.exit(0)\n"
+        "    print('got ' + line.strip(), flush=True)\n",
+        output_sink=sink,
+    )
+    seen: list[tuple[OutputStream, str]] = []
+    runner.start("survival", lambda _code: None, lambda stream, text: seen.append((stream, text)))
+
+    runner.send_command("say hi")
+
+    assert runner.stop(timeout=5) is True
+    assert ("survival", OutputStream.COMMAND, "say hi") in sink.lines
+    assert (OutputStream.STDOUT, "got say hi") in seen
+    assert (OutputStream.COMMAND, "say hi") not in seen  # echoes are not process output
+
+
+def test_command_to_an_exited_process_fails_cleanly(tmp_path: Path) -> None:
+    runner = make_runner(tmp_path, "print('bye')\n")
+    exited = Event()
+    runner.start("survival", lambda _code: exited.set())
+    assert exited.wait(3)
+
+    with pytest.raises(ServerCommandFailed):
+        runner.send_command("say hi")

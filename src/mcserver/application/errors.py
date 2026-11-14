@@ -175,3 +175,97 @@ class ServerStopFailed(RuntimeError):
         """Describe the server whose shutdown request failed."""
         self.server_id = server_id
         super().__init__(f"Could not stop server '{server_id}'.")
+
+
+class EulaNotAccepted(RuntimeError):
+    """Raised when a server is started before the Minecraft EULA was accepted for it."""
+
+    def __init__(self, server_id: str) -> None:
+        """Describe the server that still needs EULA consent."""
+        self.server_id = server_id
+        super().__init__(f"The Minecraft EULA has not been accepted for server '{server_id}'.")
+
+
+class ServerStopTimedOut(RuntimeError):
+    """Raised when a graceful stop did not end the process in time; the server stays STOPPING.
+
+    Nothing is killed automatically: the user decides whether to keep waiting or to kill.
+    """
+
+    def __init__(self, server_id: str, timeout: float) -> None:
+        """Describe the server that is still shutting down."""
+        self.server_id = server_id
+        self.timeout = timeout
+        super().__init__(f"Server '{server_id}' did not stop within {timeout:g} seconds.")
+
+
+class ServerNotRunning(RuntimeError):
+    """Raised when a command is sent to a server that is not the active, running server."""
+
+    def __init__(self, server_id: str) -> None:
+        """Describe the server that cannot receive commands now."""
+        self.server_id = server_id
+        super().__init__(f"Server '{server_id}' is not running.")
+
+
+class InvalidServerCommand(ValueError):
+    """Raised for an empty console command or one that contains line breaks."""
+
+
+class ServerCommandFailed(RuntimeError):
+    """Raised when a console command could not be delivered to the server process."""
+
+    def __init__(self, server_id: str) -> None:
+        """Describe the server whose input is no longer writable."""
+        self.server_id = server_id
+        super().__init__(f"The command could not be sent to server '{server_id}'.")
+
+
+class JavaNotFound(RuntimeError):
+    """Raised when no usable Java runtime can be found for starting a server."""
+
+    def __init__(self, required_major: int | None = None) -> None:
+        """Describe the Java version that is needed, when known."""
+        self.required_major = required_major
+        needed = f" (Java {required_major} or newer is needed)" if required_major else ""
+        super().__init__(f"No usable Java runtime was found{needed}.")
+
+
+class InvalidJavaExecutable(ValueError):
+    """Raised when a user-selected Java executable cannot be run."""
+
+    def __init__(self, executable: str) -> None:
+        """Describe the rejected executable."""
+        self.executable = executable
+        super().__init__(f"'{executable}' is not a usable Java executable.")
+
+
+class JavaVersionTooOld(RuntimeError):
+    """Raised when the Java found is older than the server's verified requirement.
+
+    The start can be repeated with ``StartOptions(allow_outdated_java=True)``.
+    """
+
+    def __init__(self, server_id: str, required_major: int, found_major: int, executable: str) -> None:
+        """Describe the mismatch."""
+        self.server_id = server_id
+        self.required_major = required_major
+        self.found_major = found_major
+        self.executable = executable
+        super().__init__(
+            f"Server '{server_id}' needs Java {required_major}, but the Java found is version {found_major}."
+        )
+
+
+class ServerWorldInUse(RuntimeError):
+    """Raised when the server's world is locked by another process (an earlier server may still run)."""
+
+    def __init__(self, server_id: str, world: str) -> None:
+        """Describe the locked world."""
+        self.server_id = server_id
+        self.world = world
+        super().__init__(f"The world '{world}' of server '{server_id}' is in use by another process.")
+
+
+class ProcessGuardUnavailable(RuntimeError):
+    """Raised when the server process could not be placed under orphan protection; it never ran."""

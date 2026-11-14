@@ -15,6 +15,40 @@ from mcserver.application.errors import (
 )
 from mcserver.domain.server_configuration import is_safe_name
 
+EULA_FILE = "eula.txt"
+_EULA_CONTENT = "# Accepted by the user in MCServer (https://aka.ms/MinecraftEULA)\neula=true\n"
+
+
+def eula_file_accepted(server_directory: Path) -> bool:
+    """Return whether ``server_directory/eula.txt`` contains an ``eula=true`` line."""
+    try:
+        text = (server_directory / EULA_FILE).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    for line in text.splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key.strip().lower() == "eula" and value.strip().lower() == "true":
+            return True
+    return False
+
+
+def write_eula_file(server_directory: Path, label: str) -> None:
+    """Atomically write ``eula=true`` into ``server_directory`` (temporary file + ``os.replace``)."""
+    target = server_directory / EULA_FILE
+    temporary = server_directory / f".{EULA_FILE}.tmp"
+    try:
+        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(_EULA_CONTENT)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, target)
+    except OSError as error:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise ServerFilesystemError(f"Could not write '{label}/{EULA_FILE}': {error}") from error
+
 
 class LocalServerFilesystem:
     """Implement ``ServerProvisioningFilesystem`` inside one servers root.
@@ -105,6 +139,33 @@ class LocalServerFilesystem:
             raise ServerFilesystemError(
                 f"Could not remove server directory '{directory}': {error}", leftovers=(directory,)
             ) from error
+
+    def accept_eula(self, directory: str) -> None:
+        """Write ``eula=true`` through a temporary file and an atomic replace."""
+        target_directory = self._existing_server_directory(directory)
+        write_eula_file(target_directory, directory)
+
+    def eula_accepted(self, directory: str) -> bool:
+        """Return whether ``eula.txt`` in the server directory says ``eula=true``."""
+        return eula_file_accepted(self._server_directory(directory))
+
+    def remove_eula(self, directory: str) -> None:
+        """Delete ``eula.txt`` (used only to undo ``accept_eula`` during a failed provisioning)."""
+        path = self._server_directory(directory) / EULA_FILE
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as error:
+            raise ServerFilesystemError(
+                f"Could not remove '{directory}/{EULA_FILE}': {error}", leftovers=(f"{directory}/{EULA_FILE}",)
+            ) from error
+
+    def _existing_server_directory(self, directory: str) -> Path:
+        """Return a server directory that exists, is not a link and lies directly inside the root."""
+        path = self._server_directory(directory)
+        if path.is_symlink() or not path.is_dir():
+            raise UnsafeServerPath(f"Server directory '{directory}' is missing or is a symbolic link.")
+        self._require_inside_root(path, directory)
+        return path
 
     @staticmethod
     def _remove_partial_file(destination: Path, relative: str, cause: OSError) -> None:

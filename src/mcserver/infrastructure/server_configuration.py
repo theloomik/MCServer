@@ -3,12 +3,26 @@
 from __future__ import annotations
 
 import json
+import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from mcserver.application.ports import ServerOutputSink, ServerRunner
+from mcserver.application.errors import EulaNotAccepted, JavaVersionTooOld, ServerWorldInUse
+from mcserver.application.ports import (
+    JavaRuntimeProvider,
+    LaunchWarning,
+    PreparedLaunch,
+    ServerOutputSink,
+    StartOptions,
+)
+from mcserver.domain.java_requirements import required_java_major
+from mcserver.domain.server_configuration import is_safe_name
+from mcserver.infrastructure.jar_version import read_jar_version
 from mcserver.infrastructure.process_runner import MinecraftProcessConfig, SubprocessServerRunner
+from mcserver.infrastructure.server_files import eula_file_accepted
+from mcserver.infrastructure.windows_job import NoProcessGuard, ProcessGuard
 
 
 class ServerConfigurationError(ValueError):
@@ -106,27 +120,122 @@ class LegacyServerConfigurationRepository:
 
 
 class ConfiguredServerRunnerFactory:
-    """Create subprocess runners from stored server settings and an explicit Java path."""
+    """Check launch preconditions, then create a guarded subprocess runner (M1-BE-01, 05, 06).
+
+    Checks, in order: EULA consent (``eula=true``), the world not being locked
+    by another process, and Java. The Java requirement comes from the JAR's own
+    ``version.json`` when it declares one, otherwise from the verified table in
+    ``domain.java_requirements``; an unknown requirement only produces a
+    warning. A Java that is too old blocks the start unless
+    ``StartOptions.allow_outdated_java`` is set.
+
+    ``java`` is a ``JavaRuntimeProvider`` (looked up on every start) or a fixed
+    executable path, which skips the version check (used by tests).
+    """
 
     def __init__(
         self,
         repository: LaunchSettingsSource,
-        java_executable: str,
+        java: JavaRuntimeProvider | str,
         output_sink: ServerOutputSink | None = None,
+        process_guard_factory: Callable[[], ProcessGuard] | None = None,
     ) -> None:
-        """Use ``java_executable`` and forward runner output to ``output_sink`` when given."""
+        """Use ``java`` and forward runner output to ``output_sink`` when given."""
         self._repository = repository
-        self._java_executable = java_executable
+        self._java = java
         self._output_sink = output_sink
+        self._process_guard_factory = process_guard_factory or NoProcessGuard
 
-    def create(self, server_id: str) -> ServerRunner:
-        """Create a runner with conventional Minecraft memory arguments and ``nogui``."""
+    def create(self, server_id: str, options: StartOptions | None = None) -> PreparedLaunch:
+        """Return a runner with conventional Minecraft memory arguments and ``nogui``."""
+        options = options or StartOptions()
         settings = self._repository.get_launch_settings(server_id)
+        if not eula_file_accepted(settings.working_directory):
+            raise EulaNotAccepted(server_id)
+        world = locked_world(settings.working_directory)
+        if world is not None:
+            raise ServerWorldInUse(server_id, world)
+        java_executable, warnings = self._java_for(server_id, settings, options)
         config = MinecraftProcessConfig(
-            java_executable=self._java_executable,
+            java_executable=java_executable,
             jvm_arguments=(f"-Xms{settings.memory_megabytes}M", f"-Xmx{settings.memory_megabytes}M"),
             server_jar_path=settings.server_jar_path,
             working_directory=settings.working_directory,
             server_arguments=("nogui",),
         )
-        return SubprocessServerRunner(config, output_sink=self._output_sink)
+        runner = SubprocessServerRunner(
+            config, output_sink=self._output_sink, process_guard=self._process_guard_factory()
+        )
+        return PreparedLaunch(runner, warnings)
+
+    def _java_for(
+        self, server_id: str, settings: ServerLaunchSettings, options: StartOptions
+    ) -> tuple[str, tuple[LaunchWarning, ...]]:
+        if isinstance(self._java, str):
+            return self._java, ()
+        jar = read_jar_version(settings.server_jar_path)
+        required = jar.declared_java_major or required_java_major(jar.version)
+        java = self._java.find(required)
+        warnings: list[LaunchWarning] = []
+        if required is None:
+            warnings.append(
+                LaunchWarning(
+                    "java_requirement_unknown",
+                    {"version": jar.version_text or "?", "java_major": java.major_version},
+                )
+            )
+        elif java.major_version < required:
+            if not options.allow_outdated_java:
+                raise JavaVersionTooOld(server_id, required, java.major_version, java.executable)
+            warnings.append(
+                LaunchWarning("java_outdated_allowed", {"required": required, "java_major": java.major_version})
+            )
+        return java.executable, tuple(warnings)
+
+
+def locked_world(server_directory: Path) -> str | None:
+    """Return the world name if its ``session.lock`` is held by another process, else ``None``."""
+    world = _level_name(server_directory)
+    lock_path = server_directory / world / "session.lock"
+    if not lock_path.is_file():
+        return None
+    try:
+        handle = lock_path.open("r+b")
+    except PermissionError:
+        return world
+    except OSError:
+        return None
+    with handle:
+        return world if not _try_lock(handle.fileno()) else None
+
+
+def _try_lock(fileno: int) -> bool:
+    """Try to take and release the lock Minecraft holds on ``session.lock``."""
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+
+            msvcrt.locking(fileno, msvcrt.LK_NBLCK, 1)
+            msvcrt.locking(fileno, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.lockf(fileno, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.lockf(fileno, fcntl.LOCK_UN)
+    except OSError:
+        return False
+    return True
+
+
+def _level_name(server_directory: Path) -> str:
+    """Return ``level-name`` from ``server.properties`` (default ``world``), if it is a safe name."""
+    try:
+        text = (server_directory / "server.properties").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "world"
+    for line in text.splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key.strip() == "level-name":
+            name = value.strip()
+            return name if is_safe_name(name) else "world"
+    return "world"

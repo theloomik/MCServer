@@ -54,10 +54,13 @@ def test_factory_builds_runner_with_server_memory_and_nogui(tmp_path: Path) -> N
     server_directory.mkdir(parents=True)
     jar = server_directory / "paper.jar"
     jar.write_bytes(b"jar")
+    (server_directory / "eula.txt").write_text("eula=true\n", encoding="utf-8")
     write_config(servers_directory, {"directory": str(server_directory), "core_name": "paper.jar", "ram": 2048})
 
-    runner = ConfiguredServerRunnerFactory(LegacyServerConfigurationRepository(servers_directory), "java").create(
-        "survival"
+    runner = (
+        ConfiguredServerRunnerFactory(LegacyServerConfigurationRepository(servers_directory), "java")
+        .create("survival")
+        .runner
     )
 
     assert isinstance(runner, SubprocessServerRunner)
@@ -79,12 +82,15 @@ def test_factory_passes_output_sink_to_runner(tmp_path: Path) -> None:
     server_directory = servers_directory / "survival"
     server_directory.mkdir(parents=True)
     (server_directory / "paper.jar").write_bytes(b"jar")
+    (server_directory / "eula.txt").write_text("eula=true\n", encoding="utf-8")
     write_config(servers_directory, {"directory": str(server_directory), "core_name": "paper.jar", "ram": 1024})
     sink = ServerOutputBuffer()
 
-    runner = ConfiguredServerRunnerFactory(
-        LegacyServerConfigurationRepository(servers_directory), "java", output_sink=sink
-    ).create("survival")
+    runner = (
+        ConfiguredServerRunnerFactory(LegacyServerConfigurationRepository(servers_directory), "java", output_sink=sink)
+        .create("survival")
+        .runner
+    )
 
     assert isinstance(runner, SubprocessServerRunner)
     assert runner._output_sink is sink

@@ -20,8 +20,9 @@ class ServerProvisioning:
     """Create the directory of a configured server and copy its JAR into it.
 
     Provisioning only prepares files. It reads the stored configuration and
-    never changes it, and it does not launch servers, accept the EULA or write
-    ``server.properties``.
+    never changes it, and it does not launch servers or write
+    ``server.properties``. It writes ``eula=true`` only when the caller passes
+    the user's explicit consent (``accept_eula``).
 
     The target directory must not exist yet, so everything removed during a
     rollback was created by the same call. Failure handling:
@@ -39,28 +40,54 @@ class ServerProvisioning:
         self._repository = repository
         self._filesystem = filesystem
 
-    def provision_server(self, server_id: str, source_jar: str) -> ProvisionedServer:
+    def provision_server(self, server_id: str, source_jar: str, *, accept_eula: bool = False) -> ProvisionedServer:
         """Provision ``server_id`` from the JAR at ``source_jar`` and describe the result.
+
+        ``accept_eula`` records the user's explicit consent to the Minecraft
+        EULA by writing ``eula=true``; it is never written otherwise. On
+        failure the ``eula.txt`` written by this call is removed with the
+        directory.
 
         Raises ``ServerConfigurationNotFound`` for an unknown server, a
         ``ServerProvisioningError`` subclass for file problems, and
         ``ServerConfigurationStorageError`` if the configuration cannot be read.
         """
         configuration = self._repository.get(server_id)
+        directory = configuration.directory
         self._filesystem.check_source_jar(source_jar)
-        self._filesystem.create_directory(configuration.directory)
+        self._filesystem.create_directory(directory)
+        eula_written = False
         try:
-            self._filesystem.install_jar(configuration.directory, configuration.jar_file, source_jar)
+            if accept_eula:
+                self._filesystem.accept_eula(directory)
+                eula_written = True
+            self._filesystem.install_jar(directory, configuration.jar_file, source_jar)
         except ServerProvisioningError as error:
-            self._roll_back_directory(server_id, configuration.directory, error)
+            self._roll_back_directory(server_id, directory, error, eula_written)
             raise
         return ProvisionedServer(configuration=configuration, source_jar=source_jar)
 
-    def _roll_back_directory(self, server_id: str, directory: str, original: ServerProvisioningError) -> None:
-        """Remove the directory this call created, or report why it cannot be removed."""
-        if original.leftovers:
-            # The partial JAR is still inside, so the directory cannot be removed safely.
-            raise ProvisioningRollbackFailed(server_id, original, (*original.leftovers, directory)) from original
+    def accept_eula(self, server_id: str) -> None:
+        """Record the user's EULA consent for an existing server (writes ``eula=true``)."""
+        self._filesystem.accept_eula(self._repository.get(server_id).directory)
+
+    def eula_accepted(self, server_id: str) -> bool:
+        """Return whether the EULA has been accepted for ``server_id``."""
+        return self._filesystem.eula_accepted(self._repository.get(server_id).directory)
+
+    def _roll_back_directory(
+        self, server_id: str, directory: str, original: ServerProvisioningError, eula_written: bool = False
+    ) -> None:
+        """Remove what this call created (``eula.txt``, then the directory), or report what is left."""
+        leftovers = list(original.leftovers)
+        if eula_written:
+            try:
+                self._filesystem.remove_eula(directory)
+            except ServerProvisioningError:
+                leftovers.append(f"{directory}/eula.txt")
+        if leftovers:
+            # Something is still inside, so the directory cannot be removed safely.
+            raise ProvisioningRollbackFailed(server_id, original, (*leftovers, directory)) from original
         try:
             self._filesystem.remove_created_directory(directory)
         except ServerProvisioningError as rollback_error:
