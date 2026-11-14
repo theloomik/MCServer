@@ -1,4 +1,4 @@
-"""Read-only console: output of the selected server, batched for the GUI thread."""
+"""Console output of the selected server (including echoed commands), batched for the GUI thread."""
 
 from __future__ import annotations
 
@@ -22,6 +22,8 @@ class ConsoleLine:
     sequence: int
     is_error: bool
     text: str
+    is_command: bool = False
+    """A command the user sent, echoed into the console."""
 
 
 class ConsoleController(QObject):
@@ -116,7 +118,12 @@ class ConsoleController(QObject):
             return  # already shown or cleared
         self._last_sequence = line.sequence
         self._pending.append(
-            ConsoleLine(line.sequence, line.stream is OutputStream.STDERR, _ANSI_ESCAPE.sub("", line.text))
+            ConsoleLine(
+                line.sequence,
+                line.stream is OutputStream.STDERR,
+                _ANSI_ESCAPE.sub("", line.text),
+                line.stream is OutputStream.COMMAND,
+            )
         )
         if not self._timer.isActive():
             self._timer.start()

@@ -21,7 +21,7 @@ from mcserver.presentation.workers import BackgroundRunner
 
 SOURCE = r"C:\Downloads\paper-1.21.4.jar"
 LOBBY = ServerConfiguration("lobby", "lobby", "velocity.jar", 1024)
-VALID = CreationForm(server_id="survival", directory="survival", source_jar=SOURCE, memory_mb=4096)
+VALID = CreationForm(server_id="survival", directory="survival", source_jar=SOURCE, memory_mb=4096, eula_accepted=True)
 
 
 class Harness:
@@ -106,7 +106,8 @@ def test_successful_creation_calls_backend_with_derived_arguments(qtbot: QtBot, 
     created = harness.created[0]
     assert created == ServerConfiguration("survival", "survival", "paper-1.21.4.jar", 4096)
     assert harness.repository.items["survival"] == created
-    assert harness.filesystem.tree["survival"] == {"paper-1.21.4.jar": SOURCE}
+    # The EULA consent from the form is written before the JAR is installed (M1-BE-01).
+    assert harness.filesystem.tree["survival"] == {"eula.txt": "eula=true", "paper-1.21.4.jar": SOURCE}
     assert harness.states[-1] == CreationState()
     assert not harness.controller.busy
 

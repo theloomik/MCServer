@@ -24,6 +24,7 @@ class ServerStatus(Enum):
     STARTING = "starting"
     RUNNING = "running"
     STOPPING = "stopping"
+    KILLING = "killing"
     UNKNOWN = "unknown"
     """No coordinator (Java missing), so this application cannot tell."""
 
@@ -33,7 +34,7 @@ _STATE_TO_STATUS = {
     ServerState.STARTING: ServerStatus.STARTING,
     ServerState.RUNNING: ServerStatus.RUNNING,
     ServerState.STOPPING: ServerStatus.STOPPING,
-    ServerState.KILLING: ServerStatus.STOPPING,
+    ServerState.KILLING: ServerStatus.KILLING,
 }
 
 

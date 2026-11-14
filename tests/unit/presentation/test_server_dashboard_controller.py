@@ -1,15 +1,17 @@
-"""Tests for start/stop orchestration, using the real coordinator with a fake runner."""
+"""Tests for start/stop/kill/command orchestration, using the real coordinator with a fake runner."""
 
 from threading import Event
 
 import pytest
-from fakes import FakeRunnerFactory, coordinator
+from fakes import FakeRunner, FakeRunnerFactory, coordinator
 from pytestqt.qtbot import QtBot
 
+from mcserver.application.errors import EulaNotAccepted, JavaVersionTooOld
+from mcserver.application.ports import LaunchWarning, StartOptions
+from mcserver.application.server_coordinator import DEFAULT_STOP_TIMEOUT_SECONDS
 from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.presentation.adapters.status_poller import StatusPoller
 from mcserver.presentation.controllers.server_dashboard import (
-    STOP_TIMEOUT_SECONDS,
     DashboardState,
     Operation,
     ServerDashboardController,
@@ -79,7 +81,7 @@ def test_stop_succeeds_without_unexpected_stop_notice(qtbot: QtBot, harness: Har
 
     assert harness.state.operation is Operation.STOPPING
     qtbot.waitUntil(lambda: harness.state.status is ServerStatus.STOPPED and harness.state.operation is None)
-    assert harness.runner.stopped == [STOP_TIMEOUT_SECONDS]
+    assert harness.runner.stopped == [DEFAULT_STOP_TIMEOUT_SECONDS]
     assert harness.state.notice is None and harness.state.error is None
     assert harness.state.can_start
 
@@ -160,15 +162,16 @@ def test_unexpected_exit_is_reported_once_for_that_server(qtbot: QtBot, harness:
 
     harness.runner.exit(1)  # the process dies on its own
 
-    qtbot.waitUntil(lambda: harness.state.notice is not None)
-    notice = harness.state.notice
-    assert notice is not None and notice.key == "dashboard.notice.stopped_unexpectedly"
-    assert notice.params == {"server_id": "survival"}
+    qtbot.waitUntil(lambda: harness.state.error is not None)
+    error = harness.state.error
+    assert error is not None and error.key == "dashboard.failure.unexpected_exit"
+    assert error.params["server_id"] == "survival" and error.params["exit_code"] == 1
+    assert harness.state.notice is None
     assert harness.state.status is ServerStatus.STOPPED and harness.state.can_start
 
     harness.controller.start()
     qtbot.waitUntil(lambda: harness.state.status is ServerStatus.RUNNING)
-    assert harness.state.notice is None
+    assert harness.state.error is None and harness.state.notice is None
 
 
 def test_process_dying_before_first_poll_is_still_reported(qtbot: QtBot, harness: Harness) -> None:
@@ -180,8 +183,9 @@ def test_process_dying_before_first_poll_is_still_reported(qtbot: QtBot, harness
     harness.controller.start()
 
     qtbot.waitUntil(lambda: not harness.controller.busy)
-    notice = harness.state.notice
-    assert notice is not None and notice.key == "dashboard.notice.stopped_unexpectedly"
+    error = harness.state.error
+    assert error is not None and error.key == "dashboard.failure.unexpected_exit"
+    assert error.params["hint_key"] == "hint.corrupt_jar"
     assert harness.state.status is ServerStatus.STOPPED and harness.state.can_start
 
 
@@ -226,6 +230,124 @@ def test_every_message_key_the_dashboard_can_publish_exists() -> None:
         "errors.stop_failed",
         "errors.unexpected",
         "dashboard.notice.stopped_unexpectedly",
+        "dashboard.failure.start_timeout",
+        "dashboard.failure.unexpected_exit",
+        "dashboard.warning.java_requirement_unknown",
+        "dashboard.warning.java_outdated_allowed",
+        "dashboard.notice.command_failed",
+        "errors.stop_timed_out",
+        "errors.server_not_running",
+        "errors.command_failed",
+        "errors.invalid_command",
     }
 
     assert keys <= set(en.MESSAGES)
+
+
+# --- M1: readiness, kill, commands, EULA and Java ------------------------------------------
+
+
+def slow_harness(qtbot: QtBot) -> Harness:
+    """A harness whose fake server needs an explicit ready line and ignores ``stop`` (``qtbot`` provides Qt)."""
+    del qtbot
+    return Harness(FakeRunnerFactory(FakeRunner(auto_ready=False, stop_exits=False)))
+
+
+def test_starting_is_shown_until_the_server_is_ready(qtbot: QtBot) -> None:
+    harness = slow_harness(qtbot)
+    harness.controller.show_server(SURVIVAL)
+
+    harness.controller.start()
+
+    qtbot.waitUntil(lambda: harness.state.status is ServerStatus.STARTING and harness.state.operation is None)
+    assert harness.state.can_stop and not harness.state.can_send_command and not harness.state.can_kill
+    harness.runner.ready()
+    qtbot.waitUntil(lambda: harness.state.status is ServerStatus.RUNNING)
+    assert harness.state.can_send_command
+    harness.poller.stop()
+
+
+def test_stop_timeout_offers_kill_and_kill_stops_the_server(qtbot: QtBot) -> None:
+    harness = slow_harness(qtbot)
+    harness.runner.auto_ready = True
+    timed_out: list[str] = []
+    harness.controller.stop_timed_out.connect(timed_out.append)
+    harness.controller.show_server(SURVIVAL)
+    harness.controller.start()
+    qtbot.waitUntil(lambda: harness.state.status is ServerStatus.RUNNING)
+
+    harness.controller.stop()
+
+    qtbot.waitUntil(lambda: timed_out == ["survival"])
+    state = harness.state
+    assert state.status is ServerStatus.STOPPING and state.stop_timed_out
+    assert state.error is not None and state.error.key == "errors.stop_timed_out"
+    assert state.can_kill and state.can_stop  # Stop waits again; Kill is the explicit alternative
+    assert harness.runner.killed == 0
+
+    assert harness.controller.kill()
+
+    qtbot.waitUntil(lambda: harness.state.status is ServerStatus.STOPPED and not harness.controller.busy)
+    assert harness.runner.killed == 1
+    harness.poller.stop()
+
+
+def test_command_is_sent_to_the_running_server(qtbot: QtBot, harness: Harness) -> None:
+    harness.controller.show_server(SURVIVAL)
+    harness.controller.start()
+    qtbot.waitUntil(lambda: harness.state.can_send_command)
+
+    harness.controller.send_command("say hi")
+
+    qtbot.waitUntil(lambda: harness.runner.commands == ["say hi"])
+
+
+def test_failed_command_shows_a_notice(qtbot: QtBot, harness: Harness) -> None:
+    harness.controller.show_server(SURVIVAL)
+    harness.controller.start()
+    qtbot.waitUntil(lambda: harness.state.can_send_command)
+    harness.runner.command_error = BrokenPipeError("closed")
+
+    harness.controller.send_command("say hi")
+
+    qtbot.waitUntil(lambda: harness.state.notice is not None)
+    notice = harness.state.notice
+    assert notice is not None and notice.key == "dashboard.notice.command_failed"
+    assert notice.params["reason_key"] == "errors.command_failed"
+
+
+def test_missing_eula_asks_instead_of_showing_an_error(qtbot: QtBot, harness: Harness) -> None:
+    asked: list[str] = []
+    harness.controller.eula_required.connect(asked.append)
+    harness.factory.preflight_error = EulaNotAccepted("survival")
+    harness.controller.show_server(SURVIVAL)
+
+    harness.controller.start()
+
+    qtbot.waitUntil(lambda: asked == ["survival"])
+    assert harness.state.error is None and not harness.controller.busy
+
+
+def test_old_java_is_reported_for_the_guidance_dialog(qtbot: QtBot, harness: Harness) -> None:
+    problems: list[object] = []
+    harness.controller.java_problem.connect(problems.append)
+    harness.factory.preflight_error = JavaVersionTooOld("survival", 21, 17, "C:/java8/bin/java.exe")
+    harness.controller.show_server(SURVIVAL)
+
+    harness.controller.start()
+
+    qtbot.waitUntil(lambda: len(problems) == 1)
+    assert isinstance(problems[0], JavaVersionTooOld)
+    assert harness.state.error is not None and harness.state.error.key == "errors.java_too_old"
+
+
+def test_start_anyway_passes_the_override(qtbot: QtBot, harness: Harness) -> None:
+    harness.factory.warnings = (LaunchWarning("java_outdated_allowed", {"required": 21, "java_major": 17}),)
+    harness.controller.show_server(SURVIVAL)
+
+    harness.controller.start(StartOptions(allow_outdated_java=True))
+
+    qtbot.waitUntil(lambda: harness.state.status is ServerStatus.RUNNING and not harness.controller.busy)
+    assert harness.factory.options == [StartOptions(allow_outdated_java=True)]
+    notice = harness.state.notice
+    assert notice is not None and notice.key == "dashboard.warning.java_outdated_allowed"

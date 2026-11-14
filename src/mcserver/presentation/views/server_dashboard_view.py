@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from mcserver.presentation.controllers.server_dashboard import DashboardState, Operation
 from mcserver.presentation.controllers.server_list import ServerStatus
-from mcserver.presentation.errors import UserMessage
+from mcserver.presentation.errors import UserMessage, render_message
 from mcserver.presentation.i18n import Messages
 from mcserver.presentation.views.server_console_view import ServerConsoleView
 from mcserver.presentation.views.status_text import STATUS_KEYS
@@ -48,6 +48,8 @@ class ServerDashboardView(QWidget):
 
     start_requested = Signal()
     stop_requested = Signal()
+    kill_requested = Signal()
+    details_requested = Signal(object)  # UserMessage
     open_folder_requested = Signal(object)  # Path
 
     def __init__(self, messages: Messages, servers_root: Path, console_available: bool) -> None:
@@ -56,6 +58,7 @@ class ServerDashboardView(QWidget):
         self._messages = messages
         self._servers_root = servers_root
         self._folder: Path | None = None
+        self._banner_message: UserMessage | None = None
 
         self.welcome_page = self._build_welcome()
         self.console = ServerConsoleView(messages, console_available)
@@ -139,7 +142,11 @@ class ServerDashboardView(QWidget):
         self.stop_button = QPushButton(self._messages.text("dashboard.stop"))
         self.stop_button.setObjectName("stopButton")
         self.stop_button.clicked.connect(self.stop_requested)
-        for button in (self.start_button, self.stop_button):
+        self.kill_button = QPushButton(self._messages.text("dashboard.kill"))
+        self.kill_button.setObjectName("killButton")
+        self.kill_button.clicked.connect(self.kill_requested)
+        self.kill_button.hide()
+        for button in (self.start_button, self.stop_button, self.kill_button):
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setMinimumWidth(150)
         self.hint_label = QLabel()
@@ -149,6 +156,7 @@ class ServerDashboardView(QWidget):
         controls.setSpacing(10)
         controls.addWidget(self.start_button)
         controls.addWidget(self.stop_button)
+        controls.addWidget(self.kill_button)
         controls.addSpacing(8)
         controls.addWidget(self.hint_label, 1)
 
@@ -156,14 +164,27 @@ class ServerDashboardView(QWidget):
         self.banner.setObjectName("banner")
         self.banner.setWordWrap(True)
         self.banner.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.details_button = QPushButton(self._messages.text("dashboard.details"))
+        self.details_button.setObjectName("detailsButton")
+        self.details_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.details_button.clicked.connect(self._on_details)
+        banner_row = QHBoxLayout()
+        banner_row.setSpacing(10)
+        banner_row.addWidget(self.banner, 1)
+        banner_row.addWidget(self.details_button, 0, Qt.AlignmentFlag.AlignTop)
+        self.banner_row = QWidget()
+        self.banner_row.setLayout(banner_row)
+        banner_row.setContentsMargins(0, 0, 0, 0)
         self.banner.hide()
+        self.banner_row.hide()
+        self.details_button.hide()
 
         layout = QVBoxLayout(card)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(16)
         layout.addLayout(title_row)
         layout.addLayout(controls)
-        layout.addWidget(self.banner)
+        layout.addWidget(self.banner_row)
         return card
 
     def _build_info_card(self) -> QFrame:
@@ -234,10 +255,15 @@ class ServerDashboardView(QWidget):
 
         self.start_button.setEnabled(state.can_start)
         self.stop_button.setEnabled(state.can_stop)
-        starting = state.operation is Operation.STARTING
+        self.kill_button.setVisible(state.can_kill or state.operation is Operation.KILLING)
+        self.kill_button.setEnabled(state.can_kill)
+        starting = state.operation is Operation.STARTING or state.status is ServerStatus.STARTING
         stopping = state.operation is Operation.STOPPING
+        killing = state.operation is Operation.KILLING
         self.start_button.setText(self._messages.text("dashboard.starting" if starting else "dashboard.start"))
         self.stop_button.setText(self._messages.text("dashboard.stopping" if stopping else "dashboard.stop"))
+        self.kill_button.setText(self._messages.text("dashboard.killing" if killing else "dashboard.kill"))
+        self.console.set_input_enabled(state.can_send_command)
         self.hint_label.setText(self._hint(state))
         if state.error is not None:
             self._show_banner(state.error, "error")
@@ -252,19 +278,33 @@ class ServerDashboardView(QWidget):
             return self._messages.text("dashboard.hint.java_missing")
         if state.other_active_server is not None:
             return self._messages.text("dashboard.hint.other_running", server_id=state.other_active_server)
+        if state.stop_timed_out and state.row is not None:
+            return self._messages.text("dashboard.hint.stop_timed_out", server_id=state.row.server_id)
+        if state.status is ServerStatus.STARTING:
+            return self._messages.text("dashboard.hint.starting")
+        if state.status is ServerStatus.STOPPING:
+            return self._messages.text("dashboard.hint.stopping")
         if state.status is ServerStatus.RUNNING and state.operation is None:
             return self._messages.text("dashboard.hint.running")
         return ""
 
     def _show_banner(self, message: UserMessage | None, tone: str) -> None:
+        self._banner_message = message
         if message is None:
             self.banner.hide()  # its tooltip is replaced whenever it is shown again
+            self.banner_row.hide()
             return
-        self.banner.setText(self._messages.text(message.key, **message.params))
+        self.banner.setText(render_message(self._messages, message))
         self.banner.setToolTip(message.details)
         self.banner.setProperty("tone", tone)
         _repolish(self.banner)
+        self.details_button.setVisible(bool(message.details))
         self.banner.show()
+        self.banner_row.show()
+
+    def _on_details(self) -> None:
+        if self._banner_message is not None:
+            self.details_requested.emit(self._banner_message)
 
     def _on_open_folder(self) -> None:
         if self._folder is not None:

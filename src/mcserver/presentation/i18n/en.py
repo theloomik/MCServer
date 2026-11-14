@@ -10,11 +10,15 @@ MESSAGES: Catalog = {
     "menu.file.exit": "E&xit",
     "status.servers_folder": "Servers folder: {path}",
     "status.java_available": "Java: ready",
-    "status.java_missing": "Java not found: servers can be viewed but not started.",
+    "status.java_ready": "Java {major}: ready",
+    "status.java_missing": "Java not found: servers can't be started until Java is installed or chosen.",
+    "status.java_check": "Check Java",
+    "status.java_choose": "Choose Java…",
     "status.server.stopped": "Stopped",
     "status.server.starting": "Starting",
     "status.server.running": "Running",
     "status.server.stopping": "Stopping",
+    "status.server.killing": "Killing",
     "status.server.unknown": "Status unavailable",
     "server_list.title": "All servers",
     "server_list.refresh": "Refresh",
@@ -115,4 +119,100 @@ MESSAGES: Catalog = {
     "exit.confirm.text": "{server_id} is still running. Stop it and exit MCServer?",
     "exit.stopping": "Stopping {server_id} before exiting…",
     "exit.wait_for_operation": "Please wait until the current operation finishes.",
+    "exit.stop_timed_out.title": "The server is still stopping",
+    "exit.stop_timed_out.text": (
+        "{server_id} didn't stop within {timeout} seconds. Keep waiting, kill it (changes since its last autosave "
+        "can be lost), or cancel closing MCServer?"
+    ),
+    "exit.keep_waiting": "Keep waiting",
+    "exit.kill": "Kill and exit",
+    "exit.cancel": "Cancel",
+    "session.block_reason": "MCServer is stopping your Minecraft server so that the world is saved.",
+    "dashboard.kill": "Kill",
+    "dashboard.killing": "Killing…",
+    "dashboard.details": "Details…",
+    "dashboard.hint.starting": "Waiting for the server to finish loading. It shows Running once players can join.",
+    "dashboard.hint.stop_timed_out": (
+        "{server_id} hasn't finished stopping. Wait with Stop, or Kill it (changes since the last autosave can be lost)."
+    ),
+    "dashboard.hint.stopping": "The server is saving and shutting down.",
+    "dashboard.failure.start_timeout": (
+        "{server_id} didn't finish starting in time, so MCServer asked it to stop (it was not killed). {hint}"
+    ),
+    "dashboard.failure.unexpected_exit": "{server_id} stopped unexpectedly (exit code {exit_code}). {hint}",
+    "dashboard.warning.java_requirement_unknown": (
+        "MCServer can't verify which Java Minecraft {version} needs, so it started with Java {java_major}. "
+        "If the server fails, install a newer Java."
+    ),
+    "dashboard.warning.java_outdated_allowed": (
+        "Started with Java {java_major} although Java {required} is required; the server will probably fail."
+    ),
+    "dashboard.notice.command_failed": "The command couldn't be sent: {reason}",
+    "hint.eula_not_accepted": "The Minecraft EULA wasn't accepted.",
+    "hint.port_in_use": "Another program is already using the server's port.",
+    "hint.java_too_old": "This server needs a newer Java version.",
+    "hint.out_of_memory": "The server ran out of memory or couldn't reserve it. Try less memory or close other programs.",
+    "hint.corrupt_jar": "The server JAR looks damaged or unreadable. Replace it with a fresh download.",
+    "hint.unknown": "See Details for the last console lines.",
+    "kill.confirm.title": "Kill the server?",
+    "kill.confirm.text": (
+        "Killing {server_id} ends it immediately without saving. Changes since its last autosave can be lost and a "
+        "chunk being written can be damaged. Kill it anyway?"
+    ),
+    "details.title": "Technical details",
+    "details.copy": "Copy",
+    "details.close": "Close",
+    "details.exit_code": "Exit code: {exit_code}",
+    "details.last_lines": "Last console lines:",
+    "console.input.placeholder": "Type a command, e.g. say hi, and press Enter",
+    "console.send": "Send",
+    "errors.eula_not_accepted": "The Minecraft EULA hasn't been accepted for {server_id}.",
+    "errors.server_not_running": "{server_id} isn't running, so the command wasn't sent.",
+    "errors.invalid_command": "Enter a command on a single line.",
+    "errors.command_failed": "The command couldn't be sent to {server_id}; it may be shutting down.",
+    "errors.java_not_found": "No working Java was found, so the server can't start.",
+    "errors.java_too_old": "{server_id} needs Java {required}, but Java {found} was found.",
+    "errors.invalid_java": "The selected file isn't a working Java: {executable}",
+    "errors.world_in_use": (
+        "The world {world} of {server_id} is in use by another program, probably a server that is still running. "
+        "Close it first."
+    ),
+    "errors.stop_timed_out": (
+        "{server_id} didn't stop within {timeout} seconds and is still running. Press Stop to keep waiting, or Kill it."
+    ),
+    "errors.process_guard": (
+        "{server_id} couldn't be started under MCServer's process protection, so it was not started at all."
+    ),
+    "eula.title": "Accept the Minecraft EULA?",
+    "eula.text": (
+        "To run {server_id}, you must accept the Minecraft End User License Agreement (EULA). "
+        "Read it at https://aka.ms/MinecraftEULA. Accept it and start the server?"
+    ),
+    "create.eula.label": "I have read and accept the Minecraft EULA",
+    "create.eula.hint": "Required to run a Minecraft server. Read it at https://aka.ms/MinecraftEULA.",
+    "create.error.eula_required": "Accept the Minecraft EULA to create the server.",
+    "java.dialog.title": "Java is needed",
+    "java.missing.text": (
+        "No working Java was found.{needed} Install a Java runtime, for example Eclipse Temurin "
+        "(https://adoptium.net), then press Check again, or choose java.exe yourself."
+    ),
+    "java.needed": " This server needs Java {required} or newer.",
+    "java.too_old.text": (
+        "{server_id} needs Java {required}, but MCServer found Java {found} ({executable}). Install a newer Java "
+        "(for example from https://adoptium.net), choose another java.exe, or start anyway (the server will "
+        "probably fail)."
+    ),
+    "java.found": "Found Java {major}: {executable}",
+    "java.check": "Check again",
+    "java.choose": "Choose java.exe…",
+    "java.start_anyway": "Start anyway",
+    "java.cancel": "Cancel",
+    "java.choose.dialog_title": "Choose java.exe",
+    "java.choose.filter": "Java (java.exe java);;All files (*)",
+    "unclean.title": "{server_id} was not stopped cleanly",
+    "unclean.text": (
+        "When MCServer last ended, {server_id} (started {started_at}) was still running, so it was terminated "
+        "without saving. Changes since its last autosave (normally within about 5 minutes) may be lost, and a "
+        "chunk being written may be damaged. Start the server and check the world before playing."
+    ),
 }

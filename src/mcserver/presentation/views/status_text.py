@@ -7,5 +7,6 @@ STATUS_KEYS = {
     ServerStatus.STARTING: "status.server.starting",
     ServerStatus.RUNNING: "status.server.running",
     ServerStatus.STOPPING: "status.server.stopping",
+    ServerStatus.KILLING: "status.server.killing",
     ServerStatus.UNKNOWN: "status.server.unknown",
 }

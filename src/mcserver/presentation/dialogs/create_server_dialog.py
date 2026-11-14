@@ -8,6 +8,7 @@ from pathlib import PurePath
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QFileDialog,
     QFrame,
@@ -169,6 +170,23 @@ class CreateServerDialog(QDialog):
             grid.setRowMinimumHeight(row_index + 4, 10)
             row_index += 5
 
+        self.eula_check = QCheckBox(messages.text("create.eula.label"))
+        self.eula_check.setObjectName("eulaCheck")
+        self.eula_check.toggled.connect(lambda _checked: self._refresh_validation())
+        eula_hint = QLabel(messages.text("create.eula.hint"))
+        eula_hint.setObjectName("fieldHint")
+        eula_hint.setWordWrap(True)
+        eula_hint.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        eula_error = QLabel()
+        eula_error.setObjectName("fieldError")
+        eula_error.setWordWrap(True)
+        eula_error.hide()
+        self.field_hints["eula"] = eula_hint
+        self.field_errors["eula"] = eula_error
+        grid.addWidget(self.eula_check, row_index, 0)
+        grid.addWidget(eula_hint, row_index + 1, 0)
+        grid.addWidget(eula_error, row_index + 2, 0)
+
         self.progress = QProgressBar()
         self.progress.setObjectName("creationProgress")
         self.progress.setRange(0, 0)
@@ -235,6 +253,7 @@ class CreateServerDialog(QDialog):
             directory=self.directory_edit.text(),
             source_jar=self._source_jar,
             memory_mb=self.memory_spin.value(),
+            eula_accepted=self.eula_check.isChecked(),
         )
 
     def _on_server_id_edited(self, text: str) -> None:
@@ -262,6 +281,7 @@ class CreateServerDialog(QDialog):
             "directory": bool(self.directory_edit.text()) or self._attempted,
             "source_jar": bool(self._source_jar) or self._attempted,
             "memory_mb": True,
+            "eula": self._attempted,
         }
         for field, label in self.field_errors.items():
             key = validation.errors.get(field)
@@ -296,6 +316,7 @@ class CreateServerDialog(QDialog):
             self.directory_edit,
             self.browse_button,
             self.memory_spin,
+            self.eula_check,
             self.cancel_button,
         ):
             widget.setEnabled(not busy)
