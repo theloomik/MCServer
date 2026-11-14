@@ -96,9 +96,11 @@ class LegacyServerConfigurationRepository:
     @staticmethod
     def _memory_megabytes(value: object) -> int:
         """Normalize legacy RAM settings to the supported launch range."""
+        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+            raise ServerConfigurationError("Server RAM must be an integer.")
         try:
             memory = int(value)
-        except (TypeError, ValueError) as error:
+        except ValueError as error:
             raise ServerConfigurationError("Server RAM must be an integer.") from error
         return min(max(memory, 512), 262144)
 
