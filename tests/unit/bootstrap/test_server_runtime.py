@@ -5,10 +5,18 @@ from pathlib import Path
 
 import pytest
 
-from mcserver.application.errors import InvalidSourceJar, ServerDirectoryAlreadyExists, ServerStopFailed
-from mcserver.application.ports import OutputStream, ProcessExitHandler, ServerRunner
+from mcserver.application.errors import (
+    EulaNotAccepted,
+    InvalidSourceJar,
+    JavaNotFound,
+    ServerDirectoryAlreadyExists,
+    ServerStopFailed,
+)
+from mcserver.application.java_setup import JavaSetup
+from mcserver.application.ports import JavaInstallation, OutputStream
 from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_creation import ServerCreation
+from mcserver.application.server_health import ServerHealth
 from mcserver.application.server_management import ServerManagement
 from mcserver.application.server_output import ServerOutputBuffer
 from mcserver.application.server_provisioning import ProvisionedServer, ServerProvisioning
@@ -21,49 +29,32 @@ from mcserver.bootstrap.server_runtime import (
     build_server_runtime,
 )
 from mcserver.domain.server_configuration import ServerConfiguration
-from mcserver.infrastructure.java_runtime import (
-    JavaRuntime,
-    JavaRuntimeNotFound,
-    JavaRuntimeResolver,
-    JavaRuntimeSource,
-)
 from mcserver.infrastructure.process_runner import SubprocessServerRunner
 from mcserver.infrastructure.server_configuration import LegacyServerConfigurationRepository
 from mcserver.infrastructure.server_configuration_store import (
     JsonServerConfigurationRepository,
     StoredServerLaunchSettings,
 )
+from tests.runtime_fakes import FakeRunner, FakeRunnerFactory, ManualScheduler, MemoryMarkers
 
 WAIT = 3.0
 
 
-class StubJavaResolver(JavaRuntimeResolver):
-    """Return a fixed Java path without probing the system."""
+class StubJavaResolver:
+    """Return a fixed Java without probing the system."""
 
-    def resolve(self) -> JavaRuntime:
-        return JavaRuntime(Path("java"), JavaRuntimeSource.SYSTEM)
+    configured_executable = None
 
+    def find(self, minimum_major: int | None = None) -> JavaInstallation:
+        return JavaInstallation("java", 21, "path")
 
-class FakeRunner:
-    def __init__(self, fail_on_stop: bool = False) -> None:
-        self.fail_on_stop = fail_on_stop
-        self.stopped_with: float | None = None
-
-    def start(self, server_id: str, on_exit: ProcessExitHandler) -> None:
-        pass
-
-    def stop(self, timeout: float) -> None:
-        self.stopped_with = timeout
-        if self.fail_on_stop:
-            raise RuntimeError("stop failed")
+    def configure(self, executable: str | None) -> JavaInstallation | None:
+        return None
 
 
-class FakeFactory:
-    def __init__(self, runner: FakeRunner) -> None:
-        self.runner = runner
-
-    def create(self, server_id: str) -> ServerRunner:
-        return self.runner
+class MissingJavaResolver(StubJavaResolver):
+    def find(self, minimum_major: int | None = None) -> JavaInstallation:
+        raise JavaNotFound(minimum_major)
 
 
 def runtime_with(runner: FakeRunner) -> ServerRuntime:
@@ -71,12 +62,14 @@ def runtime_with(runner: FakeRunner) -> ServerRuntime:
     unused_root = Path("unused-servers-root")
     configurations = JsonServerConfigurationRepository(unused_root)
     return ServerRuntime(
-        coordinator=ServerCoordinator(FakeFactory(runner)),
+        coordinator=ServerCoordinator(FakeRunnerFactory(runner), scheduler=ManualScheduler()),
         output=ServerOutputBuffer(),
         configurations=configurations,
         management=build_server_management(unused_root, configurations),
         provisioning=build_server_provisioning(unused_root, configurations),
         server_creation=build_server_creation(unused_root, configurations),
+        java=JavaSetup(StubJavaResolver()),
+        health=ServerHealth(MemoryMarkers()),
     )
 
 
@@ -118,11 +111,7 @@ def test_runtime_provisioning_shares_repository_and_uses_servers_root(tmp_path: 
         assert runtime.management.list_servers() == (result.configuration,)
 
 
-def test_provisioning_works_without_java(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def no_java(_self: JavaRuntimeResolver) -> JavaRuntime:
-        raise JavaRuntimeNotFound("No usable Java runtime was found.")
-
-    monkeypatch.setattr(JavaRuntimeResolver, "resolve", no_java)
+def test_provisioning_works_without_java(tmp_path: Path) -> None:
     source = make_source_jar(tmp_path)
     build_server_management(tmp_path).create_server(
         server_id="survival", directory="survival", jar_file="server.jar", memory_mb=2048
@@ -141,9 +130,9 @@ def test_provisioned_server_is_launchable_from_configuration_store(tmp_path: Pat
         runtime.management.create_server(
             server_id="survival", directory="survival", jar_file="paper.jar", memory_mb=2048
         )
-        runtime.provisioning.provision_server("survival", str(source))
+        runtime.provisioning.provision_server("survival", str(source), accept_eula=True)
 
-        runner = runtime.coordinator._runner_factory.create("survival")  # type: ignore[attr-defined]
+        runner = runtime.coordinator._runner_factory.create("survival").runner  # type: ignore[attr-defined]
 
         assert isinstance(runner, SubprocessServerRunner)
         assert Path(runner.command[-2]).read_bytes() == b"jar bytes"
@@ -173,20 +162,22 @@ def test_runtime_server_creation_reuses_runtime_management_and_provisioning(tmp_
         assert creation._provisioning is runtime.provisioning  # type: ignore[attr-defined]
 
         result = creation.create_server(
-            server_id="survival", directory="survival", jar_file="paper.jar", memory_mb=2048, source_jar=str(source)
+            server_id="survival",
+            directory="survival",
+            jar_file="paper.jar",
+            memory_mb=2048,
+            source_jar=str(source),
+            accept_eula=True,
         )
 
         assert runtime.configurations.get("survival") == result.configuration
         assert (root / "survival" / "paper.jar").read_bytes() == b"jar bytes"
-        runner = runtime.coordinator._runner_factory.create("survival")  # type: ignore[attr-defined]
+        assert "eula=true" in (root / "survival" / "eula.txt").read_text(encoding="utf-8")
+        runner = runtime.coordinator._runner_factory.create("survival").runner  # type: ignore[attr-defined]
         assert Path(runner.command[-2]) == (root / "survival" / "paper.jar").resolve()
 
 
-def test_server_creation_builds_and_works_without_java(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def no_java(_self: JavaRuntimeResolver) -> JavaRuntime:
-        raise JavaRuntimeNotFound("No usable Java runtime was found.")
-
-    monkeypatch.setattr(JavaRuntimeResolver, "resolve", no_java)
+def test_server_creation_builds_and_works_without_java(tmp_path: Path) -> None:
     source = make_source_jar(tmp_path)
     creation = build_server_creation(tmp_path)
 
@@ -251,13 +242,23 @@ def test_runtime_can_launch_from_configuration_store(tmp_path: Path) -> None:
     with build_server_runtime(tmp_path, StubJavaResolver(), launch_from_configuration_store=True) as runtime:
         runtime.configurations.add(ServerConfiguration("survival", "survival", "paper.jar", 2048))
         factory = runtime.coordinator._runner_factory  # type: ignore[attr-defined]
+        (tmp_path / "survival").mkdir()
+        with pytest.raises(EulaNotAccepted):
+            factory.create("survival")
+        (tmp_path / "survival" / "eula.txt").write_text("eula=true\n", encoding="utf-8")
 
-        runner = factory.create("survival")
+        runner = factory.create("survival").runner
 
         assert isinstance(factory._repository, StoredServerLaunchSettings)
         assert isinstance(runner, SubprocessServerRunner)
         jar = tmp_path.resolve() / "survival" / "paper.jar"
         assert runner.command == ("java", "-Xms2048M", "-Xmx2048M", "-jar", str(jar), "nogui")
+
+
+def test_runtime_builds_without_java_and_reports_it(tmp_path: Path) -> None:
+    with build_server_runtime(tmp_path, MissingJavaResolver(), launch_from_configuration_store=True) as runtime:
+        assert not runtime.java.status().available
+        assert runtime.health.unclean_shutdowns() == ()
 
 
 def test_runtime_management_shares_the_runtime_repository(tmp_path: Path) -> None:
@@ -272,11 +273,7 @@ def test_runtime_management_shares_the_runtime_repository(tmp_path: Path) -> Non
         assert runtime.configurations.get("creative") == created
 
 
-def test_server_management_can_be_built_without_java(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def no_java(_self: JavaRuntimeResolver) -> JavaRuntime:
-        raise JavaRuntimeNotFound("No usable Java runtime was found.")
-
-    monkeypatch.setattr(JavaRuntimeResolver, "resolve", no_java)
+def test_server_management_can_be_built_without_java(tmp_path: Path) -> None:
 
     management = build_server_management(tmp_path)
 
@@ -329,7 +326,7 @@ def test_close_stops_active_server_and_ends_dispatcher_thread() -> None:
 
     assert runtime.close(timeout=WAIT) is True
 
-    assert runner.stopped_with == WAIT
+    assert runner.stopped == [WAIT]
     assert runtime.coordinator.active_server_id is None
     assert dispatcher is not None and not dispatcher.is_alive()
 
@@ -341,8 +338,21 @@ def test_close_without_active_server_or_subscribers_is_safe() -> None:
     assert runtime.close(timeout=WAIT) is True
 
 
+def test_close_returns_false_when_the_stop_times_out_and_never_kills() -> None:
+    runner = FakeRunner(stop_exits=False)
+    runtime = runtime_with(runner)
+    runtime.coordinator.start_server("survival")
+
+    assert runtime.close(timeout=0.0) is False
+
+    assert runner.killed == 0
+    assert runtime.coordinator.active_server_id == "survival"
+
+
 def test_close_ends_dispatcher_even_when_server_stop_fails() -> None:
-    runtime = runtime_with(FakeRunner(fail_on_stop=True))
+    failing = FakeRunner()
+    failing.stop_error = RuntimeError("stop failed")
+    runtime = runtime_with(failing)
     runtime.output.subscribe(lambda _line: None)
     dispatcher = runtime.output._dispatcher
     runtime.coordinator.start_server("survival")

@@ -27,6 +27,7 @@ STATUS_COLORS = {
     "running": ACCENT,
     "starting": WARNING,
     "stopping": WARNING,
+    "killing": DANGER,
     "stopped": TEXT_FAINT,
     "unknown": TEXT_FAINT,
 }
@@ -128,15 +129,18 @@ QLabel#statusPill[status="running"] {{ color: {ACCENT}; border-color: {ACCENT_DI
 QLabel#statusPill[status="starting"], QLabel#statusPill[status="stopping"] {{
     color: {WARNING}; border-color: #4a3410; background-color: #2a1f0a;
 }}
+QLabel#statusPill[status="killing"] {{ color: {DANGER}; border-color: #5b2121; background-color: {DANGER_DIM}; }}
 
-QPushButton#startButton, QPushButton#stopButton, QPushButton#openFolderButton {{
+QPushButton#startButton, QPushButton#stopButton, QPushButton#killButton, QPushButton#openFolderButton {{
     border-radius: 10px; padding: 10px 22px; font-size: 14px; font-weight: 600;
 }}
 QPushButton#startButton {{ background-color: {ACCENT}; color: #04120c; border: 1px solid {ACCENT}; }}
 QPushButton#startButton:hover {{ background-color: {ACCENT_HOVER}; border-color: {ACCENT_HOVER}; }}
 QPushButton#stopButton {{ background-color: transparent; color: {DANGER}; border: 1px solid #5b2121; }}
 QPushButton#stopButton:hover {{ background-color: {DANGER_DIM}; }}
-QPushButton#startButton:disabled, QPushButton#stopButton:disabled {{
+QPushButton#killButton {{ background-color: {DANGER}; color: #ffffff; border: 1px solid {DANGER}; }}
+QPushButton#detailsButton {{ border-radius: 8px; padding: 6px 14px; }}
+QPushButton#startButton:disabled, QPushButton#stopButton:disabled, QPushButton#killButton:disabled {{
     background-color: {CARD_RAISED}; color: {TEXT_FAINT}; border: 1px solid {BORDER};
 }}
 QPushButton#openFolderButton {{ background-color: {CARD_RAISED}; color: {TEXT}; border: 1px solid {BORDER}; }}

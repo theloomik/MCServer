@@ -6,29 +6,30 @@ import pytest
 from PySide6.QtWidgets import QApplication
 from pytestqt.qtbot import QtBot
 
+from mcserver.application.errors import JavaNotFound
+from mcserver.application.ports import JavaInstallation
 from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_output import ServerOutputBuffer
 from mcserver.bootstrap.server_runtime import build_server_creation, build_server_management
-from mcserver.infrastructure.java_runtime import (
-    JavaRuntime,
-    JavaRuntimeNotFound,
-    JavaRuntimeResolver,
-    JavaRuntimeSource,
-)
 from mcserver.presentation.app import build_services, run
 from mcserver.presentation.i18n import messages_for
 from mcserver.presentation.main_window import MainWindow
 from mcserver.presentation.services import PresentationServices
 
 
-class StubJavaResolver(JavaRuntimeResolver):
-    def resolve(self) -> JavaRuntime:
-        return JavaRuntime(Path("java"), JavaRuntimeSource.SYSTEM)
+class StubJavaResolver:
+    configured_executable = None
+
+    def find(self, minimum_major: int | None = None) -> JavaInstallation:
+        return JavaInstallation("java", 21, "path")
+
+    def configure(self, executable: str | None) -> JavaInstallation | None:
+        return None
 
 
-class MissingJavaResolver(JavaRuntimeResolver):
-    def resolve(self) -> JavaRuntime:
-        raise JavaRuntimeNotFound("No usable Java runtime was found.")
+class MissingJavaResolver(StubJavaResolver):
+    def find(self, minimum_major: int | None = None) -> JavaInstallation:
+        raise JavaNotFound(minimum_major)
 
 
 def fake_services(root: Path, *, java: bool, closes: list[str] | None = None) -> PresentationServices:
@@ -61,11 +62,12 @@ def test_full_mode_launches_from_configuration_store(tmp_path: Path) -> None:
         services.close()
 
 
-def test_degraded_mode_when_java_is_missing(tmp_path: Path) -> None:
+def test_missing_java_is_reported_and_the_runtime_is_still_built(tmp_path: Path) -> None:
     services = build_services(tmp_path, MissingJavaResolver())
 
-    assert not services.can_run_servers
-    assert services.coordinator is None and services.output is None
+    # Java is looked up on every start, so the runtime is complete; only the problem is reported.
+    assert isinstance(services.coordinator, ServerCoordinator)
+    assert services.java is not None and not services.java.status().available
     assert services.java_problem == "No usable Java runtime was found."
     # Management and creation share one repository, as in the full runtime.
     shared = services.management._repository  # type: ignore[attr-defined]
@@ -153,6 +155,11 @@ class EventLoopStub:
     def __init__(self, qapp: QApplication) -> None:
         self.qapp = qapp
         self.windows_seen: list[str] = []
+        self.commitDataRequest = qapp.commitDataRequest
+        self.exit_codes: list[int] = []
+
+    def exit(self, code: int) -> None:
+        self.exit_codes.append(code)
 
     def exec(self) -> int:
         self.windows_seen = [widget.windowTitle() for widget in self.qapp.topLevelWidgets() if widget.isVisible()]

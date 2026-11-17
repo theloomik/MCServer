@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from mcserver.application.server_coordinator import ServerCoordinator
+from mcserver.application.server_coordinator import ServerCoordinator, ServerFailure
 from mcserver.domain.lifecycle import ServerState
 
 DEFAULT_INTERVAL_MS = 300
@@ -18,6 +18,8 @@ class CoordinatorSnapshot:
 
     state: ServerState
     active_server_id: str | None
+    stop_timed_out: bool = False
+    last_failure: ServerFailure | None = None
 
 
 class StatusPoller(QObject):
@@ -66,4 +68,5 @@ class StatusPoller(QObject):
             self.changed.emit(snapshot)
 
     def _read(self) -> CoordinatorSnapshot:
-        return CoordinatorSnapshot(self._coordinator.state, self._coordinator.active_server_id)
+        status = self._coordinator.status()
+        return CoordinatorSnapshot(status.state, status.active_server_id, status.stop_timed_out, status.last_failure)

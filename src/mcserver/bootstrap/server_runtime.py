@@ -1,12 +1,20 @@
 """Manual dependency wiring for a configured Minecraft server runtime."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 
-from mcserver.application.ports import ServerConfigurationRepository
-from mcserver.application.server_coordinator import ServerCoordinator
+from mcserver.application.errors import ServerStopTimedOut
+from mcserver.application.java_setup import JavaSetup
+from mcserver.application.ports import JavaRuntimeProvider, Scheduler, ServerConfigurationRepository
+from mcserver.application.server_coordinator import (
+    DEFAULT_STARTUP_TIMEOUT_SECONDS,
+    DEFAULT_STOP_TIMEOUT_SECONDS,
+    ServerCoordinator,
+)
 from mcserver.application.server_creation import ServerCreation
+from mcserver.application.server_health import ServerHealth
 from mcserver.application.server_management import ServerManagement
 from mcserver.application.server_output import DEFAULT_OUTPUT_CAPACITY, ServerOutputBuffer
 from mcserver.application.server_provisioning import ServerProvisioning
@@ -22,6 +30,8 @@ from mcserver.infrastructure.server_configuration_store import (
     StoredServerLaunchSettings,
 )
 from mcserver.infrastructure.server_files import LocalServerFilesystem
+from mcserver.infrastructure.session_markers import FileSessionMarkerStore
+from mcserver.infrastructure.windows_job import ProcessGuard, default_process_guard
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,19 +51,29 @@ class ServerRuntime:
     """Server file preparation reading from ``configurations`` (the same repository instance)."""
     server_creation: ServerCreation
     """One-step creation built from ``management`` and ``provisioning`` above."""
+    java: JavaSetup
+    """Java detection and the user's executable choice; looked up again on every start."""
+    health: ServerHealth
+    """Unclean-shutdown incidents from the previous session."""
 
-    def close(self, timeout: float = 10.0) -> bool:
-        """Stop the active server, then end output delivery.
+    def close(self, timeout: float | None = None) -> bool:
+        """Stop the active server gracefully, then end output delivery; never kills (ADR 0006).
 
-        The output buffer is closed even if stopping the server fails, and the
-        stop error is re-raised afterwards. Returns whether the output
-        dispatcher thread has ended.
+        ``timeout`` defaults to the coordinator's stop timeout. Returns whether
+        no server is left running and the output dispatcher has ended. If the
+        stop times out the server keeps running and ``False`` is returned; when
+        the application process then ends, the Windows Job Object terminates
+        it and its session marker stays for the next launch. Other stop errors
+        are re-raised after the output buffer was closed.
         """
+        stopped = True
         try:
             self.coordinator.stop_server(timeout)
+        except ServerStopTimedOut:
+            stopped = False
         finally:
-            dispatcher_stopped = self.output.close(timeout)
-        return dispatcher_stopped
+            dispatcher_stopped = self.output.close(10.0 if timeout is None else max(timeout, 1.0))
+        return stopped and dispatcher_stopped
 
     def __enter__(self) -> "ServerRuntime":
         return self
@@ -69,13 +89,19 @@ class ServerRuntime:
 
 def build_server_runtime(
     servers_directory: Path,
-    java_resolver: JavaRuntimeResolver | None = None,
+    java_resolver: JavaRuntimeProvider | None = None,
     output_capacity: int = DEFAULT_OUTPUT_CAPACITY,
     *,
     launch_from_configuration_store: bool = False,
+    scheduler: Scheduler | None = None,
+    startup_timeout: float = DEFAULT_STARTUP_TIMEOUT_SECONDS,
+    stop_timeout: float = DEFAULT_STOP_TIMEOUT_SECONDS,
+    process_guard_factory: Callable[[], ProcessGuard] = default_process_guard,
 ) -> ServerRuntime:
     """Build a coordinator whose runners publish console output to a shared buffer.
 
+    Java is not resolved here: the runner factory looks it up on every start,
+    so a missing Java no longer prevents building the runtime (M1-BE-05).
     ``runtime.configurations`` always exposes the versioned configuration
     store. Servers are launched from the legacy ``servers_config.json`` unless
     ``launch_from_configuration_store`` is set, which switches launching to the
@@ -89,16 +115,28 @@ def build_server_runtime(
     else:
         settings_source = LegacyServerConfigurationRepository(servers_directory)
     resolver = java_resolver or JavaRuntimeResolver.for_current_application()
-    factory = ConfiguredServerRunnerFactory(settings_source, str(resolver.resolve().executable), output_sink=output)
+    factory = ConfiguredServerRunnerFactory(
+        settings_source, resolver, output_sink=output, process_guard_factory=process_guard_factory
+    )
+    markers = FileSessionMarkerStore(servers_directory, configurations)
     management = build_server_management(servers_directory, configurations)
     provisioning = build_server_provisioning(servers_directory, configurations)
+    coordinator = ServerCoordinator(
+        factory,
+        scheduler=scheduler,
+        markers=markers,
+        startup_timeout=startup_timeout,
+        stop_timeout=stop_timeout,
+    )
     return ServerRuntime(
-        coordinator=ServerCoordinator(factory),
+        coordinator=coordinator,
         output=output,
         configurations=configurations,
         management=management,
         provisioning=provisioning,
         server_creation=ServerCreation(management, provisioning),
+        java=JavaSetup(resolver),
+        health=ServerHealth(markers),
     )
 
 

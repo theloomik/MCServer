@@ -8,6 +8,7 @@ from mcserver.domain.lifecycle import ServerLifecycle, ServerState
 ALLOWED_TRANSITIONS = {
     (ServerState.STOPPED, ServerState.STARTING),
     (ServerState.STARTING, ServerState.RUNNING),
+    (ServerState.STARTING, ServerState.STOPPING),
     (ServerState.STARTING, ServerState.STOPPED),
     (ServerState.STARTING, ServerState.KILLING),
     (ServerState.RUNNING, ServerState.STOPPING),

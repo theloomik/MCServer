@@ -35,6 +35,7 @@ class DialogSetup:
     def fill(self, qtbot: QtBot, server_id: str = "survival") -> None:
         qtbot.keyClicks(self.dialog.server_id_edit, server_id)
         qtbot.mouseClick(self.dialog.browse_button, Qt.MouseButton.LeftButton)
+        self.dialog.eula_check.setChecked(True)
 
 
 def test_dialog_renders_fields_with_catalog_texts_and_defaults(qtbot: QtBot) -> None:
@@ -197,6 +198,7 @@ def test_successful_creation_selects_new_stopped_server_with_confirmation(qtbot:
     assert dialog is not None
     qtbot.keyClicks(dialog.server_id_edit, "survival")
     qtbot.mouseClick(dialog.browse_button, Qt.MouseButton.LeftButton)
+    dialog.eula_check.setChecked(True)
 
     qtbot.mouseClick(dialog.create_button, Qt.MouseButton.LeftButton)
 
@@ -210,7 +212,7 @@ def test_successful_creation_selects_new_stopped_server_with_confirmation(qtbot:
     assert dashboard.banner.isVisible() and dashboard.banner.property("tone") == "success"
     assert dashboard.banner.text() == MESSAGES.text("dashboard.success.created", server_id="survival")
     assert window.statusBar().currentMessage() == MESSAGES.text("create.done", server_id="survival")
-    assert setup.filesystem.tree["survival"] == {"paper-1.21.4.jar": SOURCE}
+    assert setup.filesystem.tree["survival"] == {"eula.txt": "eula=true", "paper-1.21.4.jar": SOURCE}
 
 
 def test_creation_works_without_java(qtbot: QtBot, tmp_path: Path) -> None:
@@ -221,6 +223,7 @@ def test_creation_works_without_java(qtbot: QtBot, tmp_path: Path) -> None:
     assert dialog is not None
     qtbot.keyClicks(dialog.server_id_edit, "survival")
     qtbot.mouseClick(dialog.browse_button, Qt.MouseButton.LeftButton)
+    dialog.eula_check.setChecked(True)
 
     qtbot.mouseClick(dialog.create_button, Qt.MouseButton.LeftButton)
 
@@ -237,6 +240,7 @@ def test_window_refuses_to_close_while_creating(qtbot: QtBot, tmp_path: Path) ->
     assert dialog is not None
     qtbot.keyClicks(dialog.server_id_edit, "survival")
     qtbot.mouseClick(dialog.browse_button, Qt.MouseButton.LeftButton)
+    dialog.eula_check.setChecked(True)
     qtbot.mouseClick(dialog.create_button, Qt.MouseButton.LeftButton)
 
     setup.window.close()

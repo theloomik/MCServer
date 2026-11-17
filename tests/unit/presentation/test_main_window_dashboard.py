@@ -106,7 +106,7 @@ def test_start_and_stop_through_buttons_update_status_list_and_console(qtbot: Qt
     qtbot.mouseClick(dashboard.stop_button, Qt.MouseButton.LeftButton)
     qtbot.waitUntil(lambda: dashboard.status_pill.property("status") == "stopped")
     assert dashboard.start_button.isEnabled()
-    assert dashboard.banner.isHidden()
+    assert dashboard.banner.isHidden(), dashboard.banner.text()
 
 
 def test_switching_server_while_one_runs_blocks_second_start(qtbot: QtBot, tmp_path: Path) -> None:
@@ -155,18 +155,24 @@ def test_start_failure_shows_error_banner_with_details(qtbot: QtBot, tmp_path: P
     assert setup.dashboard.start_button.isEnabled()
 
 
-def test_unexpected_stop_shows_notice(qtbot: QtBot, tmp_path: Path) -> None:
+def test_unexpected_stop_shows_failure_with_exit_code_hint_and_details(qtbot: QtBot, tmp_path: Path) -> None:
     setup = Setup(qtbot, tmp_path)
     setup.select(0)
     qtbot.mouseClick(setup.dashboard.start_button, Qt.MouseButton.LeftButton)
     qtbot.waitUntil(lambda: setup.coordinator.active_server_id == "survival")
+    setup.factory.runner.emit("java.net.BindException: Address already in use: bind")
 
     setup.factory.runner.exit(1)
 
     banner = setup.dashboard.banner
     qtbot.waitUntil(lambda: banner.isVisible())
-    assert banner.text() == MESSAGES.text("dashboard.notice.stopped_unexpectedly", server_id="survival")
-    assert banner.property("tone") == "notice"
+    hint = MESSAGES.text("hint.port_in_use")
+    assert banner.text() == MESSAGES.text(
+        "dashboard.failure.unexpected_exit", server_id="survival", exit_code=1, hint=hint
+    )
+    assert banner.property("tone") == "error"
+    assert "Address already in use" in banner.toolTip()
+    assert setup.dashboard.details_button.isVisible()
 
 
 def test_java_missing_disables_controls_and_explains(qtbot: QtBot, tmp_path: Path) -> None:

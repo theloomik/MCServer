@@ -21,6 +21,9 @@ from mcserver.application.server_output import ServerOutputBuffer
 from mcserver.application.server_provisioning import ServerProvisioning
 from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.presentation.services import PresentationServices
+from tests.runtime_fakes import FakeRunner, FakeRunnerFactory, ManualScheduler, MemoryMarkers
+
+__all__ = ["FakeRunner", "FakeRunnerFactory", "ManualScheduler", "MemoryMarkers"]
 
 
 class BrokenStorage(ServerConfigurationStorageError):
@@ -113,48 +116,16 @@ class MemoryFilesystem:
         if not self.tree.get(directory):
             self.tree.pop(directory, None)
 
+    def accept_eula(self, directory: str) -> None:
+        self.calls.append(f"eula:{directory}")
+        self.tree[directory]["eula.txt"] = "eula=true"
 
-class FakeRunner:
-    """Process stand-in: start/stop succeed immediately unless told otherwise."""
+    def eula_accepted(self, directory: str) -> bool:
+        return "eula.txt" in self.tree.get(directory, {})
 
-    def __init__(self) -> None:
-        self.on_exit: Callable[[int], None] | None = None
-        self.start_gate: Event | None = None
-        self.start_error: Exception | None = None
-        self.stop_error: Exception | None = None
-        self.crash_on_start = False
-        self.started: list[str] = []
-        self.stopped: list[float] = []
-
-    def start(self, server_id: str, on_exit: Callable[[int], None]) -> None:
-        self.started.append(server_id)
-        if self.start_gate is not None:
-            self.start_gate.wait(5)
-        if self.start_error is not None:
-            raise self.start_error
-        self.on_exit = on_exit
-        if self.crash_on_start:
-            self.exit(1)  # the process dies before anyone could poll it
-
-    def stop(self, timeout: float) -> None:
-        self.stopped.append(timeout)
-        if self.stop_error is not None:
-            raise self.stop_error
-        self.exit(0)
-
-    def exit(self, code: int) -> None:
-        """Simulate the process ending (normally or by crashing)."""
-        on_exit, self.on_exit = self.on_exit, None
-        if on_exit is not None:
-            on_exit(code)
-
-
-class FakeRunnerFactory:
-    def __init__(self) -> None:
-        self.runner = FakeRunner()
-
-    def create(self, server_id: str) -> FakeRunner:
-        return self.runner
+    def remove_eula(self, directory: str) -> None:
+        self.calls.append(f"remove-eula:{directory}")
+        self.tree.get(directory, {}).pop("eula.txt", None)
 
 
 def management_for(repository: InMemoryRepository) -> ServerManagement:
@@ -162,7 +133,7 @@ def management_for(repository: InMemoryRepository) -> ServerManagement:
 
 
 def coordinator(factory: FakeRunnerFactory | None = None) -> ServerCoordinator:
-    return ServerCoordinator(factory or FakeRunnerFactory())
+    return ServerCoordinator(factory or FakeRunnerFactory(), scheduler=ManualScheduler())
 
 
 def creation_for(repository: InMemoryRepository, filesystem: object) -> ServerCreation:

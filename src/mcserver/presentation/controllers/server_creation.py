@@ -20,7 +20,7 @@ from mcserver.presentation.workers import BackgroundRunner
 _logger = logging.getLogger(__name__)
 
 DEFAULT_MEMORY_MB = 4096
-FIELDS = ("server_id", "directory", "source_jar", "memory_mb")
+FIELDS = ("server_id", "directory", "source_jar", "memory_mb", "eula")
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +31,8 @@ class CreationForm:
     directory: str = ""
     source_jar: str = ""
     memory_mb: int = DEFAULT_MEMORY_MB
+    eula_accepted: bool = False
+    """The user ticked "I accept the Minecraft EULA"; required to create a server (M1-GUI-01)."""
 
     @property
     def jar_file(self) -> str:
@@ -129,6 +131,8 @@ class ServerCreationController(QObject):
 
         if not MIN_MEMORY_MB <= form.memory_mb <= MAX_MEMORY_MB:
             errors["memory_mb"] = "create.error.memory_range"
+        if not form.eula_accepted:
+            errors["eula"] = "create.error.eula_required"
         return FormValidation(errors)
 
     def taken_directory_owner(self, directory: str) -> str | None:
@@ -151,6 +155,7 @@ class ServerCreationController(QObject):
                 jar_file=form.jar_file,
                 memory_mb=form.memory_mb,
                 source_jar=form.source_jar,
+                accept_eula=form.eula_accepted,
             )
 
         self._publish(CreationState(busy=True))
