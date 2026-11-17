@@ -179,9 +179,36 @@ class JavaRuntimeProvider(Protocol):
         Raises ``InvalidJavaExecutable`` if it does not run.
         """
 
+    def inspect(self, executable: str) -> JavaInstallation:
+        """Check one executable (a per-server choice) without changing the configuration.
+
+        Raises ``InvalidJavaExecutable`` if it does not run.
+        """
+
     @property
     def configured_executable(self) -> str | None:
         """Return the executable chosen by the user, if any."""
+
+
+@dataclass(frozen=True, slots=True)
+class RemovedServerFiles:
+    """Where a removed server folder went; nothing is ever deleted permanently."""
+
+    kind: str
+    """``recycle_bin`` or ``trash`` (the fallback folder inside the servers root)."""
+    location: str
+    """Display path: the original folder (Recycle Bin) or the folder it was moved to (trash)."""
+
+
+class ServerFilesRemover(Protocol):
+    """Move a server folder out of the way without deleting it (M2-BE-03).
+
+    Raises ``ServerFilesRemovalFailed`` if neither the Recycle Bin nor the
+    fallback works; then nothing changed.
+    """
+
+    def remove_server_files(self, directory: str) -> RemovedServerFiles:
+        """Send ``directory`` (relative to the servers root) to the Recycle Bin, else to the trash folder."""
 
 
 class ServerConfigurationRepository(Protocol):

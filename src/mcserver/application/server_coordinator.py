@@ -11,6 +11,7 @@ from threading import RLock, Timer
 from mcserver.application.errors import (
     ActiveServerAlreadyExists,
     EulaNotAccepted,
+    InvalidJavaExecutable,
     InvalidServerCommand,
     JavaNotFound,
     JavaVersionTooOld,
@@ -42,7 +43,7 @@ DEFAULT_STOP_TIMEOUT_SECONDS = 90.0
 DIAGNOSTIC_TAIL_LINES = 40
 
 # Failures the user can act on are raised unchanged; anything else from the factory is a start failure.
-_PREFLIGHT_ERRORS = (EulaNotAccepted, JavaNotFound, JavaVersionTooOld, ServerWorldInUse)
+_PREFLIGHT_ERRORS = (EulaNotAccepted, InvalidJavaExecutable, JavaNotFound, JavaVersionTooOld, ServerWorldInUse)
 
 
 class ThreadingScheduler:
@@ -159,6 +160,14 @@ class ServerCoordinator:
     def stop_timeout(self) -> float:
         """Return the default graceful-stop timeout in seconds."""
         return self._stop_timeout
+
+    def configure_timeouts(self, startup_timeout: float, stop_timeout: float) -> None:
+        """Use these timeouts for later starts and stops (application settings, M2-BE-06)."""
+        if startup_timeout <= 0 or stop_timeout < 0:
+            raise ValueError("Timeouts must be positive.")
+        with self._lock:
+            self._startup_timeout = startup_timeout
+            self._stop_timeout = stop_timeout
 
     def status(self) -> CoordinatorStatus:
         """Return a consistent snapshot of state, active server, stop timeout and last failure."""

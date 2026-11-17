@@ -3,14 +3,20 @@
 File: ``<servers root>/server_configurations.json``::
 
     {
-      "format_version": 1,
+      "format_version": 2,
       "servers": [
-        {"server_id": "survival", "directory": "survival", "jar_file": "paper.jar", "memory_mb": 4096}
+        {
+          "server_id": "survival", "directory": "survival", "jar_file": "paper.jar", "memory_mb": 4096,
+          "display_name": "Survival", "jvm_arguments": ["-XX:+UseG1GC"], "java_path": null,
+          "server_type": "paper", "minecraft_version": "1.21.11"
+        }
       ]
     }
 
 Only what cannot be derived is stored: paths are relative to the servers root,
-and runtime state, JVM arguments and the Java executable are never persisted.
+and runtime state is never persisted. Version 1 files (the four required fields
+only) are read as they are and upgraded to version 2 on the first write
+(ADR 0007). A newer, unknown version is refused and never overwritten.
 """
 
 from __future__ import annotations
@@ -35,10 +41,12 @@ from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.infrastructure.server_configuration import ServerConfigurationError, ServerLaunchSettings
 
 CONFIGURATION_FILE_NAME = "server_configurations.json"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
+READABLE_FORMAT_VERSIONS = frozenset({1, 2})
 
 _TOP_LEVEL_FIELDS = frozenset({"format_version", "servers"})
 _SERVER_FIELDS = ("server_id", "directory", "jar_file", "memory_mb")
+_OPTIONAL_FIELDS_V2 = ("display_name", "jvm_arguments", "java_path", "server_type", "minecraft_version")
 
 
 class ServerConfigurationFileError(ServerConfigurationStorageError):
@@ -46,7 +54,7 @@ class ServerConfigurationFileError(ServerConfigurationStorageError):
 
 
 class CorruptServerConfigurationFile(ServerConfigurationFileError):
-    """The configuration file exists but does not contain valid version-1 data."""
+    """The configuration file exists but does not contain valid data of a supported version."""
 
 
 class UnsupportedServerConfigurationFormat(ServerConfigurationFileError):
@@ -165,7 +173,7 @@ class JsonServerConfigurationRepository:
         version = data.get("format_version")
         if isinstance(version, bool) or not isinstance(version, int):
             raise self._corrupt("'format_version' must be an integer")
-        if version != FORMAT_VERSION:
+        if version not in READABLE_FORMAT_VERSIONS:
             raise UnsupportedServerConfigurationFormat(self._path, version)
         unknown = set(data) - _TOP_LEVEL_FIELDS
         if unknown:
@@ -176,7 +184,7 @@ class JsonServerConfigurationRepository:
 
         configurations: dict[str, ServerConfiguration] = {}
         for index, entry in enumerate(servers):
-            configuration = self._parse_server(index, entry)
+            configuration = self._parse_server(index, entry, version)
             if configuration.server_id in configurations:
                 raise self._corrupt(f"duplicate server_id {configuration.server_id!r}")
             try:
@@ -186,20 +194,29 @@ class JsonServerConfigurationRepository:
             configurations[configuration.server_id] = configuration
         return configurations
 
-    def _parse_server(self, index: int, entry: Any) -> ServerConfiguration:
-        """Validate one entry of the ``servers`` list."""
+    def _parse_server(self, index: int, entry: Any, version: int) -> ServerConfiguration:
+        """Validate one entry of the ``servers`` list (version 1 has only the required fields)."""
         if not isinstance(entry, dict):
             raise self._corrupt(f"servers[{index}] must be an object")
+        allowed = set(_SERVER_FIELDS) | (set(_OPTIONAL_FIELDS_V2) if version >= 2 else set())
         missing = [field for field in _SERVER_FIELDS if field not in entry]
-        unknown = sorted(set(entry) - set(_SERVER_FIELDS))
+        unknown = sorted(set(entry) - allowed)
         if missing or unknown:
             raise self._corrupt(f"servers[{index}] has missing fields {missing} or unknown fields {unknown}")
+        arguments = entry.get("jvm_arguments", [])
+        if not isinstance(arguments, list):
+            raise self._corrupt(f"servers[{index}]: 'jvm_arguments' must be a list")
         try:
             return ServerConfiguration(
                 server_id=entry["server_id"],
                 directory=entry["directory"],
                 jar_file=entry["jar_file"],
                 memory_mb=entry["memory_mb"],
+                display_name=entry.get("display_name", ""),
+                jvm_arguments=tuple(arguments),
+                java_path=entry.get("java_path"),
+                server_type=entry.get("server_type"),
+                minecraft_version=entry.get("minecraft_version"),
             )
         except InvalidServerConfiguration as error:
             raise self._corrupt(f"servers[{index}]: {error}") from error
@@ -217,6 +234,11 @@ class JsonServerConfigurationRepository:
                     "directory": configuration.directory,
                     "jar_file": configuration.jar_file,
                     "memory_mb": configuration.memory_mb,
+                    "display_name": configuration.display_name,
+                    "jvm_arguments": list(configuration.jvm_arguments),
+                    "java_path": configuration.java_path,
+                    "server_type": configuration.server_type,
+                    "minecraft_version": configuration.minecraft_version,
                 }
                 for configuration in configurations.values()
             ],
@@ -261,4 +283,6 @@ class StoredServerLaunchSettings:
             server_jar_path=directory / configuration.jar_file,
             working_directory=directory,
             memory_megabytes=configuration.memory_mb,
+            jvm_arguments=configuration.jvm_arguments,
+            java_path=configuration.java_path,
         )

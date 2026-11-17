@@ -37,6 +37,9 @@ class ServerLaunchSettings:
     server_jar_path: Path
     working_directory: Path
     memory_megabytes: int
+    jvm_arguments: tuple[str, ...] = ()
+    java_path: str | None = None
+    """A per-server Java executable that overrides detection (ADR 0007)."""
 
 
 class LaunchSettingsSource(Protocol):
@@ -158,7 +161,11 @@ class ConfiguredServerRunnerFactory:
         java_executable, warnings = self._java_for(server_id, settings, options)
         config = MinecraftProcessConfig(
             java_executable=java_executable,
-            jvm_arguments=(f"-Xms{settings.memory_megabytes}M", f"-Xmx{settings.memory_megabytes}M"),
+            jvm_arguments=(
+                f"-Xms{settings.memory_megabytes}M",
+                f"-Xmx{settings.memory_megabytes}M",
+                *settings.jvm_arguments,
+            ),
             server_jar_path=settings.server_jar_path,
             working_directory=settings.working_directory,
             server_arguments=("nogui",),
@@ -175,7 +182,7 @@ class ConfiguredServerRunnerFactory:
             return self._java, ()
         jar = read_jar_version(settings.server_jar_path)
         required = jar.declared_java_major or required_java_major(jar.version)
-        java = self._java.find(required)
+        java = self._java.inspect(settings.java_path) if settings.java_path else self._java.find(required)
         warnings: list[LaunchWarning] = []
         if required is None:
             warnings.append(

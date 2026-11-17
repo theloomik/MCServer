@@ -14,12 +14,14 @@ from mcserver.application.errors import (
 )
 from mcserver.application.java_setup import JavaSetup
 from mcserver.application.ports import JavaInstallation, OutputStream
+from mcserver.application.server_adoption import ServerAdoption
 from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_creation import ServerCreation
 from mcserver.application.server_health import ServerHealth
 from mcserver.application.server_management import ServerManagement
 from mcserver.application.server_output import ServerOutputBuffer
 from mcserver.application.server_provisioning import ProvisionedServer, ServerProvisioning
+from mcserver.application.settings import SettingsService
 from mcserver.bootstrap.server_runtime import (
     ServerRuntime,
     build_server_coordinator,
@@ -35,6 +37,8 @@ from mcserver.infrastructure.server_configuration_store import (
     JsonServerConfigurationRepository,
     StoredServerLaunchSettings,
 )
+from mcserver.infrastructure.server_folders import LocalServerFolderAdoption
+from mcserver.infrastructure.settings_store import JsonApplicationSettingsStore
 from tests.runtime_fakes import FakeRunner, FakeRunnerFactory, ManualScheduler, MemoryMarkers
 
 WAIT = 3.0
@@ -70,6 +74,10 @@ def runtime_with(runner: FakeRunner) -> ServerRuntime:
         server_creation=build_server_creation(unused_root, configurations),
         java=JavaSetup(StubJavaResolver()),
         health=ServerHealth(MemoryMarkers()),
+        settings=SettingsService(JsonApplicationSettingsStore(unused_root), StubJavaResolver()),
+        adoption=ServerAdoption(
+            build_server_management(unused_root, configurations), LocalServerFolderAdoption(unused_root)
+        ),
     )
 
 
