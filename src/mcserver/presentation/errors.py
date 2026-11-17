@@ -13,6 +13,7 @@ from mcserver.application.errors import (
     InvalidSourceJar,
     JavaNotFound,
     JavaVersionTooOld,
+    LegacyConfigurationUnavailable,
     ProcessGuardUnavailable,
     ProvisioningRollbackFailed,
     ServerCommandFailed,
@@ -21,6 +22,8 @@ from mcserver.application.errors import (
     ServerCreationRollbackFailed,
     ServerDirectoryAlreadyExists,
     ServerDirectoryInUse,
+    ServerFilesRemovalFailed,
+    ServerIsRunning,
     ServerJarAlreadyExists,
     ServerNotRunning,
     ServerProvisioningError,
@@ -30,6 +33,7 @@ from mcserver.application.errors import (
     ServerWorldInUse,
 )
 from mcserver.application.server_coordinator import FailureKind, ServerFailure
+from mcserver.application.settings import InvalidSettings
 from mcserver.domain.diagnostics import FailureHint
 from mcserver.domain.errors import InvalidServerConfiguration
 from mcserver.presentation.i18n.catalog import Messages
@@ -104,6 +108,16 @@ def _describe_runtime_error(error: BaseException, details: str) -> UserMessage |
         return UserMessage("errors.invalid_command", {}, details)
     if isinstance(error, ServerCommandFailed):
         return UserMessage("errors.command_failed", {"server_id": error.server_id}, details)
+    if isinstance(error, ServerIsRunning):
+        return UserMessage("errors.server_is_running", {"server_id": error.server_id}, details)
+    if isinstance(error, ServerFilesRemovalFailed):
+        return UserMessage(
+            "errors.files_removal_failed", {"directory": error.directory, "reason": error.reason}, details
+        )
+    if isinstance(error, InvalidSettings):
+        return UserMessage("errors.invalid_settings", {"reason": str(error)}, details)
+    if isinstance(error, LegacyConfigurationUnavailable):
+        return UserMessage("errors.legacy_unavailable", {}, details)
     return None
 
 

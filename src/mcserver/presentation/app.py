@@ -53,6 +53,8 @@ def build_services(root: Path, java_resolver: JavaRuntimeProvider | None = None)
         provisioning=runtime.provisioning,
         java=runtime.java,
         health=runtime.health,
+        settings=runtime.settings,
+        adoption=runtime.adoption,
     )
     return services
 

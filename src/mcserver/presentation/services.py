@@ -6,12 +6,14 @@ from collections.abc import Callable
 from pathlib import Path
 
 from mcserver.application.java_setup import JavaSetup
+from mcserver.application.server_adoption import ServerAdoption
 from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_creation import ServerCreation
 from mcserver.application.server_health import ServerHealth
 from mcserver.application.server_management import ServerManagement
 from mcserver.application.server_output import ServerOutputBuffer
 from mcserver.application.server_provisioning import ServerProvisioning
+from mcserver.application.settings import SettingsService
 
 
 class PresentationServices:
@@ -35,6 +37,8 @@ class PresentationServices:
         provisioning: ServerProvisioning | None = None,
         java: JavaSetup | None = None,
         health: ServerHealth | None = None,
+        settings: SettingsService | None = None,
+        adoption: ServerAdoption | None = None,
     ) -> None:
         """Hold the services; ``closer`` releases backend resources on shutdown."""
         self.servers_root = servers_root
@@ -49,6 +53,10 @@ class PresentationServices:
         """Java detection and the user's choice of ``java.exe``."""
         self.health = health
         """Unclean-shutdown incidents from the previous session."""
+        self.settings = settings
+        """Application settings (Java, timeouts, one-time legacy import offer)."""
+        self.adoption = adoption
+        """Imports existing server folders."""
         self.crashed = False
         """Set when an unhandled exception ends the application (the graceful stop was already tried)."""
         self._closer = closer
