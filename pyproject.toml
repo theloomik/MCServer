@@ -24,6 +24,9 @@ build-backend = "hatchling.build"
 testpaths = ["tests"]
 addopts = "-q"
 pythonpath = [".", "src"]
+markers = [
+    "real_minecraft: needs a real server JAR in MCSERVER_TEST_JAR and a real Java (slow; skipped otherwise)",
+]
 
 [tool.ruff]
 target-version = "py311"
