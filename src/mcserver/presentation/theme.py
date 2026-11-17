@@ -139,7 +139,6 @@ QPushButton#startButton:hover {{ background-color: {ACCENT_HOVER}; border-color:
 QPushButton#stopButton {{ background-color: transparent; color: {DANGER}; border: 1px solid #5b2121; }}
 QPushButton#stopButton:hover {{ background-color: {DANGER_DIM}; }}
 QPushButton#killButton {{ background-color: {DANGER}; color: #ffffff; border: 1px solid {DANGER}; }}
-QPushButton#detailsButton {{ border-radius: 8px; padding: 6px 14px; }}
 QPushButton#startButton:disabled, QPushButton#stopButton:disabled, QPushButton#killButton:disabled {{
     background-color: {CARD_RAISED}; color: {TEXT_FAINT}; border: 1px solid {BORDER};
 }}
@@ -158,6 +157,22 @@ QPushButton#clearConsole {{
     border-radius: 6px; padding: 4px 12px;
 }}
 QPushButton#clearConsole:hover {{ color: {TEXT}; background-color: {CARD_RAISED}; }}
+QPushButton#consoleSend, QPushButton#detailsButton, QPushButton#javaCheck, QPushButton#javaChoose {{
+    background-color: {CARD_RAISED}; color: {TEXT}; border: 1px solid {BORDER};
+    border-radius: 6px; padding: 5px 14px;
+}}
+QPushButton#consoleSend:hover, QPushButton#detailsButton:hover, QPushButton#javaCheck:hover,
+QPushButton#javaChoose:hover {{ border-color: #3f3f46; background-color: #26262b; }}
+QPushButton#consoleSend:disabled {{ color: {TEXT_FAINT}; background-color: transparent; }}
+QStatusBar QPushButton {{ padding: 2px 10px; margin: 2px 4px; }}
+QLineEdit#consoleInput {{ font-family: {MONO_FAMILY}; }}
+QCheckBox {{ spacing: 10px; color: {TEXT}; font-weight: 600; }}
+QCheckBox::indicator {{
+    width: 16px; height: 16px; border-radius: 4px;
+    border: 1px solid #3f3f46; background-color: {CARD_RAISED};
+}}
+QCheckBox::indicator:checked {{ background-color: {ACCENT}; border-color: {ACCENT}; }}
+QCheckBox::indicator:disabled {{ background-color: {BACKGROUND}; }}
 QPlainTextEdit#console {{
     background-color: {CONSOLE}; color: {CONSOLE_TEXT}; border: none; border-radius: 10px;
     padding: 10px; font-family: {MONO_FAMILY}; font-size: 12px; selection-background-color: #3f3f46;

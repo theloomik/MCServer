@@ -157,8 +157,7 @@ class ServerDashboardView(QWidget):
         controls.addWidget(self.start_button)
         controls.addWidget(self.stop_button)
         controls.addWidget(self.kill_button)
-        controls.addSpacing(8)
-        controls.addWidget(self.hint_label, 1)
+        controls.addStretch(1)
 
         self.banner = QLabel()
         self.banner.setObjectName("banner")
@@ -184,6 +183,7 @@ class ServerDashboardView(QWidget):
         layout.setSpacing(16)
         layout.addLayout(title_row)
         layout.addLayout(controls)
+        layout.addWidget(self.hint_label)
         layout.addWidget(self.banner_row)
         return card
 
