@@ -14,8 +14,10 @@ from mcserver.application.errors import (
     ServerDirectoryAlreadyExists,
     ServerProvisioningError,
 )
+from mcserver.application.java_setup import JavaSetup
 from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_creation import ServerCreation
+from mcserver.application.server_health import ServerHealth
 from mcserver.application.server_management import ServerManagement
 from mcserver.application.server_output import ServerOutputBuffer
 from mcserver.application.server_provisioning import ServerProvisioning
@@ -151,15 +153,21 @@ def services_for(
     server_coordinator: ServerCoordinator | None = None,
     output: ServerOutputBuffer | None = None,
     filesystem: object | None = None,
+    java_setup: JavaSetup | None = None,
+    health: ServerHealth | None = None,
 ) -> PresentationServices:
     calls = closes if closes is not None else []
     management = management_for(repository)
+    files = filesystem or UnusedFilesystem()
     return PresentationServices(
         servers_root=root,
         management=management,
-        server_creation=creation_for(repository, filesystem or UnusedFilesystem()),
+        server_creation=creation_for(repository, files),
         coordinator=(server_coordinator or coordinator()) if java else None,
         output=(output or ServerOutputBuffer()) if java else None,
         java_problem=None if java else "No usable Java runtime was found.",
         closer=lambda: calls.append("closed"),
+        provisioning=ServerProvisioning(repository, files),  # type: ignore[arg-type]
+        java=java_setup,
+        health=health,
     )
