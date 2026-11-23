@@ -5,13 +5,16 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from mcserver.application.backups import BackupService
 from mcserver.application.java_setup import JavaSetup
 from mcserver.application.server_adoption import ServerAdoption
 from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_creation import ServerCreation
 from mcserver.application.server_health import ServerHealth
 from mcserver.application.server_management import ServerManagement
+from mcserver.application.server_metrics import ServerMetrics
 from mcserver.application.server_output import ServerOutputBuffer
+from mcserver.application.server_properties import ServerPropertiesService
 from mcserver.application.server_provisioning import ServerProvisioning
 from mcserver.application.settings import SettingsService
 
@@ -39,6 +42,9 @@ class PresentationServices:
         health: ServerHealth | None = None,
         settings: SettingsService | None = None,
         adoption: ServerAdoption | None = None,
+        properties: ServerPropertiesService | None = None,
+        metrics: ServerMetrics | None = None,
+        backups: BackupService | None = None,
     ) -> None:
         """Hold the services; ``closer`` releases backend resources on shutdown."""
         self.servers_root = servers_root
@@ -57,6 +63,12 @@ class PresentationServices:
         """Application settings (Java, timeouts, one-time legacy import offer)."""
         self.adoption = adoption
         """Imports existing server folders."""
+        self.properties = properties
+        """Reads and changes server.properties."""
+        self.metrics = metrics
+        """CPU, memory and uptime of the running server."""
+        self.backups = backups
+        """Backups and restores."""
         self.crashed = False
         """Set when an unhandled exception ends the application (the graceful stop was already tried)."""
         self._closer = closer

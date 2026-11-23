@@ -12,10 +12,12 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QStackedWidget,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from mcserver.application.server_metrics import ServerMetricsSnapshot
 from mcserver.presentation.controllers.server_dashboard import DashboardState, Operation
 from mcserver.presentation.controllers.server_list import ServerStatus
 from mcserver.presentation.errors import UserMessage, render_message
@@ -28,6 +30,8 @@ INFO_FIELDS = ("directory", "location", "jar_file", "memory")
 
 _SIDE_PANEL_WIDTH = 300
 _INFO_VALUE_WIDTH = _SIDE_PANEL_WIDTH - 60  # card margins and border
+METRIC_TILES = ("cpu", "memory", "uptime")
+"""Resource tiles; each has the label key ``metrics.<name>``."""
 
 
 def _card() -> QFrame:
@@ -98,7 +102,13 @@ class ServerDashboardView(QWidget):
         main = QVBoxLayout()
         main.setSpacing(18)
         main.addWidget(self._build_header_card())
-        main.addWidget(self.console, 1)
+        # Overview holds the console; Properties and Backups are added by the window when available (M3).
+        self.tabs = QTabWidget()
+        self.tabs.setObjectName("dashboardTabs")
+        self.tabs.setDocumentMode(True)
+        self._tab_keys: list[str] = []
+        self.add_tab("overview", self.console)
+        main.addWidget(self.tabs, 1)
 
         side = QVBoxLayout()
         side.setSpacing(12)
@@ -106,6 +116,13 @@ class ServerDashboardView(QWidget):
         caption.setObjectName("sectionCaption")
         side.addWidget(caption)
         side.addWidget(self._build_info_card())
+        self.metrics_caption = QLabel(self._messages.text("metrics.title").upper())
+        self.metrics_caption.setObjectName("sectionCaption")
+        self.metrics_card = self._build_metrics_card()
+        self.metrics_caption.hide()
+        self.metrics_card.hide()
+        side.addWidget(self.metrics_caption)
+        side.addWidget(self.metrics_card)
         side.addStretch(1)
         side_widget = QWidget()
         side_widget.setLayout(side)
@@ -233,6 +250,62 @@ class ServerDashboardView(QWidget):
         layout.addLayout(manage_row)
         layout.addWidget(note)
         return card
+
+    def _build_metrics_card(self) -> QFrame:
+        card = _card()
+        card.setObjectName("metricsCard")
+        grid = QGridLayout(card)
+        grid.setContentsMargins(20, 14, 20, 14)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(4)
+        self.metric_values: dict[str, QLabel] = {}
+        grid.setVerticalSpacing(8)
+        for row, name in enumerate(METRIC_TILES):
+            label = QLabel(self._messages.text(f"metrics.{name}"))
+            label.setObjectName("fieldLabel")
+            value = QLabel(self._messages.text("metrics.idle"))
+            value.setObjectName("metricValue")
+            self.metric_values[name] = value
+            grid.addWidget(label, row, 0)
+            grid.addWidget(value, row, 1, Qt.AlignmentFlag.AlignRight)
+        return card
+
+    def add_tab(self, key: str, widget: QWidget) -> None:
+        """Add a main-column tab titled ``tabs.<key>``."""
+        self._tab_keys.append(key)
+        self.tabs.addTab(widget, self._messages.text(f"tabs.{key}"))
+
+    def show_tab(self, key: str) -> None:
+        """Switch to the tab ``key`` if it exists."""
+        if key in self._tab_keys:
+            self.tabs.setCurrentIndex(self._tab_keys.index(key))
+
+    @property
+    def current_tab(self) -> str:
+        """Return the key of the shown tab."""
+        return self._tab_keys[self.tabs.currentIndex()]
+
+    def set_metrics_available(self, available: bool) -> None:
+        """Show the resource tiles (only when metrics can be read at all)."""
+        self.metrics_caption.setVisible(available)
+        self.metrics_card.setVisible(available)
+
+    def show_metrics(self, snapshot: ServerMetricsSnapshot | None) -> None:
+        """Show CPU, memory and uptime of the selected server, or dashes when it does not run."""
+        if snapshot is None:
+            for value in self.metric_values.values():
+                value.setText(self._messages.text("metrics.idle"))
+            return
+        text = self._messages.text
+        self.metric_values["cpu"].setText(text("metrics.cpu_value", percent=f"{snapshot.cpu_percent:.0f}"))
+        self.metric_values["memory"].setText(
+            text("metrics.memory_value", used=f"{snapshot.memory_mb:.0f}", allocated=snapshot.allocated_mb)
+        )
+        hours, rest = divmod(max(0, snapshot.uptime_seconds), 3600)
+        minutes, seconds = divmod(rest, 60)
+        self.metric_values["uptime"].setText(
+            text("metrics.uptime_value", hours=hours, minutes=minutes, seconds=seconds)
+        )
 
     # --- rendering ------------------------------------------------------------------------
 

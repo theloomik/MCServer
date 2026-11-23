@@ -11,6 +11,7 @@ from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QWidget
 
+from mcserver.application.backups import BackupInfo
 from mcserver.application.errors import InvalidJavaExecutable, JavaNotFound, JavaVersionTooOld
 from mcserver.application.java_setup import JavaStatus
 from mcserver.application.ports import StartOptions
@@ -20,7 +21,9 @@ from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.presentation import theme
 from mcserver.presentation.adapters.output_bridge import OutputBridge
 from mcserver.presentation.adapters.status_poller import StatusPoller
+from mcserver.presentation.controllers.backups import BackupsController
 from mcserver.presentation.controllers.console import ConsoleController
+from mcserver.presentation.controllers.properties import PropertiesController
 from mcserver.presentation.controllers.server_creation import ServerCreationController
 from mcserver.presentation.controllers.server_dashboard import ServerDashboardController
 from mcserver.presentation.controllers.server_list import ServerListController, ServerListState
@@ -35,12 +38,15 @@ from mcserver.presentation.dialogs.settings_dialog import SettingsDialog
 from mcserver.presentation.errors import UserMessage, describe_error, render_message
 from mcserver.presentation.i18n import Messages
 from mcserver.presentation.services import PresentationServices
+from mcserver.presentation.views.backups_view import BackupsView, format_created_at
 from mcserver.presentation.views.server_dashboard_view import ServerDashboardView
 from mcserver.presentation.views.server_list_view import ServerListView
+from mcserver.presentation.views.server_properties_view import ServerPropertiesView
 from mcserver.presentation.workers import BackgroundRunner
 
 _logger = logging.getLogger(__name__)
 _NO_TOOLTIP = ""
+METRICS_INTERVAL_MS = 2000
 
 ConfirmExit = Callable[[str], bool]
 FolderOpener = Callable[[Path], bool]
@@ -54,6 +60,8 @@ AskDelete = Callable[[ServerConfiguration, Path], bool | None]
 """Return ``None`` to cancel, else whether the folder goes to the Recycle Bin too."""
 LegacyOffer = Callable[[int], bool]
 LegacyResultNotifier = Callable[[LegacyImportResult], None]
+ConfirmBackup = Callable[[BackupInfo], bool]
+"""Ask whether to restore or delete a backup; return the answer."""
 
 
 class StopTimeoutChoice(Enum):
@@ -99,6 +107,8 @@ class MainWindow(QMainWindow):
         ask_delete: AskDelete | None = None,
         offer_legacy_import: LegacyOffer | None = None,
         notify_legacy_result: LegacyResultNotifier | None = None,
+        confirm_restore: ConfirmBackup | None = None,
+        confirm_delete_backup: ConfirmBackup | None = None,
     ) -> None:
         """Build the window from already-created services and messages, then load the servers."""
         super().__init__(parent)
@@ -115,6 +125,8 @@ class MainWindow(QMainWindow):
         self._ask_delete = ask_delete or self._show_delete_dialog
         self._offer_legacy_import = offer_legacy_import or self._ask_legacy_import
         self._notify_legacy_result = notify_legacy_result or self._show_legacy_result
+        self._confirm_restore = confirm_restore or self._ask_to_restore
+        self._confirm_delete_backup = confirm_delete_backup or self._ask_to_delete_backup
         self.create_dialog: CreateServerDialog | None = None
         self.edit_dialog: EditServerDialog | None = None
         self.adopt_dialog: AdoptServerDialog | None = None
@@ -138,9 +150,23 @@ class MainWindow(QMainWindow):
             services.server_creation, services.management, self.background, self
         )
         self.management_controller = ManagementController(services, self.background, self)
+        self.properties_controller = PropertiesController(services.properties, self)
+        self.backups_controller = BackupsController(services.backups, self.background, self)
 
         self.server_list_view = ServerListView(messages)
         self.dashboard_view = ServerDashboardView(messages, services.servers_root, self.console_controller.available)
+        self.properties_view: ServerPropertiesView | None = None
+        if self.properties_controller.available:
+            self.properties_view = ServerPropertiesView(messages)
+            self.dashboard_view.add_tab("properties", self.properties_view)
+        self.backups_view: BackupsView | None = None
+        if self.backups_controller.available:
+            self.backups_view = BackupsView(messages)
+            self.dashboard_view.add_tab("backups", self.backups_view)
+        self.dashboard_view.set_metrics_available(services.metrics is not None)
+        self.metrics_timer = QTimer(self)
+        self.metrics_timer.setInterval(METRICS_INTERVAL_MS)
+        self.metrics_timer.timeout.connect(self.sample_metrics)
 
         self._build_menu()
         self._build_content()
@@ -149,6 +175,8 @@ class MainWindow(QMainWindow):
 
         if self.poller is not None:
             self.poller.start()
+        if services.metrics is not None:
+            self.metrics_timer.start()
         self.server_list_controller.refresh()
         # Shown once the window is up: incidents from the previous session (M1-GUI-06),
         # then the one-time offer to import MCServer 0.9.1 servers (M2-GUI-02).
@@ -223,6 +251,9 @@ class MainWindow(QMainWindow):
 
         dashboard = self.dashboard_controller
         dashboard.state_changed.connect(self.dashboard_view.show_state)
+        dashboard.state_changed.connect(
+            lambda _state: self.backups_controller.set_active_server(self.dashboard_controller.active_server_id)
+        )
         dashboard.operation_finished.connect(self._on_operation_finished)
         dashboard.eula_required.connect(self._on_eula_required)
         dashboard.java_problem.connect(self._on_java_problem)
@@ -246,6 +277,19 @@ class MainWindow(QMainWindow):
         management.failed.connect(self._show_message_in_status_bar)
         management.legacy_imported.connect(self._notify_legacy_result)
 
+        properties = self.properties_controller
+        if self.properties_view is not None:
+            properties.state_changed.connect(self.properties_view.show_state)
+            self.properties_view.save_requested.connect(properties.save)
+            self.properties_view.reload_requested.connect(lambda: properties.reload())
+        backups = self.backups_controller
+        if self.backups_view is not None:
+            backups.state_changed.connect(self.backups_view.show_state)
+            backups.progress.connect(self.backups_view.show_progress)
+            self.backups_view.create_requested.connect(backups.create)
+            self.backups_view.restore_requested.connect(self.request_restore)
+            self.backups_view.delete_requested.connect(self.request_delete_backup)
+
         console = self.console_controller
         console.lines_appended.connect(self.dashboard_view.console.append_lines)
         console.cleared.connect(self.dashboard_view.console.clear)
@@ -258,7 +302,12 @@ class MainWindow(QMainWindow):
         self.server_list_view.show_state(state)
         self.dashboard_controller.show_server(state.selected)
         self.dashboard_view.show_details_error(state.details_error_key)
-        self.console_controller.show_server(state.selected.server_id if state.selected else None)
+        selected_id = state.selected.server_id if state.selected else None
+        self.console_controller.show_server(selected_id)
+        self.properties_controller.show_server(selected_id)
+        self.backups_controller.show_server(selected_id)
+        self.backups_controller.set_active_server(self.dashboard_controller.active_server_id)
+        self.sample_metrics()
 
     def open_create_dialog(self) -> None:
         """Show the create-server dialog (only one at a time)."""
@@ -292,6 +341,44 @@ class MainWindow(QMainWindow):
         if self._exit_after_stop and self.dashboard_controller.active_server_id is None:
             self._exit_after_stop = False
             self.close()
+
+    # --- M3: resources, backups ---------------------------------------------------------------
+
+    def sample_metrics(self) -> None:
+        """Show CPU, memory and uptime when the selected server is the running one."""
+        metrics = self._services.metrics
+        if metrics is None:
+            return
+        try:
+            snapshot = metrics.sample()
+        except Exception:
+            _logger.debug("Could not read process metrics.", exc_info=True)
+            snapshot = None
+        row = self.dashboard_controller.state.row
+        if snapshot is not None and (row is None or snapshot.server_id != row.server_id):
+            snapshot = None
+        self.dashboard_view.show_metrics(snapshot)
+
+    def request_restore(self, backup: BackupInfo) -> None:
+        """Restore ``backup`` after a double confirmation."""
+        if self._confirm_restore(backup):
+            self.backups_controller.restore(backup)
+
+    def request_delete_backup(self, backup: BackupInfo) -> None:
+        """Move ``backup`` to the Recycle Bin after confirmation."""
+        if self._confirm_delete_backup(backup):
+            self.backups_controller.delete(backup)
+
+    def open_backups(self, server_id: str) -> None:
+        """Select ``server_id`` and show its backups."""
+        self.server_list_controller.select(server_id)
+        self.dashboard_view.show_tab("backups")
+
+    def _server_name(self, server_id: str) -> str:
+        configuration = self._selected_configuration()
+        if configuration is not None and configuration.server_id == server_id:
+            return configuration.name
+        return server_id
 
     # --- kill, details, EULA, Java, incidents ---------------------------------------------
 
@@ -542,11 +629,52 @@ class MainWindow(QMainWindow):
         return dialog.choice
 
     def _show_unclean_notice(self, incident: UncleanShutdown) -> None:
-        QMessageBox.warning(
-            self,
-            self._messages.text("unclean.title", server_id=incident.server_id),
-            self._messages.text("unclean.text", server_id=incident.server_id, started_at=incident.started_at or "?"),
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle(self._messages.text("unclean.title", server_id=incident.server_id))
+        box.setText(
+            self._messages.text("unclean.text", server_id=incident.server_id, started_at=incident.started_at or "?")
         )
+        box.addButton(QMessageBox.StandardButton.Ok)
+        backups = None
+        if self.backups_controller.available:
+            backups = box.addButton(self._messages.text("unclean.open_backups"), QMessageBox.ButtonRole.ActionRole)
+        box.exec()
+        if backups is not None and box.clickedButton() is backups:
+            self.open_backups(incident.server_id)
+
+    def _ask_to_restore(self, backup: BackupInfo) -> bool:
+        name = self._server_name(backup.server_id)
+        yes, cancel = QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.Cancel
+        first = QMessageBox.warning(
+            self,
+            self._messages.text("backups.restore.title", backup_id=backup.backup_id),
+            self._messages.text("backups.restore.text", name=name),
+            yes | cancel,
+            cancel,
+        )
+        if first != yes:
+            return False
+        second = QMessageBox.warning(
+            self,
+            self._messages.text("backups.restore.confirm_title"),
+            self._messages.text(
+                "backups.restore.confirm_text", name=name, created_at=format_created_at(backup.created_at)
+            ),
+            yes | cancel,
+            cancel,
+        )
+        return second == yes
+
+    def _ask_to_delete_backup(self, backup: BackupInfo) -> bool:
+        answer = QMessageBox.question(
+            self,
+            self._messages.text("backups.delete.title", backup_id=backup.backup_id),
+            self._messages.text("backups.delete.text"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return answer == QMessageBox.StandardButton.Yes
 
     def _ask_after_timeout(self, server_id: str, timeout: float) -> StopTimeoutChoice:
         box = QMessageBox(self)
@@ -567,7 +695,12 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Stop a running server (after confirmation) before closing; release GUI resources."""
-        if self.dashboard_controller.busy or self.creation_controller.busy or self.management_controller.busy:
+        if (
+            self.dashboard_controller.busy
+            or self.creation_controller.busy
+            or self.management_controller.busy
+            or self.backups_controller.busy
+        ):
             event.ignore()
             self.statusBar().showMessage(self._messages.text("exit.wait_for_operation"), 6000)
             return
@@ -587,5 +720,6 @@ class MainWindow(QMainWindow):
         self._torn_down = True
         if self.poller is not None:
             self.poller.stop()
+        self.metrics_timer.stop()
         self.console_controller.close()
         self.background.dispose()

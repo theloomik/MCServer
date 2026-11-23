@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from mcserver.application.backups import BackupFailed, BackupNotFound, BackupNotPossible
 from mcserver.application.errors import (
     ActiveServerAlreadyExists,
     EulaNotAccepted,
@@ -26,6 +27,7 @@ from mcserver.application.errors import (
     ServerIsRunning,
     ServerJarAlreadyExists,
     ServerNotRunning,
+    ServerPortInUse,
     ServerProvisioningError,
     ServerStartFailed,
     ServerStopFailed,
@@ -36,6 +38,7 @@ from mcserver.application.server_coordinator import FailureKind, ServerFailure
 from mcserver.application.settings import InvalidSettings
 from mcserver.domain.diagnostics import FailureHint
 from mcserver.domain.errors import InvalidServerConfiguration
+from mcserver.domain.server_properties import InvalidServerProperties
 from mcserver.presentation.i18n.catalog import Messages
 
 
@@ -108,6 +111,16 @@ def _describe_runtime_error(error: BaseException, details: str) -> UserMessage |
         return UserMessage("errors.invalid_command", {}, details)
     if isinstance(error, ServerCommandFailed):
         return UserMessage("errors.command_failed", {"server_id": error.server_id}, details)
+    if isinstance(error, ServerPortInUse):
+        return UserMessage("errors.server_port_in_use", {"server_id": error.server_id, "port": error.port}, details)
+    if isinstance(error, InvalidServerProperties):
+        return UserMessage("errors.invalid_properties", {}, details)
+    if isinstance(error, BackupNotPossible):
+        return UserMessage("errors.backup_not_possible", {"server_id": error.server_id}, details)
+    if isinstance(error, BackupFailed):
+        return UserMessage("errors.backup_failed", {"server_id": error.server_id, "reason": error.reason}, details)
+    if isinstance(error, BackupNotFound):
+        return UserMessage("errors.backup_not_found", {}, details)
     if isinstance(error, ServerIsRunning):
         return UserMessage("errors.server_is_running", {"server_id": error.server_id}, details)
     if isinstance(error, ServerFilesRemovalFailed):
