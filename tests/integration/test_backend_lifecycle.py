@@ -30,7 +30,7 @@ from mcserver.domain.lifecycle import ServerState
 from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.infrastructure.server_configuration_store import StoredServerLaunchSettings
 from mcserver.infrastructure.session_markers import MARKER_DIRECTORY, MARKER_FILE
-from tests.integration.conftest import FakeJavaResolver
+from tests.integration.conftest import FakeJavaResolver, use_free_port
 
 WAIT = 10.0
 
@@ -63,6 +63,7 @@ def create(runtime: ServerRuntime, server_id: str, source: Path, *, accept_eula:
         source_jar=str(source),
         accept_eula=accept_eula,
     )
+    use_free_port(runtime.configurations.path.parent / result.configuration.directory)
     return result.configuration
 
 
@@ -289,7 +290,7 @@ def test_imported_legacy_server_starts_from_the_configuration_store(
 ) -> None:
     """ADR 0009: a 0.9.1 server is launched only after it was imported into the store."""
     folder = root / "oldworld"
-    folder.mkdir(parents=True)
+    use_free_port(folder)
     (folder / "paper.jar").write_text("normal", encoding="utf-8")
     (folder / "eula.txt").write_text("eula=true\n", encoding="utf-8")
     legacy = {"oldworld": {"core_name": "paper.jar", "ram": 1024, "directory": str(folder)}}

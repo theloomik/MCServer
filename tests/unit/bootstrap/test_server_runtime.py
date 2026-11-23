@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from mcserver.application.backups import BackupService
 from mcserver.application.errors import (
     EulaNotAccepted,
     InvalidSourceJar,
@@ -20,7 +21,9 @@ from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_creation import ServerCreation
 from mcserver.application.server_health import ServerHealth
 from mcserver.application.server_management import ServerManagement
+from mcserver.application.server_metrics import ServerMetrics
 from mcserver.application.server_output import ServerOutputBuffer
+from mcserver.application.server_properties import ServerPropertiesService
 from mcserver.application.server_provisioning import ProvisionedServer, ServerProvisioning
 from mcserver.application.settings import SettingsService
 from mcserver.bootstrap.server_runtime import (
@@ -33,12 +36,15 @@ from mcserver.bootstrap.server_runtime import (
 )
 from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.infrastructure.process_runner import SubprocessServerRunner
+from mcserver.infrastructure.psutil_metrics import PsutilProcessMetrics
 from mcserver.infrastructure.server_configuration_store import (
     JsonServerConfigurationRepository,
     StoredServerLaunchSettings,
 )
 from mcserver.infrastructure.server_folders import LocalServerFolderAdoption
+from mcserver.infrastructure.server_properties_file import FileServerPropertiesStore
 from mcserver.infrastructure.settings_store import JsonApplicationSettingsStore
+from mcserver.infrastructure.zip_backup_store import ZipBackupStore
 from tests.runtime_fakes import FakeRunner, FakeRunnerFactory, ManualScheduler, MemoryMarkers
 
 WAIT = 3.0
@@ -65,8 +71,9 @@ def runtime_with(runner: FakeRunner) -> ServerRuntime:
     # Never read or written by these lifecycle tests.
     unused_root = Path("unused-servers-root")
     configurations = JsonServerConfigurationRepository(unused_root)
+    coordinator = ServerCoordinator(FakeRunnerFactory(runner), scheduler=ManualScheduler())
     return ServerRuntime(
-        coordinator=ServerCoordinator(FakeRunnerFactory(runner), scheduler=ManualScheduler()),
+        coordinator=coordinator,
         output=ServerOutputBuffer(),
         configurations=configurations,
         management=build_server_management(unused_root, configurations),
@@ -78,6 +85,9 @@ def runtime_with(runner: FakeRunner) -> ServerRuntime:
         adoption=ServerAdoption(
             build_server_management(unused_root, configurations), LocalServerFolderAdoption(unused_root)
         ),
+        properties=ServerPropertiesService(FileServerPropertiesStore(unused_root, configurations)),
+        metrics=ServerMetrics(coordinator, PsutilProcessMetrics(), configurations, lambda: 0.0),
+        backups=BackupService(configurations, coordinator, ZipBackupStore(unused_root)),
     )
 
 

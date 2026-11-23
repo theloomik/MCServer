@@ -84,7 +84,18 @@ class RecycleBinServerFilesRemover:
 
     def remove_server_files(self, directory: str) -> RemovedServerFiles:
         """Send the folder to the Recycle Bin, else move it into ``.trash``; never delete it."""
-        path = self._server_folder(directory)
+        return self.remove_path(self._server_folder(directory))
+
+    def remove_path(self, path: Path) -> RemovedServerFiles:
+        """Send a file or folder inside the servers root to the Recycle Bin, else into ``.trash``.
+
+        Used for server folders, backup archives and the data a restore replaced.
+        Raises ``ServerFilesRemovalFailed`` (and changes nothing) if both fail.
+        """
+        label = path.name
+        resolved = path.resolve()
+        if self._root not in resolved.parents or (self._root / TRASH_DIRECTORY) in (resolved, *resolved.parents):
+            raise ServerFilesRemovalFailed(label, "not inside the servers folder")
         if not path.exists():
             return RemovedServerFiles("missing", str(path))
         recycle_error: OSError | None = None
@@ -95,16 +106,14 @@ class RecycleBinServerFilesRemover:
         else:
             return RemovedServerFiles("recycle_bin", str(path))
         if path.exists():
-            target = self._root / TRASH_DIRECTORY / f"{directory}-{int(self._clock())}"
+            target = self._root / TRASH_DIRECTORY / f"{label}-{int(self._clock())}"
             try:
                 target.parent.mkdir(exist_ok=True)
                 os.replace(path, target)
             except OSError as error:
-                raise ServerFilesRemovalFailed(
-                    directory, f"Recycle Bin: {recycle_error}; trash folder: {error}"
-                ) from error
+                raise ServerFilesRemovalFailed(label, f"Recycle Bin: {recycle_error}; trash folder: {error}") from error
             return RemovedServerFiles("trash", str(target))
-        # The Recycle Bin call reported an error although the folder is gone (it was recycled).
+        # The Recycle Bin call reported an error although the item is gone (it was recycled).
         return RemovedServerFiles("recycle_bin", str(path))
 
     def _server_folder(self, directory: str) -> Path:

@@ -3,8 +3,10 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 from types import TracebackType
 
+from mcserver.application.backups import BackupService
 from mcserver.application.errors import ServerStopTimedOut
 from mcserver.application.java_setup import JavaSetup
 from mcserver.application.ports import JavaRuntimeProvider, Scheduler, ServerConfigurationRepository
@@ -17,11 +19,14 @@ from mcserver.application.server_coordinator import (
 from mcserver.application.server_creation import ServerCreation
 from mcserver.application.server_health import ServerHealth
 from mcserver.application.server_management import ServerManagement
+from mcserver.application.server_metrics import ServerMetrics
 from mcserver.application.server_output import DEFAULT_OUTPUT_CAPACITY, ServerOutputBuffer
+from mcserver.application.server_properties import ServerPropertiesService
 from mcserver.application.server_provisioning import ServerProvisioning
 from mcserver.application.settings import SettingsService
 from mcserver.infrastructure.java_runtime import JavaRuntimeResolver
 from mcserver.infrastructure.legacy_import import LegacyFileServerConfigurationSource
+from mcserver.infrastructure.psutil_metrics import PsutilProcessMetrics
 from mcserver.infrastructure.recycle_bin import RecycleBinServerFilesRemover
 from mcserver.infrastructure.server_configuration import (
     ConfiguredServerRunnerFactory,
@@ -33,9 +38,11 @@ from mcserver.infrastructure.server_configuration_store import (
 )
 from mcserver.infrastructure.server_files import LocalServerFilesystem
 from mcserver.infrastructure.server_folders import LocalServerFolderAdoption
+from mcserver.infrastructure.server_properties_file import FileServerPropertiesStore
 from mcserver.infrastructure.session_markers import FileSessionMarkerStore
 from mcserver.infrastructure.settings_store import JsonApplicationSettingsStore
 from mcserver.infrastructure.windows_job import ProcessGuard, default_process_guard
+from mcserver.infrastructure.zip_backup_store import ZipBackupStore
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +70,12 @@ class ServerRuntime:
     """Application settings, already applied to Java detection and the coordinator's timeouts."""
     adoption: ServerAdoption
     """Registers or copies existing server folders (M2-BE-04)."""
+    properties: ServerPropertiesService
+    """Reads and changes ``server.properties`` (M3-BE-01)."""
+    metrics: ServerMetrics
+    """CPU, memory and uptime of the running server (M3-BE-02)."""
+    backups: BackupService
+    """Backups and restores (M3-BE-03)."""
 
     def close(self, timeout: float | None = None) -> bool:
         """Stop the active server gracefully, then end output delivery; never kills (ADR 0006).
@@ -148,6 +161,11 @@ def build_server_runtime(
         health=ServerHealth(markers),
         settings=settings,
         adoption=ServerAdoption(management, LocalServerFolderAdoption(servers_directory)),
+        properties=ServerPropertiesService(
+            FileServerPropertiesStore(servers_directory, configurations), lambda: coordinator.active_server_id
+        ),
+        metrics=ServerMetrics(coordinator, PsutilProcessMetrics(), configurations, monotonic),
+        backups=BackupService(configurations, coordinator, ZipBackupStore(servers_directory)),
     )
 
 

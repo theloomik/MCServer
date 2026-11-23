@@ -6,7 +6,8 @@ import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from threading import RLock, Timer
+from threading import Event, RLock, Timer
+from time import monotonic
 
 from mcserver.application.errors import (
     ActiveServerAlreadyExists,
@@ -17,6 +18,7 @@ from mcserver.application.errors import (
     JavaVersionTooOld,
     ServerCommandFailed,
     ServerNotRunning,
+    ServerPortInUse,
     ServerStartFailed,
     ServerStopFailed,
     ServerStopTimedOut,
@@ -32,6 +34,7 @@ from mcserver.application.ports import (
     SessionMarkerStore,
     StartOptions,
 )
+from mcserver.application.server_metrics import ActiveProcess
 from mcserver.domain.diagnostics import FailureHint, diagnose
 from mcserver.domain.lifecycle import ServerLifecycle, ServerState
 from mcserver.domain.readiness import DEFAULT_READINESS_RULES, ReadinessRule, is_ready_line
@@ -43,7 +46,14 @@ DEFAULT_STOP_TIMEOUT_SECONDS = 90.0
 DIAGNOSTIC_TAIL_LINES = 40
 
 # Failures the user can act on are raised unchanged; anything else from the factory is a start failure.
-_PREFLIGHT_ERRORS = (EulaNotAccepted, InvalidJavaExecutable, JavaNotFound, JavaVersionTooOld, ServerWorldInUse)
+_PREFLIGHT_ERRORS = (
+    EulaNotAccepted,
+    InvalidJavaExecutable,
+    JavaNotFound,
+    JavaVersionTooOld,
+    ServerPortInUse,
+    ServerWorldInUse,
+)
 
 
 class ThreadingScheduler:
@@ -122,6 +132,7 @@ class ServerCoordinator:
         startup_timeout: float = DEFAULT_STARTUP_TIMEOUT_SECONDS,
         stop_timeout: float = DEFAULT_STOP_TIMEOUT_SECONDS,
         readiness_rules: Sequence[ReadinessRule] = DEFAULT_READINESS_RULES,
+        clock: Callable[[], float] = monotonic,
     ) -> None:
         """Create a coordinator; ``scheduler`` and ``markers`` are injectable for tests."""
         if startup_timeout <= 0 or stop_timeout < 0:
@@ -141,6 +152,9 @@ class ServerCoordinator:
         self._stop_requested = False
         self._stop_timed_out = False
         self._last_failure: ServerFailure | None = None
+        self._clock = clock
+        self._started_at = 0.0
+        self._line_waiters: list[tuple[int, Callable[[str], bool], Event]] = []
 
     # --- queries ----------------------------------------------------------------------------
 
@@ -175,6 +189,39 @@ class ServerCoordinator:
             return CoordinatorStatus(
                 self._lifecycle.state, self._active_server_id, self._stop_timed_out, self._last_failure
             )
+
+    def active_process(self) -> ActiveProcess | None:
+        """Return the active server's process for monitoring, if one runs (M3-BE-02)."""
+        with self._lock:
+            runner = self._server_runner
+            server_id = self._active_server_id
+            if runner is None or server_id is None:
+                return None
+            process_id = runner.process_id
+            if process_id is None:
+                return None
+            return ActiveProcess(server_id, process_id, self._lifecycle.state, self._started_at)
+
+    def send_and_wait_for_line(
+        self, server_id: str, command: str, predicate: Callable[[str], bool], timeout: float
+    ) -> bool:
+        """Send ``command`` and wait until a console line matches ``predicate``; return whether one did.
+
+        Used by online backups (``save-all flush`` → ``Saved the game``). The
+        waiter is registered before the command is sent, so a fast reply is not missed.
+        """
+        with self._lock:
+            if self._active_server_id != server_id or self._lifecycle.state is not ServerState.RUNNING:
+                raise ServerNotRunning(server_id)
+            entry = (self._generation, predicate, Event())
+            self._line_waiters.append(entry)
+        try:
+            self.send_command(server_id, command)
+            return entry[2].wait(timeout)
+        finally:
+            with self._lock:
+                if entry in self._line_waiters:
+                    self._line_waiters.remove(entry)
 
     def take_failure(self, server_id: str) -> ServerFailure | None:
         """Return and forget the last failure if it belongs to ``server_id``."""
@@ -224,6 +271,7 @@ class ServerCoordinator:
                 self._release(generation)
                 raise ServerStartFailed(server_id) from error
 
+            self._started_at = self._clock()
             self._write_marker(server_id, prepared.runner.process_id)
             if self._generation == generation and self._lifecycle.state is ServerState.STARTING:
                 self._cancel_startup_timer = self._scheduler.call_later(
@@ -314,8 +362,19 @@ class ServerCoordinator:
     # --- runner events ----------------------------------------------------------------------
 
     def _on_output(self, generation: int, stream: OutputStream, text: str) -> None:
-        """Move STARTING → RUNNING on the first ready line of the current process."""
-        if stream is OutputStream.COMMAND or not is_ready_line(text, self._readiness_rules):
+        """Move STARTING → RUNNING on the first ready line; wake waiters whose line arrived."""
+        if stream is OutputStream.COMMAND:
+            return
+        if self._line_waiters:
+            with self._lock:
+                waiters = [entry for entry in self._line_waiters if entry[0] == generation]
+            for _generation, predicate, event in waiters:
+                try:
+                    if predicate(text):
+                        event.set()
+                except Exception:
+                    _logger.exception("A console line waiter failed.")
+        if not is_ready_line(text, self._readiness_rules):
             return
         with self._lock:
             if self._generation == generation and self._lifecycle.state is ServerState.STARTING:
