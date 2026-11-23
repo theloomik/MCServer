@@ -342,6 +342,20 @@ MESSAGES: Catalog = {
     "backups.kind.manual": "Manual",
     "backups.kind.safety": "Before restore",
     "backups.kind.scheduled": "Scheduled",
+    "backups.schedule.enabled": "Back up automatically while the server runs",
+    "backups.schedule.every": "every",
+    "backups.schedule.hours_suffix": " h",
+    "backups.schedule.keep": "keep last",
+    "backups.schedule.hint": (
+        "Only scheduled backups are counted; older ones go to the Recycle Bin. Manual and "
+        "before-restore backups are never removed automatically."
+    ),
+    "backups.schedule.saved": "Automatic backups are on for this server.",
+    "backups.schedule.off": "Automatic backups are off for this server.",
+    "backups.scheduled_created": (
+        "Scheduled backup {backup_id} of {server_id} was created; {removed} older scheduled backup(s) "
+        "moved to the Recycle Bin."
+    ),
     "backups.kind.online": "{kind} (while running)",
     "backups.size_value": "{megabytes} MB",
     "backups.size_kb": "{kilobytes} KB",

@@ -56,6 +56,7 @@ from mcserver.presentation.workers import BackgroundRunner
 _logger = logging.getLogger(__name__)
 _NO_TOOLTIP = ""
 METRICS_INTERVAL_MS = 2000
+BACKUP_CHECK_INTERVAL_MS = 60_000
 
 ConfirmExit = Callable[[str], bool]
 FolderOpener = Callable[[Path], bool]
@@ -168,7 +169,12 @@ class MainWindow(QMainWindow):
         )
         self.management_controller = ManagementController(services, self.background, self)
         self.properties_controller = PropertiesController(services.properties, self)
-        self.backups_controller = BackupsController(services.backups, self.background, self)
+        self.backups_controller = BackupsController(
+            services.backups, self.background, self, schedules=services.scheduled_backups
+        )
+        self.backup_timer = QTimer(self)
+        self.backup_timer.setInterval(BACKUP_CHECK_INTERVAL_MS)
+        self.backup_timer.timeout.connect(self.backups_controller.run_scheduled)
 
         self.server_list_view = ServerListView(messages)
         self.dashboard_view = ServerDashboardView(messages, services.servers_root, self.console_controller.available)
@@ -194,6 +200,8 @@ class MainWindow(QMainWindow):
             self.poller.start()
         if services.metrics is not None:
             self.metrics_timer.start()
+        if services.scheduled_backups is not None and services.backups is not None:
+            self.backup_timer.start()
         self.server_list_controller.refresh()
         # Shown once the window is up: incidents from the previous session (M1-GUI-06),
         # then the one-time offer to import MCServer 0.9.1 servers (M2-GUI-02).
@@ -310,6 +318,8 @@ class MainWindow(QMainWindow):
             self.backups_view.create_requested.connect(backups.create)
             self.backups_view.restore_requested.connect(self.request_restore)
             self.backups_view.delete_requested.connect(self.request_delete_backup)
+            self.backups_view.schedule_changed.connect(backups.save_schedule)
+        backups.scheduled_finished.connect(self._show_message_in_status_bar)
 
         console = self.console_controller
         console.lines_appended.connect(self.dashboard_view.console.append_lines)
@@ -793,5 +803,6 @@ class MainWindow(QMainWindow):
         if self.poller is not None:
             self.poller.stop()
         self.metrics_timer.stop()
+        self.backup_timer.stop()
         self.console_controller.close()
         self.background.dispose()

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from mcserver.application.auto_restart import AutoRestartPolicy
+from mcserver.application.backup_schedule import ScheduledBackups
 from mcserver.application.backups import BackupService
 from mcserver.application.java_setup import JavaSetup
 from mcserver.application.server_activity import ServerActivity
@@ -51,6 +52,7 @@ class PresentationServices:
         activity: ServerActivity | None = None,
         auto_restart: AutoRestartPolicy | None = None,
         address: ServerAddressLookup | None = None,
+        scheduled_backups: ScheduledBackups | None = None,
     ) -> None:
         """Hold the services; ``closer`` releases backend resources on shutdown."""
         self.servers_root = servers_root
@@ -81,6 +83,8 @@ class PresentationServices:
         """Opt-in restart after a crash."""
         self.address = address
         """LAN address and port of a server."""
+        self.scheduled_backups = scheduled_backups
+        """Backups made automatically while a server runs."""
         self.crashed = False
         """Set when an unhandled exception ends the application (the graceful stop was already tried)."""
         self._closer = closer

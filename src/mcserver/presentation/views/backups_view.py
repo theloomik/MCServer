@@ -7,6 +7,7 @@ from datetime import datetime
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -14,11 +15,13 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QProgressBar,
     QPushButton,
+    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
 )
 
+from mcserver.application.backup_schedule import INTERVAL_HOURS_RANGE, KEEP_RANGE, BackupSchedule
 from mcserver.application.backups import BackupInfo
 from mcserver.presentation.controllers.backups import BackupsState
 from mcserver.presentation.errors import render_message
@@ -44,6 +47,7 @@ class BackupsView(QFrame):
     create_requested = Signal(str)  # note
     restore_requested = Signal(object)  # BackupInfo
     delete_requested = Signal(object)  # BackupInfo
+    schedule_changed = Signal(object)  # BackupSchedule
 
     def __init__(self, messages: Messages) -> None:
         """Build the empty view."""
@@ -66,6 +70,37 @@ class BackupsView(QFrame):
         header.addWidget(self.note_edit, 1)
         header.addWidget(self.create_button)
 
+        self._filling = False
+        self.schedule_check = QCheckBox(messages.text("backups.schedule.enabled"))
+        self.interval_spin = QSpinBox()
+        self.interval_spin.setRange(*INTERVAL_HOURS_RANGE)
+        self.interval_spin.setSuffix(messages.text("backups.schedule.hours_suffix"))
+        self.keep_spin = QSpinBox()
+        self.keep_spin.setRange(*KEEP_RANGE)
+        for spin in (self.interval_spin, self.keep_spin):
+            spin.setFixedWidth(84)
+        every = QLabel(messages.text("backups.schedule.every"))
+        every.setObjectName("fieldLabel")
+        keep = QLabel(messages.text("backups.schedule.keep"))
+        keep.setObjectName("fieldLabel")
+        self.schedule_check.toggled.connect(self._on_schedule_edited)
+        self.interval_spin.valueChanged.connect(self._on_schedule_edited)
+        self.keep_spin.valueChanged.connect(self._on_schedule_edited)
+        schedule_row = QHBoxLayout()
+        schedule_row.setSpacing(8)
+        schedule_row.addWidget(self.schedule_check)
+        schedule_row.addStretch(1)
+        schedule_row.addWidget(every)
+        schedule_row.addWidget(self.interval_spin)
+        schedule_row.addSpacing(8)
+        schedule_row.addWidget(keep)
+        schedule_row.addWidget(self.keep_spin)
+        self.schedule_host = QFrame()
+        self.schedule_host.setLayout(schedule_row)
+        schedule_row.setContentsMargins(0, 0, 0, 0)
+        self.schedule_hint = QLabel(messages.text("backups.schedule.hint"))
+        self.schedule_hint.setObjectName("controlHint")
+        self.schedule_hint.setWordWrap(True)
         self.message = QLabel()
         self.message.setObjectName("banner")
         self.message.setWordWrap(True)
@@ -110,6 +145,8 @@ class BackupsView(QFrame):
         layout.setContentsMargins(16, 12, 16, 16)
         layout.setSpacing(10)
         layout.addLayout(header)
+        layout.addWidget(self.schedule_host)
+        layout.addWidget(self.schedule_hint)
         layout.addWidget(self.progress)
         layout.addWidget(self.message)
         layout.addWidget(self.table, 1)
@@ -147,9 +184,33 @@ class BackupsView(QFrame):
             style.polish(self.message)
             self.message.show()
         self.restore_hint.setVisible(state.server_active)
+        self._show_schedule(state.schedule)
         self.note_edit.setEnabled(state.can_create)
         self.create_button.setEnabled(state.can_create)
         self._update_buttons()
+
+    def _show_schedule(self, schedule: BackupSchedule | None) -> None:
+        visible = schedule is not None
+        self.schedule_host.setVisible(visible)
+        self.schedule_hint.setVisible(visible)
+        if schedule is None:
+            return
+        self._filling = True
+        try:
+            self.schedule_check.setChecked(schedule.enabled)
+            self.interval_spin.setValue(schedule.interval_hours)
+            self.keep_spin.setValue(schedule.keep)
+        finally:
+            self._filling = False
+        self.interval_spin.setEnabled(schedule.enabled)
+        self.keep_spin.setEnabled(schedule.enabled)
+
+    def _on_schedule_edited(self) -> None:
+        if self._filling:
+            return
+        self.schedule_changed.emit(
+            BackupSchedule(self.schedule_check.isChecked(), self.interval_spin.value(), self.keep_spin.value())
+        )
 
     def show_progress(self, done: int, total: int) -> None:
         """Show the progress of the running operation."""

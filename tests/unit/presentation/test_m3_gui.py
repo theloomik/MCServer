@@ -9,6 +9,7 @@ from fakes import FakeRunnerFactory, InMemoryRepository, MemoryFilesystem, creat
 from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QSpinBox
 from pytestqt.qtbot import QtBot
 
+from mcserver.application.backup_schedule import BackupSchedule, ScheduledBackupResult, ScheduledBackups
 from mcserver.application.backups import BackupInfo, BackupKind, BackupService
 from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_management import ServerManagement
@@ -64,6 +65,7 @@ class Setup:
         self.metrics = Metrics()
         store = ZipBackupStore(root, RecycleBinServerFilesRemover(root, no_recycle_bin))
         self.backups = BackupService(self.repository, self.coordinator, store)
+        self.scheduled = ScheduledBackups(store, self.backups, self.coordinator)
         services = PresentationServices(
             servers_root=root,
             management=management,
@@ -79,6 +81,7 @@ class Setup:
             else None,
             metrics=self.metrics if with_m3 else None,  # type: ignore[arg-type]
             backups=self.backups if with_m3 else None,
+            scheduled_backups=self.scheduled if with_m3 else None,
         )
         self.restore_questions: list[str] = []
         self.delete_questions: list[str] = []
@@ -334,3 +337,60 @@ def test_resource_tiles_show_the_selected_running_server_only(qtbot: QtBot, tmp_
 
     setup.select("creative")
     assert values["cpu"].text() == MESSAGES.text("metrics.idle")
+
+
+# --- scheduled backups (ADR 0008) ------------------------------------------------------------------
+
+
+def test_schedule_controls_store_the_schedule(qtbot: QtBot, tmp_path: Path) -> None:
+    setup = Setup(qtbot, tmp_path)
+    setup.select("survival")
+    view = setup.window.backups_view
+    assert view is not None
+    assert view.schedule_host.isVisibleTo(view) and not view.schedule_check.isChecked()
+    assert not view.interval_spin.isEnabled()
+
+    view.schedule_check.setChecked(True)
+    assert setup.scheduled.schedule("survival") == BackupSchedule(enabled=True)
+    assert view.interval_spin.isEnabled()
+    view.interval_spin.setValue(12)
+    view.keep_spin.setValue(3)
+    assert setup.scheduled.schedule("survival") == BackupSchedule(True, 12, 3)
+    assert view.message.text() == MESSAGES.text("backups.schedule.saved")
+
+    setup.select("creative")
+    assert not view.schedule_check.isChecked()
+    setup.select("survival")
+    assert view.schedule_check.isChecked() and view.interval_spin.value() == 12
+
+
+def test_nothing_runs_on_schedule_while_the_server_is_stopped(qtbot: QtBot, tmp_path: Path) -> None:
+    setup = Setup(qtbot, tmp_path)
+    setup.scheduled.set_schedule("survival", BackupSchedule(enabled=True, interval_hours=1, keep=2))
+    assert setup.window.backups_controller.run_scheduled() is False
+
+
+class _DueSchedules:
+    def __init__(self, result: ScheduledBackupResult) -> None:
+        self.result = result
+
+    def schedule(self, server_id: str) -> BackupSchedule:
+        return BackupSchedule()
+
+    def due_server(self) -> str | None:
+        return "survival"
+
+    def run_due(self, progress=None):  # type: ignore[no-untyped-def]
+        return self.result
+
+
+def test_scheduled_run_reports_in_the_status_bar(qtbot: QtBot, tmp_path: Path) -> None:
+    setup = Setup(qtbot, tmp_path)
+    setup.select("survival")
+    controller = setup.window.backups_controller
+    backup = BackupInfo("20261123-120000-scheduled", "survival", "2026-11-23T12:00:00+00:00", 10, BackupKind.SCHEDULED)
+    controller._schedules = _DueSchedules(ScheduledBackupResult(backup, ("old",)))  # type: ignore[attr-defined]
+    assert controller.run_scheduled() is True
+    qtbot.waitUntil(lambda: not controller.busy)
+    expected = MESSAGES.text("backups.scheduled_created", server_id="survival", backup_id=backup.backup_id, removed=1)
+    assert setup.window.statusBar().currentMessage() == expected
