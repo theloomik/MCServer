@@ -12,6 +12,7 @@ from mcserver.application.java_setup import JavaSetup
 from mcserver.application.server_activity import ServerActivity
 from mcserver.application.server_address import ServerAddressLookup
 from mcserver.application.server_adoption import ServerAdoption
+from mcserver.application.server_catalog import ServerJarCatalog
 from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_creation import ServerCreation
 from mcserver.application.server_health import ServerHealth
@@ -55,6 +56,7 @@ class PresentationServices:
         address: ServerAddressLookup | None = None,
         scheduled_backups: ScheduledBackups | None = None,
         worlds: WorldService | None = None,
+        jar_catalog: ServerJarCatalog | None = None,
     ) -> None:
         """Hold the services; ``closer`` releases backend resources on shutdown."""
         self.servers_root = servers_root
@@ -89,6 +91,8 @@ class PresentationServices:
         """Backups made automatically while a server runs."""
         self.worlds = worlds
         """World folders of each server."""
+        self.jar_catalog = jar_catalog
+        """Official server JARs to download."""
         self.crashed = False
         """Set when an unhandled exception ends the application (the graceful stop was already tried)."""
         self._closer = closer

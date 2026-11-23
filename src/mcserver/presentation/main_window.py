@@ -32,6 +32,7 @@ from mcserver.presentation.adapters.output_bridge import OutputBridge
 from mcserver.presentation.adapters.status_poller import StatusPoller
 from mcserver.presentation.controllers.backups import BackupsController
 from mcserver.presentation.controllers.console import ConsoleController
+from mcserver.presentation.controllers.jar_catalog import JarCatalogController
 from mcserver.presentation.controllers.properties import PropertiesController
 from mcserver.presentation.controllers.server_creation import ServerCreationController
 from mcserver.presentation.controllers.server_dashboard import ServerDashboardController
@@ -41,6 +42,7 @@ from mcserver.presentation.controllers.worlds import WorldsController
 from mcserver.presentation.dialogs.adopt_server_dialog import AdoptServerDialog
 from mcserver.presentation.dialogs.create_server_dialog import CreateServerDialog
 from mcserver.presentation.dialogs.delete_server_dialog import DeleteServerDialog
+from mcserver.presentation.dialogs.download_jar_dialog import DownloadJarDialog
 from mcserver.presentation.dialogs.edit_server_dialog import EditServerDialog
 from mcserver.presentation.dialogs.error_details_dialog import ErrorDetailsDialog
 from mcserver.presentation.dialogs.java_setup_dialog import JavaChoice, JavaSetupDialog, pick_java_with_system_dialog
@@ -113,7 +115,7 @@ class MainWindow(QMainWindow):
         *,
         confirm_exit: ConfirmExit | None = None,
         open_folder: FolderOpener = open_folder_with_system,
-        create_dialog: CreateDialogFactory = CreateServerDialog,
+        create_dialog: CreateDialogFactory | None = None,
         confirm_kill: Confirm | None = None,
         confirm_eula: Confirm | None = None,
         handle_java_problem: JavaProblemHandler | None = None,
@@ -134,7 +136,7 @@ class MainWindow(QMainWindow):
         self._messages = messages
         self._confirm_exit = confirm_exit or self._ask_to_stop_and_exit
         self._open_folder = open_folder
-        self._create_dialog_factory = create_dialog
+        self._create_dialog_factory = create_dialog or self._default_create_dialog
         self._confirm_kill = confirm_kill or self._ask_to_kill
         self._confirm_eula = confirm_eula or self._ask_to_accept_eula
         self._handle_java_problem = handle_java_problem or self._show_java_dialog
@@ -178,6 +180,9 @@ class MainWindow(QMainWindow):
             services.backups, self.background, self, schedules=services.scheduled_backups
         )
         self.worlds_controller = WorldsController(services.worlds, self.background, self)
+        self.jar_catalog_controller = (
+            JarCatalogController(services.jar_catalog, self.background, self) if services.jar_catalog else None
+        )
         self.backup_timer = QTimer(self)
         self.backup_timer.setInterval(BACKUP_CHECK_INTERVAL_MS)
         self.backup_timer.timeout.connect(self.backups_controller.run_scheduled)
@@ -375,6 +380,23 @@ class MainWindow(QMainWindow):
         dialog.finished.connect(self._on_create_dialog_finished)
         self.create_dialog = dialog
         dialog.open()
+
+    def _default_create_dialog(
+        self, controller: ServerCreationController, messages: Messages, parent: QWidget
+    ) -> CreateServerDialog:
+        download = self.download_server_jar if self.jar_catalog_controller is not None else None
+        return CreateServerDialog(controller, messages, parent, download_jar=download)
+
+    def download_server_jar(self, parent: QWidget) -> str | None:
+        """Let the user pick and download an official server JAR; return the verified file (M3-GUI-06)."""
+        controller = self.jar_catalog_controller
+        if controller is None:
+            return None
+        dialog = DownloadJarDialog(controller, self._messages, parent)
+        dialog.exec()
+        path = dialog.path
+        dialog.deleteLater()
+        return path
 
     def _on_create_dialog_finished(self, _result: int) -> None:
         dialog, self.create_dialog = self.create_dialog, None
@@ -850,6 +872,7 @@ class MainWindow(QMainWindow):
             or self.management_controller.busy
             or self.backups_controller.busy
             or self.worlds_controller.busy
+            or (self.jar_catalog_controller is not None and self.jar_catalog_controller.state.busy)
         ):
             event.ignore()
             self.statusBar().showMessage(self._messages.text("exit.wait_for_operation"), 6000)

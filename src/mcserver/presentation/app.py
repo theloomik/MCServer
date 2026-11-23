@@ -62,6 +62,7 @@ def build_services(root: Path, java_resolver: JavaRuntimeProvider | None = None)
         address=runtime.address,
         scheduled_backups=runtime.scheduled_backups,
         worlds=runtime.worlds,
+        jar_catalog=runtime.jar_catalog,
     )
     # A restore cut off by a crash is repaired before anything else touches the server folders.
     runtime.backups.recover_interrupted_restores()

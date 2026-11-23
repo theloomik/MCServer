@@ -210,4 +210,10 @@ QHeaderView::section {{
 QProgressBar {{ background-color: {CARD_RAISED}; border: none; border-radius: 3px; }}
 QProgressBar::chunk {{ background-color: {ACCENT}; border-radius: 3px; }}
 QScrollArea, QScrollArea > QWidget > QWidget {{ background: transparent; }}
+QListWidget#versionList {{
+    background-color: {CARD_RAISED}; color: {TEXT}; border: 1px solid {BORDER}; border-radius: 8px; padding: 4px;
+}}
+QListWidget#versionList::item {{ padding: 5px 8px; border-radius: 6px; }}
+QListWidget#versionList::item:hover {{ background-color: {BORDER}; }}
+QListWidget#versionList::item:selected {{ background-color: {ACCENT_DIM}; color: {TEXT}; }}
 """

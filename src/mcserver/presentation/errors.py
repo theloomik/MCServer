@@ -34,6 +34,7 @@ from mcserver.application.errors import (
     ServerStopTimedOut,
     ServerWorldInUse,
 )
+from mcserver.application.server_catalog import CatalogUnavailable, DownloadFailed
 from mcserver.application.server_coordinator import FailureKind, ServerFailure
 from mcserver.application.settings import InvalidSettings
 from mcserver.application.worlds import (
@@ -126,6 +127,10 @@ def _describe_runtime_error(error: BaseException, details: str) -> UserMessage |
         return UserMessage("errors.backup_not_possible", {"server_id": error.server_id}, details)
     if isinstance(error, BackupFailed):
         return UserMessage("errors.backup_failed", {"server_id": error.server_id, "reason": error.reason}, details)
+    if isinstance(error, CatalogUnavailable):
+        return UserMessage("errors.catalog_unavailable", {"reason": error.reason}, details)
+    if isinstance(error, DownloadFailed):
+        return UserMessage("errors.download_failed", {"file_name": error.file_name, "reason": error.reason}, details)
     if isinstance(error, WorldNotFound):
         return UserMessage("errors.world_not_found", {"name": error.name}, details)
     if isinstance(error, WorldAlreadyExists):

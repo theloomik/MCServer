@@ -72,6 +72,7 @@ class CreateServerDialog(QDialog):
         parent: QWidget | None = None,
         *,
         pick_jar: JarPicker | None = None,
+        download_jar: JarPicker | None = None,
     ) -> None:
         """Build the form; ``pick_jar`` replaces the native file dialog in tests."""
         super().__init__(parent)
@@ -83,6 +84,7 @@ class CreateServerDialog(QDialog):
         self._controller = controller
         self._messages = messages
         self._pick_jar = pick_jar or pick_jar_with_system_dialog(messages)
+        self._download_jar = download_jar
         self._source_jar = ""
         self._directory_follows_id = True
         self._attempted = False
@@ -126,6 +128,12 @@ class CreateServerDialog(QDialog):
         jar_row.setSpacing(8)
         jar_row.addWidget(self.jar_edit, 1)
         jar_row.addWidget(self.browse_button)
+        self.download_button = QPushButton(messages.text("create.jar.download"))
+        self.download_button.setObjectName("secondaryButton")
+        self.download_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.download_button.clicked.connect(self._on_download)
+        self.download_button.setVisible(self._download_jar is not None)
+        jar_row.addWidget(self.download_button)
 
         self.memory_spin = QSpinBox()
         self.memory_spin.setObjectName("memoryInput")
@@ -265,8 +273,14 @@ class CreateServerDialog(QDialog):
         self._directory_follows_id = text == "" or text == self.server_id_edit.text().strip()
         self._refresh_validation()
 
+    def _on_download(self) -> None:
+        if self._download_jar is not None:
+            self._use_jar(self._download_jar(self))
+
     def _on_browse(self) -> None:
-        path = self._pick_jar(self)
+        self._use_jar(self._pick_jar(self))
+
+    def _use_jar(self, path: str | None) -> None:
         if not path:
             return
         self._source_jar = path
@@ -315,6 +329,7 @@ class CreateServerDialog(QDialog):
             self.server_id_edit,
             self.directory_edit,
             self.browse_button,
+            self.download_button,
             self.memory_spin,
             self.eula_check,
             self.cancel_button,
