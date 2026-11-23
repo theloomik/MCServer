@@ -1,7 +1,8 @@
-"""Console card: server output with stderr highlighting, follow mode and command input."""
+"""Console card (M4 design): toolbar, output with dimmed prefixes and level colours, command row."""
 
 from __future__ import annotations
 
+import re
 from collections import deque
 
 from PySide6.QtCore import Qt, Signal
@@ -9,11 +10,9 @@ from PySide6.QtGui import QColor, QKeyEvent, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
-    QPushButton,
     QStackedWidget,
     QVBoxLayout,
 )
@@ -21,9 +20,11 @@ from PySide6.QtWidgets import (
 from mcserver.presentation import theme
 from mcserver.presentation.controllers.console import ConsoleLine, LineLevel
 from mcserver.presentation.i18n import Messages
+from mcserver.presentation.views.widgets import button, icon_label, panel_bar
 
 MAX_CONSOLE_LINES = 5000
 MAX_HISTORY = 100
+_PREFIX = re.compile(r"^\[[^\]]*\]:?")
 FILTERS = ("all", "warnings")
 """Console filters; each has the label key ``console.filter.<name>``."""
 
@@ -79,25 +80,29 @@ class ServerConsoleView(QFrame):
         super().__init__()
         self.setProperty("card", True)
         self.setObjectName("consoleCard")
+        self._messages = messages
 
+        toolbar, bar = panel_bar("top")
         title = QLabel(messages.text("console.title"))
         title.setObjectName("consoleTitle")
-        self.clear_button = QPushButton(messages.text("console.clear"))
-        self.clear_button.setObjectName("clearConsole")
+        self.count_label = QLabel()
+        self.count_label.setObjectName("panelCount")
+        self.clear_button = button(messages.text("console.clear"), "ghost", "close", "clearConsole")
         self.clear_button.clicked.connect(self.clear_requested)
-        self.save_button = QPushButton(messages.text("console.save"))
-        self.save_button.setObjectName("clearConsole")
+        self.save_button = button(messages.text("console.save"), "ghost", "save", "clearConsole")
         self.save_button.clicked.connect(self.save_requested)
         self.filter_combo = QComboBox()
+        self.filter_combo.setFixedWidth(170)
         for name in FILTERS:
             self.filter_combo.addItem(messages.text(f"console.filter.{name}"), name)
         self.filter_combo.currentIndexChanged.connect(self._refilter)
         self._lines: deque[ConsoleLine] = deque(maxlen=MAX_CONSOLE_LINES)
-        header = QHBoxLayout()
-        header.addWidget(title, 1)
-        header.addWidget(self.filter_combo)
-        header.addWidget(self.save_button)
-        header.addWidget(self.clear_button)
+        bar.addWidget(icon_label("terminal"))
+        bar.addWidget(title)
+        bar.addWidget(self.count_label, 1)
+        bar.addWidget(self.filter_combo)
+        bar.addWidget(self.save_button)
+        bar.addWidget(self.clear_button)
 
         self.text = QPlainTextEdit()
         self.text.setObjectName("console")
@@ -106,10 +111,12 @@ class ServerConsoleView(QFrame):
         self.text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self.text.setPlaceholderText(messages.text("console.placeholder"))
         self.text.setUndoRedoEnabled(False)
+        self.text.setFrameShape(QFrame.Shape.NoFrame)
 
         self.unavailable_label = QLabel(messages.text("console.unavailable"))
         self.unavailable_label.setObjectName("consoleUnavailable")
         self.unavailable_label.setWordWrap(True)
+        self.unavailable_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.pages = QStackedWidget()
         self.pages.addWidget(self.text)
@@ -118,39 +125,49 @@ class ServerConsoleView(QFrame):
         for control in (self.clear_button, self.save_button, self.filter_combo):
             control.setEnabled(available)
 
-        self._normal = QTextCharFormat()
-        self._normal.setForeground(QColor(theme.CONSOLE_TEXT))
-        self._error = QTextCharFormat()
-        self._error.setForeground(QColor(theme.CONSOLE_ERROR))
-        self._command = QTextCharFormat()
-        self._command.setForeground(QColor(theme.ACCENT))
-        self._warning = QTextCharFormat()
-        self._warning.setForeground(QColor(theme.WARNING))
+        self._normal = self._char_format(theme.CONSOLE_TEXT)
+        self._dim = self._char_format(theme.CONSOLE_TIMESTAMP)
+        self._error = self._char_format(theme.DANGER_TEXT)
+        self._command = self._char_format(theme.CONSOLE_COMMAND)
+        self._warning = self._char_format(theme.WARNING_TEXT)
 
+        command_bar, row = panel_bar("bottom")
+        row.setContentsMargins(12, 8, 8, 8)
+        self.prompt = QLabel(messages.text("console.prompt"))
+        self.prompt.setObjectName("consolePrompt")
         self.input = CommandInput()
         self.input.setObjectName("consoleInput")
-        self.input.setPlaceholderText(messages.text("console.input.placeholder"))
         self.input.returnPressed.connect(self._submit)
-        self.send_button = QPushButton(messages.text("console.send"))
-        self.send_button.setObjectName("consoleSend")
+        self.send_button = button(messages.text("console.send"), "secondary", None, "consoleSend")
         self.send_button.clicked.connect(self._submit)
-        input_row = QHBoxLayout()
-        input_row.setSpacing(8)
-        input_row.addWidget(self.input, 1)
-        input_row.addWidget(self.send_button)
+        row.addWidget(self.prompt)
+        row.addWidget(self.input, 1)
+        row.addWidget(self.send_button)
         self.set_input_enabled(False)
+        self._update_count()
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 12, 16, 16)
-        layout.setSpacing(10)
-        layout.addLayout(header)
+        layout.setContentsMargins(1, 1, 1, 1)
+        layout.setSpacing(0)
+        layout.addWidget(toolbar)
         layout.addWidget(self.pages, 1)
-        layout.addLayout(input_row)
+        layout.addWidget(command_bar)
+
+    @staticmethod
+    def _char_format(color: str) -> QTextCharFormat:
+        result = QTextCharFormat()
+        result.setForeground(QColor(color))
+        return result
+
+    def _update_count(self) -> None:
+        count = len(self._lines)
+        self.count_label.setText(self._messages.text("console.line_count", count=count) if count else "")
 
     def append_lines(self, lines: tuple[ConsoleLine, ...]) -> None:
         """Append a batch, following the end only if the view was already at the bottom."""
         self._lines.extend(lines)
         self._render(tuple(line for line in lines if self._shown(line)))
+        self._update_count()
 
     def _shown(self, line: ConsoleLine) -> bool:
         return self.filter_combo.currentData() != "warnings" or line.level is not LineLevel.INFO
@@ -172,8 +189,15 @@ class ServerConsoleView(QFrame):
                 cursor.insertBlock()
             if line.is_command:
                 cursor.insertText(f"> {line.text}", self._command)
-            else:
-                cursor.insertText(line.text, self._format(line))
+                continue
+            body = self._format(line)
+            prefix = _PREFIX.match(line.text)
+            if prefix is None:
+                cursor.insertText(line.text, body)
+                continue
+            # "[18:02:10 INFO]:" is dimmed; a warning or error level keeps its colour.
+            cursor.insertText(prefix.group(0), self._dim if body is self._normal else body)
+            cursor.insertText(line.text[prefix.end() :], body)
         cursor.endEditBlock()
         if follow:
             scrollbar.setValue(scrollbar.maximum())
@@ -188,6 +212,9 @@ class ServerConsoleView(QFrame):
         """Allow typing commands only while the server can receive them."""
         self.input.setEnabled(enabled)
         self.send_button.setEnabled(enabled)
+        self.prompt.setEnabled(enabled)
+        key = "console.input.placeholder" if enabled else "console.input.disabled"
+        self.input.setPlaceholderText(self._messages.text(key))
 
     def _submit(self) -> None:
         command = self.input.text().strip()
@@ -201,6 +228,7 @@ class ServerConsoleView(QFrame):
         """Remove all displayed text."""
         self._lines.clear()
         self.text.clear()
+        self._update_count()
 
     def plain_text(self) -> str:
         """Return the displayed text."""

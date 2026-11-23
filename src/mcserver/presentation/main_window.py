@@ -9,7 +9,16 @@ from enum import Enum
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, QUrl
-from PySide6.QtGui import QCloseEvent, QDesktopServices, QGuiApplication, QKeySequence
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QColor,
+    QDesktopServices,
+    QGuiApplication,
+    QKeySequence,
+    QPainter,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -27,7 +36,7 @@ from mcserver.application.ports import StartOptions
 from mcserver.application.server_health import UncleanShutdown
 from mcserver.application.server_management import LegacyImportResult
 from mcserver.domain.server_configuration import ServerConfiguration
-from mcserver.presentation import theme
+from mcserver.presentation import icons, theme
 from mcserver.presentation.adapters.output_bridge import OutputBridge
 from mcserver.presentation.adapters.status_poller import StatusPoller
 from mcserver.presentation.controllers.backups import BackupsController
@@ -90,6 +99,19 @@ class StopTimeoutChoice(Enum):
 
 
 AskAfterStopTimeout = Callable[[str, float], StopTimeoutChoice]
+
+
+def _dot(color: str, size: int = 8) -> QPixmap:
+    image = QPixmap(size * 2, size * 2)
+    image.fill(QColor(0, 0, 0, 0))
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(QColor(0, 0, 0, 0))
+    painter.setBrush(QColor(color))
+    painter.drawEllipse(2, 2, size * 2 - 4, size * 2 - 4)
+    painter.end()
+    image.setDevicePixelRatio(2.0)
+    return image
 
 
 def open_folder_with_system(path: Path) -> bool:
@@ -238,6 +260,31 @@ class MainWindow(QMainWindow):
         self.exit_action = file_menu.addAction(self._messages.text("menu.file.exit"))
         self.exit_action.triggered.connect(self.close)
 
+        # Server menu: the selected server's actions, enabled exactly like their buttons (M4 design).
+        server_menu = self.menuBar().addMenu(self._messages.text("menu.server"))
+        view = self.dashboard_view
+        self.server_actions: dict[str, tuple[QAction, QPushButton]] = {}
+        groups = (
+            (
+                ("start", view.start_button, "Ctrl+R"),
+                ("stop", view.stop_button, None),
+                ("restart", view.restart_button, None),
+                ("kill", view.kill_button, None),
+            ),
+            (("open_folder", view.open_folder_button, None), ("open_logs", view.open_logs_button, None)),
+            (("edit", view.edit_button, None), ("delete", view.delete_button, None)),
+        )
+        for index, group in enumerate(groups):
+            if index:
+                server_menu.addSeparator()
+            for key, source, shortcut in group:
+                action = server_menu.addAction(self._messages.text(f"menu.server.{key}"))
+                if shortcut:
+                    action.setShortcut(QKeySequence(shortcut))
+                action.triggered.connect(source.click)
+                self.server_actions[key] = (action, source)
+        self._update_server_menu()
+
     def _build_content(self) -> None:
         central = QWidget()
         central.setObjectName("central")
@@ -249,8 +296,17 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.dashboard_view, 1)
         self.setCentralWidget(central)
 
+    def _update_server_menu(self) -> None:
+        """Mirror the toolbar: a menu action is enabled when its button is usable."""
+        has_server = self.dashboard_controller.state.row is not None
+        for action, source in self.server_actions.values():
+            action.setEnabled(has_server and source.isEnabled() and not source.isHidden())
+
     def _build_status_bar(self) -> None:
         status_bar = self.statusBar()
+        folder_icon = QLabel()
+        folder_icon.setPixmap(icons.pixmap("folder", theme.TEXT_MUTED, 14))
+        status_bar.addWidget(folder_icon)
         self.servers_folder_label = QLabel(
             self._messages.text("status.servers_folder", path=str(self._services.servers_root))
         )
@@ -265,6 +321,10 @@ class MainWindow(QMainWindow):
             # Technical detail stays out of the main text; available on hover.
             self.java_status_label.setToolTip(self._services.java_problem)
         status_bar.addWidget(self.servers_folder_label, 1)
+        self.java_dot = QLabel()
+        self.java_dot.setObjectName("javaDot")
+        self._set_java_dot(self._services.can_run_servers and not self._services.java_problem)
+        status_bar.addPermanentWidget(self.java_dot)
         status_bar.addPermanentWidget(self.java_status_label)
         self.java_check_button = QPushButton(self._messages.text("status.java_check"))
         self.java_check_button.setObjectName("javaCheck")
@@ -284,6 +344,10 @@ class MainWindow(QMainWindow):
         self.server_list_view.refresh_requested.connect(servers.refresh)
         self.refresh_action.triggered.connect(servers.refresh)
         self.server_list_view.create_requested.connect(self.open_create_dialog)
+        self.server_list_view.import_requested.connect(self.open_adopt_dialog)
+        self.server_list_view.settings_requested.connect(self.open_settings_dialog)
+        self.dashboard_view.new_server_requested.connect(self.open_create_dialog)
+        self.dashboard_view.import_requested.connect(self.open_adopt_dialog)
         self.new_server_action.triggered.connect(self.open_create_dialog)
         self.creation_controller.created.connect(self._on_server_created)
         if self.poller is not None:
@@ -292,6 +356,7 @@ class MainWindow(QMainWindow):
         dashboard = self.dashboard_controller
         dashboard.state_changed.connect(self.dashboard_view.show_state)
         dashboard.state_changed.connect(lambda _state: self._track_active_server())
+        dashboard.state_changed.connect(lambda _state: self._update_server_menu())
         dashboard.operation_finished.connect(self._on_operation_finished)
         dashboard.eula_required.connect(self._on_eula_required)
         dashboard.java_problem.connect(self._on_java_problem)
@@ -359,7 +424,7 @@ class MainWindow(QMainWindow):
     def _show_list_state(self, state: ServerListState) -> None:
         self.server_list_view.show_state(state)
         self.dashboard_controller.show_server(state.selected)
-        self.dashboard_view.show_details_error(state.details_error_key)
+        self.dashboard_view.show_details_error(state.details_error_key, has_servers=bool(state.servers))
         selected_id = state.selected.server_id if state.selected else None
         self.console_controller.show_server(selected_id)
         self.properties_controller.show_server(selected_id)
@@ -596,12 +661,16 @@ class MainWindow(QMainWindow):
 
     def _show_java_status(self, status: JavaStatus) -> None:
         installation = status.installation
+        self._set_java_dot(installation is not None)
         if installation is None:
             self.java_status_label.setText(self._messages.text("status.java_missing"))
             self.java_status_label.setToolTip(_NO_TOOLTIP)
             return
         self.java_status_label.setText(self._messages.text("status.java_ready", major=installation.major_version))
         self.java_status_label.setToolTip(installation.executable)
+
+    def _set_java_dot(self, ready: bool) -> None:
+        self.java_dot.setPixmap(_dot(theme.ACCENT if ready else theme.DANGER))
 
     def _show_error_in_status_bar(self, error: BaseException) -> None:
         self.statusBar().showMessage(render_message(self._messages, describe_error(error)), 8000)

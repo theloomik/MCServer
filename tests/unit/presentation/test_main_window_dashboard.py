@@ -82,7 +82,9 @@ def test_dashboard_shows_server_card_and_enabled_start(qtbot: QtBot, tmp_path: P
     dashboard = setup.dashboard
     assert dashboard.title_label.text() == "survival"
     memory = MESSAGES.text("server_details.memory_value", memory_mb=4096)
-    assert dashboard.subtitle_label.text() == MESSAGES.text("dashboard.subtitle", jar_file="paper.jar", memory=memory)
+    assert dashboard.subtitle_label.text() == MESSAGES.text(
+        "dashboard.subtitle_folder", jar_file="paper.jar", memory=memory, folder="survival"
+    )
     assert dashboard.status_pill.property("status") == "stopped"
     assert dashboard.start_button.isEnabled() and not dashboard.stop_button.isEnabled()
     assert dashboard.start_button.text() == MESSAGES.text("dashboard.start")
