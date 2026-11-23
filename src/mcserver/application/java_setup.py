@@ -40,6 +40,10 @@ class JavaSetup:
             installation = None
         return JavaStatus(installation, self._provider.configured_executable)
 
+    def check(self, executable: str) -> JavaInstallation:
+        """Check ``executable`` without using it yet; raise ``InvalidJavaExecutable`` if it does not run."""
+        return self._provider.inspect(executable)
+
     def choose_executable(self, executable: str | None) -> JavaStatus:
         """Use ``executable`` for later starts (``None`` = detect automatically); raise ``InvalidJavaExecutable``."""
         self._provider.configure(executable)

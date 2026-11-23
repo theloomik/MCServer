@@ -184,7 +184,7 @@ class ServerListView(QWidget):
 
     def _item_text(self, row: ServerRow) -> str:
         status = self._messages.text(STATUS_KEYS[row.status])
-        return self._messages.text("server_list.item", server_id=row.server_id, status=status)
+        return self._messages.text("server_list.item", server_id=row.configuration.name, status=status)
 
     def _subtitle(self, row: ServerRow) -> str:
         status = self._messages.text(STATUS_KEYS[row.status])

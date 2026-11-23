@@ -49,6 +49,8 @@ class ServerDashboardView(QWidget):
     start_requested = Signal()
     stop_requested = Signal()
     kill_requested = Signal()
+    edit_requested = Signal()
+    delete_requested = Signal()
     details_requested = Signal(object)  # UserMessage
     open_folder_requested = Signal(object)  # Path
 
@@ -208,6 +210,17 @@ class ServerDashboardView(QWidget):
         self.open_folder_button.setObjectName("openFolderButton")
         self.open_folder_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.open_folder_button.clicked.connect(self._on_open_folder)
+        self.edit_button = QPushButton(self._messages.text("dashboard.edit"))
+        self.edit_button.setObjectName("secondaryButton")
+        self.edit_button.clicked.connect(self.edit_requested)
+        self.delete_button = QPushButton(self._messages.text("dashboard.delete"))
+        self.delete_button.setObjectName("secondaryButton")
+        self.delete_button.clicked.connect(self.delete_requested)
+        manage_row = QHBoxLayout()
+        manage_row.setSpacing(8)
+        for button in (self.edit_button, self.delete_button):
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            manage_row.addWidget(button)
         note = QLabel(self._messages.text("server_details.next_launch_note"))
         note.setObjectName("controlHint")
         note.setWordWrap(True)
@@ -217,6 +230,7 @@ class ServerDashboardView(QWidget):
         layout.setSpacing(14)
         layout.addLayout(grid)
         layout.addWidget(self.open_folder_button)
+        layout.addLayout(manage_row)
         layout.addWidget(note)
         return card
 
@@ -236,7 +250,10 @@ class ServerDashboardView(QWidget):
         configuration = row.configuration
         memory = self._messages.text("server_details.memory_value", memory_mb=configuration.memory_mb)
         self._folder = self._servers_root / configuration.directory
-        self.title_label.setText(configuration.server_id)
+        self.title_label.setText(configuration.name)
+        self.title_label.setToolTip(configuration.server_id)
+        # Deleting is only possible while this server is not active (M2-GUI-04).
+        self.delete_button.setEnabled(state.status in (ServerStatus.STOPPED, ServerStatus.UNKNOWN))
         self.subtitle_label.setText(
             self._messages.text("dashboard.subtitle", jar_file=configuration.jar_file, memory=memory)
         )
