@@ -6,11 +6,12 @@ import json
 import time
 import zipfile
 from collections.abc import Callable, Iterator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
+from mcserver.application.backup_schedule import BackupSchedule
 from mcserver.application.backups import BackupFailed, BackupKind, BackupNotFound, BackupNotPossible
 from mcserver.application.errors import ServerIsRunning
 from mcserver.bootstrap.server_runtime import ServerRuntime, build_server_runtime
@@ -255,3 +256,26 @@ def test_metadata_is_versioned_and_ids_are_unique(tmp_path: Path) -> None:
     assert first.backup_id == "20261123-183000-manual" and second.backup_id == "20261123-183000-manual-2"
     data = json.loads((root / BACKUPS_DIRECTORY / "survival" / f"{first.backup_id}.json").read_text(encoding="utf-8"))
     assert data["format_version"] == 1 and data["directory"] == "survival"
+
+
+def test_scheduled_backup_runs_online_and_keeps_only_the_newest(runtime: ServerRuntime, tmp_path: Path) -> None:
+    make_server(runtime, tmp_path)
+    manual = runtime.backups.create("survival", "keep me")
+    scheduler = runtime.scheduled_backups
+    scheduler.set_schedule("survival", BackupSchedule(enabled=True, interval_hours=1, keep=1))
+    assert scheduler.due_server() is None  # stopped servers are not backed up on a schedule
+
+    runtime.coordinator.start_server("survival")
+    assert wait_until(lambda: runtime.coordinator.state is ServerState.RUNNING)
+    assert scheduler.due_server() is None  # the manual backup is newer than the interval
+    for _ in range(2):
+        scheduler._clock = lambda: datetime.now(timezone.utc) + timedelta(hours=3)  # type: ignore[attr-defined]
+        result = scheduler.run_due()
+        assert result is not None and result.backup.online and result.backup.kind is BackupKind.SCHEDULED
+        time.sleep(1.1)  # backup ids have one-second resolution
+    assert runtime.coordinator.stop_server() is True
+
+    kinds = sorted(backup.kind.value for backup in runtime.backups.list("survival"))
+    assert kinds == ["manual", "scheduled"]
+    assert manual.backup_id in [backup.backup_id for backup in runtime.backups.list("survival")]
+    assert (tmp_path / "servers" / ".trash").is_dir()  # the old scheduled backup was moved, not deleted

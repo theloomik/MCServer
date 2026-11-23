@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from mcserver.application.auto_restart import AutoRestartPolicy
+from mcserver.application.backup_schedule import ScheduledBackups
 from mcserver.application.backups import BackupService
 from mcserver.application.errors import (
     EulaNotAccepted,
@@ -91,6 +92,11 @@ def runtime_with(runner: FakeRunner) -> ServerRuntime:
         properties=ServerPropertiesService(FileServerPropertiesStore(unused_root, configurations)),
         metrics=ServerMetrics(coordinator, PsutilProcessMetrics(), configurations, lambda: 0.0),
         backups=BackupService(configurations, coordinator, ZipBackupStore(unused_root)),
+        scheduled_backups=ScheduledBackups(
+            ZipBackupStore(unused_root),
+            BackupService(configurations, coordinator, ZipBackupStore(unused_root)),
+            coordinator,
+        ),
         activity=ServerActivity(),
         auto_restart=AutoRestartPolicy(lambda: False),
         address=ServerAddressLookup(

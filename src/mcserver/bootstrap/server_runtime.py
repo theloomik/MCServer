@@ -7,6 +7,7 @@ from time import monotonic
 from types import TracebackType
 
 from mcserver.application.auto_restart import AutoRestartPolicy
+from mcserver.application.backup_schedule import ScheduledBackups
 from mcserver.application.backups import BackupService
 from mcserver.application.errors import ServerStopTimedOut
 from mcserver.application.java_setup import JavaSetup
@@ -86,6 +87,8 @@ class ServerRuntime:
     """Opt-in restart after a crash (M3-BE-05)."""
     address: ServerAddressLookup
     """LAN address and port players connect to (M3-GUI-05)."""
+    scheduled_backups: ScheduledBackups
+    """Backups made automatically while a server runs (ADR 0008)."""
 
     def close(self, timeout: float | None = None) -> bool:
         """Stop the active server gracefully, then end output delivery; never kills (ADR 0006).
@@ -163,6 +166,8 @@ def build_server_runtime(
     properties = ServerPropertiesService(
         FileServerPropertiesStore(servers_directory, configurations), lambda: coordinator.active_server_id
     )
+    backup_store = ZipBackupStore(servers_directory)
+    backups = BackupService(configurations, coordinator, backup_store)
     activity = ServerActivity(lambda server_id: _max_players(properties, server_id))
     output.subscribe(activity.on_line, replay=False)
     return ServerRuntime(
@@ -178,7 +183,8 @@ def build_server_runtime(
         adoption=ServerAdoption(management, LocalServerFolderAdoption(servers_directory)),
         properties=properties,
         metrics=ServerMetrics(coordinator, PsutilProcessMetrics(), configurations, monotonic),
-        backups=BackupService(configurations, coordinator, ZipBackupStore(servers_directory)),
+        backups=backups,
+        scheduled_backups=ScheduledBackups(backup_store, backups, coordinator),
         activity=activity,
         auto_restart=AutoRestartPolicy(lambda: settings.current.auto_restart),
         address=ServerAddressLookup(properties, lan_ipv4_address),

@@ -30,10 +30,13 @@ import zlib
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
+from mcserver.application.backup_schedule import BackupSchedule, InvalidBackupSchedule
 from mcserver.application.backups import BackupFailed, BackupInfo, BackupKind, BackupProgress
 from mcserver.application.ports import RemovedServerFiles
 from mcserver.domain.server_configuration import is_safe_name
 from mcserver.infrastructure.recycle_bin import RecycleBinServerFilesRemover
+
+SCHEDULE_FILE_NAME = "schedule.json"
 
 BACKUPS_DIRECTORY = ".backups"
 EXCLUDED_TOP_LEVEL = frozenset({"cache", "libraries", "versions", "logs", "crash-reports", "debug", ".mcserver"})
@@ -61,6 +64,8 @@ class ZipBackupStore:
         folder = self._backup_folder(server_id)
         found: list[BackupInfo] = []
         for metadata in folder.glob("*.json") if folder.is_dir() else ():
+            if metadata.name == SCHEDULE_FILE_NAME:
+                continue
             try:
                 info = _info_from(json.loads(metadata.read_text(encoding="utf-8")))
             except (OSError, ValueError, KeyError, TypeError):
@@ -188,6 +193,35 @@ class ZipBackupStore:
             if not staging.name.startswith(_OLD_PREFIX):
                 shutil.rmtree(staging, ignore_errors=True)  # an extracted copy that was never swapped in
         return tuple(repaired)
+
+    # --- schedule ------------------------------------------------------------------------------
+
+    def load_schedule(self, server_id: str) -> BackupSchedule:
+        """Return the stored schedule; a missing or damaged file means \"off\" (logged)."""
+        path = self._backup_folder(server_id) / SCHEDULE_FILE_NAME
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return BackupSchedule(enabled=data["enabled"], interval_hours=data["interval_hours"], keep=data["keep"])
+        except FileNotFoundError:
+            return BackupSchedule()
+        except (OSError, ValueError, KeyError, TypeError, InvalidBackupSchedule):
+            _logger.warning("Ignoring the unreadable backup schedule %s.", path)
+            return BackupSchedule()
+
+    def save_schedule(self, server_id: str, schedule: BackupSchedule) -> None:
+        """Store ``schedule`` next to the server's backups."""
+        folder = self._backup_folder(server_id)
+        data: dict[str, object] = {
+            "format_version": 1,
+            "enabled": schedule.enabled,
+            "interval_hours": schedule.interval_hours,
+            "keep": schedule.keep,
+        }
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            _write_json(folder / SCHEDULE_FILE_NAME, data)
+        except OSError as error:
+            raise BackupFailed(server_id, f"the backup schedule could not be saved: {error}") from error
 
     # --- delete --------------------------------------------------------------------------------
 
