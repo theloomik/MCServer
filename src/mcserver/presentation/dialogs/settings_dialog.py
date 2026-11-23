@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QSpinBox, QWidget
+from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox, QWidget
 
 from mcserver.application.errors import InvalidJavaExecutable
 from mcserver.application.java_setup import JavaSetup
@@ -82,6 +82,14 @@ class SettingsDialog(FormDialog):
             self.startup_spin,
             messages.text("settings.startup_timeout.hint"),
         )
+        self.auto_restart_check = QCheckBox(messages.text("settings.auto_restart.label"))
+        self.auto_restart_check.setChecked(settings.auto_restart)
+        self.body.addWidget(self.auto_restart_check)
+        hint = QLabel(messages.text("settings.auto_restart.hint"))
+        hint.setObjectName("fieldHint")
+        hint.setWordWrap(True)
+        self.body.addWidget(hint)
+        self.body.addSpacing(6)
         self.import_button = secondary_button(messages.text("settings.import_legacy"))
         self.import_button.clicked.connect(self._request_import)
         self.body.addWidget(self.import_button)
@@ -126,6 +134,7 @@ class SettingsDialog(FormDialog):
             java_executable=self._java_executable,
             stop_timeout_seconds=self.stop_spin.value(),
             startup_timeout_seconds=self.startup_spin.value(),
+            auto_restart=self.auto_restart_check.isChecked(),
         )
         if error is not None:
             self.show_error(render_message(self._messages, error))

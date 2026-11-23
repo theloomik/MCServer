@@ -369,4 +369,37 @@ MESSAGES: Catalog = {
     "errors.backup_failed": "The backup operation for {server_id} failed: {reason}",
     "errors.backup_not_found": "That backup no longer exists.",
     "unclean.open_backups": "Open backups",
+    "metrics.players": "Players",
+    "metrics.players_value": "{count} / {maximum}",
+    "metrics.tps": "TPS",
+    "metrics.tps_value": "{tps}",
+    "metrics.players_names": "{names}",
+    "dashboard.restart": "Restart",
+    "dashboard.restarting": "Restarting…",
+    "dashboard.hint.auto_restarting": (
+        "The server crashed. It starts again automatically in {delay} s (attempt {attempt} of {limit})."
+    ),
+    "dashboard.hint.auto_restart_gave_up": (
+        "The server crashed {limit} times within 10 minutes, so it was not started again. "
+        "Check the details before starting it."
+    ),
+    "dashboard.notice.auto_restarted": "Started again automatically after a crash (attempt {attempt} of {limit}).",
+    "dashboard.open_logs": "Open logs",
+    "dashboard.no_logs": "This server has no logs folder yet; it is created on the first start.",
+    "dashboard.address": "LAN address",
+    "dashboard.address_unknown": "Not connected to a network",
+    "dashboard.copy_address": "Copy",
+    "dashboard.address_copied": "Copied {address}.",
+    "console.save": "Save…",
+    "console.save_title": "Save console log",
+    "console.save_filter": "Log files (*.log *.txt)",
+    "console.saved": "Console log saved to {path}.",
+    "console.save_failed": "The console log could not be saved to {path}.",
+    "console.filter.all": "All lines",
+    "console.filter.warnings": "Warnings and errors",
+    "settings.auto_restart.label": "Restart a server automatically after a crash",
+    "settings.auto_restart.hint": (
+        "At most 3 times within 10 minutes. A server you stop or kill, or one that does not finish "
+        "starting, is never restarted."
+    ),
 }

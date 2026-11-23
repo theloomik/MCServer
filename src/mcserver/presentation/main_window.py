@@ -4,12 +4,21 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, QUrl
-from PySide6.QtGui import QCloseEvent, QDesktopServices, QKeySequence
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QWidget
+from PySide6.QtGui import QCloseEvent, QDesktopServices, QGuiApplication, QKeySequence
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QWidget,
+)
 
 from mcserver.application.backups import BackupInfo
 from mcserver.application.errors import InvalidJavaExecutable, JavaNotFound, JavaVersionTooOld
@@ -62,6 +71,8 @@ LegacyOffer = Callable[[int], bool]
 LegacyResultNotifier = Callable[[LegacyImportResult], None]
 ConfirmBackup = Callable[[BackupInfo], bool]
 """Ask whether to restore or delete a backup; return the answer."""
+LogPathChooser = Callable[[str], str]
+"""Ask where to save ``server_id``'s console log; ``""`` cancels."""
 
 
 class StopTimeoutChoice(Enum):
@@ -109,6 +120,8 @@ class MainWindow(QMainWindow):
         notify_legacy_result: LegacyResultNotifier | None = None,
         confirm_restore: ConfirmBackup | None = None,
         confirm_delete_backup: ConfirmBackup | None = None,
+        choose_log_path: LogPathChooser | None = None,
+        auto_restart_delay_ms: int | None = None,
     ) -> None:
         """Build the window from already-created services and messages, then load the servers."""
         super().__init__(parent)
@@ -127,6 +140,7 @@ class MainWindow(QMainWindow):
         self._notify_legacy_result = notify_legacy_result or self._show_legacy_result
         self._confirm_restore = confirm_restore or self._ask_to_restore
         self._confirm_delete_backup = confirm_delete_backup or self._ask_to_delete_backup
+        self._choose_log_path = choose_log_path or self._ask_log_path
         self.create_dialog: CreateServerDialog | None = None
         self.edit_dialog: EditServerDialog | None = None
         self.adopt_dialog: AdoptServerDialog | None = None
@@ -143,7 +157,10 @@ class MainWindow(QMainWindow):
         self.poller = StatusPoller(coordinator, parent=self) if coordinator is not None else None
         self.output_bridge = OutputBridge(services.output, self) if services.output is not None else None
         self.server_list_controller = ServerListController(services.management, coordinator, self)
-        self.dashboard_controller = ServerDashboardController(coordinator, self.poller, self.background, self)
+        restart_delay = {} if auto_restart_delay_ms is None else {"auto_restart_delay_ms": auto_restart_delay_ms}
+        self.dashboard_controller = ServerDashboardController(
+            coordinator, self.poller, self.background, self, auto_restart=services.auto_restart, **restart_delay
+        )
         self.console_controller = ConsoleController(self.output_bridge, parent=self)
         # Creation needs no Java: it is available without Java as well.
         self.creation_controller = ServerCreationController(
@@ -260,9 +277,12 @@ class MainWindow(QMainWindow):
         dashboard.stop_timed_out.connect(self._on_stop_timed_out)
         self.dashboard_view.start_requested.connect(lambda: dashboard.start())
         self.dashboard_view.stop_requested.connect(dashboard.stop)
+        self.dashboard_view.restart_requested.connect(dashboard.restart)
         self.dashboard_view.kill_requested.connect(self.request_kill)
         self.dashboard_view.details_requested.connect(self.show_details)
         self.dashboard_view.open_folder_requested.connect(self._open_server_folder)
+        self.dashboard_view.open_logs_requested.connect(self._open_logs_folder)
+        self.dashboard_view.copy_address_requested.connect(self._copy_address)
         self.java_check_button.clicked.connect(self.check_java)
         self.java_choose_button.clicked.connect(self.choose_java)
 
@@ -280,6 +300,7 @@ class MainWindow(QMainWindow):
         properties = self.properties_controller
         if self.properties_view is not None:
             properties.state_changed.connect(self.properties_view.show_state)
+            properties.state_changed.connect(lambda state: self.show_address(state.server_id))
             self.properties_view.save_requested.connect(properties.save)
             self.properties_view.reload_requested.connect(lambda: properties.reload())
         backups = self.backups_controller
@@ -294,6 +315,7 @@ class MainWindow(QMainWindow):
         console.lines_appended.connect(self.dashboard_view.console.append_lines)
         console.cleared.connect(self.dashboard_view.console.clear)
         self.dashboard_view.console.clear_requested.connect(console.clear)
+        self.dashboard_view.console.save_requested.connect(self.save_console_log)
         self.dashboard_view.console.command_submitted.connect(dashboard.send_command)
 
     # --- behaviour --------------------------------------------------------------------------
@@ -308,6 +330,7 @@ class MainWindow(QMainWindow):
         self.backups_controller.show_server(selected_id)
         self.backups_controller.set_active_server(self.dashboard_controller.active_server_id)
         self.sample_metrics()
+        self.show_address(selected_id)
 
     def open_create_dialog(self) -> None:
         """Show the create-server dialog (only one at a time)."""
@@ -358,6 +381,45 @@ class MainWindow(QMainWindow):
         if snapshot is not None and (row is None or snapshot.server_id != row.server_id):
             snapshot = None
         self.dashboard_view.show_metrics(snapshot)
+        activity = self._services.activity
+        if activity is None or snapshot is None:
+            self.dashboard_view.show_activity(None)
+        else:
+            self.dashboard_view.show_activity(activity.snapshot(snapshot.server_id))
+
+    def show_address(self, server_id: str | None) -> None:
+        """Show the LAN address of ``server_id`` in the server card (M3-GUI-05)."""
+        lookup = self._services.address
+        address = lookup.address(server_id) if lookup is not None and server_id is not None else None
+        self.dashboard_view.show_address(address)
+
+    def _copy_address(self, text: str) -> None:
+        clipboard = QGuiApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText(text)
+            self.statusBar().showMessage(self._messages.text("dashboard.address_copied", address=text), 4000)
+
+    def _open_logs_folder(self, path: Path) -> None:
+        if not path.is_dir():
+            self.statusBar().showMessage(self._messages.text("dashboard.no_logs"), 6000)
+            return
+        self._open_server_folder(path)
+
+    def save_console_log(self) -> None:
+        """Save the console lines of the selected server to a file the user picks (M3-GUI-01)."""
+        server_id = self.console_controller.server_id
+        if server_id is None:
+            return
+        path = self._choose_log_path(server_id)
+        if not path:
+            return
+        try:
+            Path(path).write_text(self.dashboard_view.console.log_text(), encoding="utf-8")
+        except OSError as error:
+            _logger.warning("Could not save the console log to %s: %s", path, error)
+            self.statusBar().showMessage(self._messages.text("console.save_failed", path=path), 8000)
+            return
+        self.statusBar().showMessage(self._messages.text("console.saved", path=path), 6000)
 
     def request_restore(self, backup: BackupInfo) -> None:
         """Restore ``backup`` after a double confirmation."""
@@ -642,6 +704,16 @@ class MainWindow(QMainWindow):
         box.exec()
         if backups is not None and box.clickedButton() is backups:
             self.open_backups(incident.server_id)
+
+    def _ask_log_path(self, server_id: str) -> str:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        path, _filter = QFileDialog.getSaveFileName(
+            self,
+            self._messages.text("console.save_title"),
+            str(Path.home() / f"{server_id}-console-{stamp}.log"),
+            self._messages.text("console.save_filter"),
+        )
+        return path
 
     def _ask_to_restore(self, backup: BackupInfo) -> bool:
         name = self._server_name(backup.server_id)

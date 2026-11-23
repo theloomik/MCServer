@@ -5,8 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from mcserver.application.auto_restart import AutoRestartPolicy
 from mcserver.application.backups import BackupService
 from mcserver.application.java_setup import JavaSetup
+from mcserver.application.server_activity import ServerActivity
+from mcserver.application.server_address import ServerAddressLookup
 from mcserver.application.server_adoption import ServerAdoption
 from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_creation import ServerCreation
@@ -45,6 +48,9 @@ class PresentationServices:
         properties: ServerPropertiesService | None = None,
         metrics: ServerMetrics | None = None,
         backups: BackupService | None = None,
+        activity: ServerActivity | None = None,
+        auto_restart: AutoRestartPolicy | None = None,
+        address: ServerAddressLookup | None = None,
     ) -> None:
         """Hold the services; ``closer`` releases backend resources on shutdown."""
         self.servers_root = servers_root
@@ -69,6 +75,12 @@ class PresentationServices:
         """CPU, memory and uptime of the running server."""
         self.backups = backups
         """Backups and restores."""
+        self.activity = activity
+        """Players online and tick rate."""
+        self.auto_restart = auto_restart
+        """Opt-in restart after a crash."""
+        self.address = address
+        """LAN address and port of a server."""
         self.crashed = False
         """Set when an unhandled exception ends the application (the graceful stop was already tried)."""
         self._closer = closer
