@@ -10,6 +10,7 @@ from mcserver.application.errors import (
     InvalidSourceJar,
     JavaNotFound,
     ServerDirectoryAlreadyExists,
+    ServerStartFailed,
     ServerStopFailed,
 )
 from mcserver.application.java_setup import JavaSetup
@@ -32,7 +33,6 @@ from mcserver.bootstrap.server_runtime import (
 )
 from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.infrastructure.process_runner import SubprocessServerRunner
-from mcserver.infrastructure.server_configuration import LegacyServerConfigurationRepository
 from mcserver.infrastructure.server_configuration_store import (
     JsonServerConfigurationRepository,
     StoredServerLaunchSettings,
@@ -134,7 +134,7 @@ def test_provisioned_server_is_launchable_from_configuration_store(tmp_path: Pat
     root = tmp_path / "servers"
     source = make_source_jar(tmp_path)
 
-    with build_server_runtime(root, StubJavaResolver(), launch_from_configuration_store=True) as runtime:
+    with build_server_runtime(root, StubJavaResolver()) as runtime:
         runtime.management.create_server(
             server_id="survival", directory="survival", jar_file="paper.jar", memory_mb=2048
         )
@@ -163,7 +163,7 @@ def test_runtime_server_creation_reuses_runtime_management_and_provisioning(tmp_
     root = tmp_path / "servers"
     source = make_source_jar(tmp_path)
 
-    with build_server_runtime(root, StubJavaResolver(), launch_from_configuration_store=True) as runtime:
+    with build_server_runtime(root, StubJavaResolver()) as runtime:
         creation = runtime.server_creation
         assert isinstance(creation, ServerCreation)
         assert creation._management is runtime.management  # type: ignore[attr-defined]
@@ -236,18 +236,21 @@ def test_build_server_coordinator_remains_available(tmp_path: Path) -> None:
     assert isinstance(build_server_coordinator(tmp_path, StubJavaResolver()), ServerCoordinator)
 
 
-def test_runtime_exposes_configuration_store_but_launches_from_legacy_by_default(tmp_path: Path) -> None:
+def test_runtime_launches_only_from_the_configuration_store(tmp_path: Path) -> None:
+    write_legacy_server(tmp_path, "legacy-only")
     with build_server_runtime(tmp_path, StubJavaResolver()) as runtime:
         factory = runtime.coordinator._runner_factory  # type: ignore[attr-defined]
 
         assert isinstance(runtime.configurations, JsonServerConfigurationRepository)
         assert runtime.configurations.path.parent == tmp_path.resolve()
-        assert isinstance(factory._repository, LegacyServerConfigurationRepository)
+        assert isinstance(factory._repository, StoredServerLaunchSettings)
+        with pytest.raises(ServerStartFailed):
+            runtime.coordinator.start_server("legacy-only")  # 0.9.1 servers must be imported first (ADR 0009)
     assert not runtime.configurations.path.exists()
 
 
 def test_runtime_can_launch_from_configuration_store(tmp_path: Path) -> None:
-    with build_server_runtime(tmp_path, StubJavaResolver(), launch_from_configuration_store=True) as runtime:
+    with build_server_runtime(tmp_path, StubJavaResolver()) as runtime:
         runtime.configurations.add(ServerConfiguration("survival", "survival", "paper.jar", 2048))
         factory = runtime.coordinator._runner_factory  # type: ignore[attr-defined]
         (tmp_path / "survival").mkdir()
@@ -264,7 +267,7 @@ def test_runtime_can_launch_from_configuration_store(tmp_path: Path) -> None:
 
 
 def test_runtime_builds_without_java_and_reports_it(tmp_path: Path) -> None:
-    with build_server_runtime(tmp_path, MissingJavaResolver(), launch_from_configuration_store=True) as runtime:
+    with build_server_runtime(tmp_path, MissingJavaResolver()) as runtime:
         assert not runtime.java.status().available
         assert runtime.health.unclean_shutdowns() == ()
 

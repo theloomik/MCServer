@@ -56,9 +56,7 @@ def test_real_server_creates_starts_takes_a_command_and_stops_gracefully(tmp_pat
     root = tmp_path / "servers"
     lines: list[ServerOutputLine] = []
 
-    with build_server_runtime(
-        root, launch_from_configuration_store=True, startup_timeout=STARTUP_TIMEOUT, stop_timeout=STOP_TIMEOUT
-    ) as runtime:
+    with build_server_runtime(root, startup_timeout=STARTUP_TIMEOUT, stop_timeout=STOP_TIMEOUT) as runtime:
         runtime.output.subscribe(lines.append)
         runtime.server_creation.create_server(
             server_id="smoke",

@@ -25,7 +25,6 @@ from mcserver.infrastructure.legacy_import import LegacyFileServerConfigurationS
 from mcserver.infrastructure.recycle_bin import RecycleBinServerFilesRemover
 from mcserver.infrastructure.server_configuration import (
     ConfiguredServerRunnerFactory,
-    LaunchSettingsSource,
     LegacyServerConfigurationRepository,
 )
 from mcserver.infrastructure.server_configuration_store import (
@@ -101,7 +100,6 @@ def build_server_runtime(
     java_resolver: JavaRuntimeProvider | None = None,
     output_capacity: int = DEFAULT_OUTPUT_CAPACITY,
     *,
-    launch_from_configuration_store: bool = False,
     scheduler: Scheduler | None = None,
     startup_timeout: float | None = None,
     stop_timeout: float | None = None,
@@ -114,18 +112,13 @@ def build_server_runtime(
     Stored application settings are applied: the Java executable, and the
     start and stop timeouts unless ``startup_timeout`` / ``stop_timeout`` are
     given explicitly (tests and tools).
-    ``runtime.configurations`` always exposes the versioned configuration
-    store. Servers are launched from the legacy ``servers_config.json`` unless
-    ``launch_from_configuration_store`` is set, which switches launching to the
-    new store (for use once configurations have been imported).
+    Servers are launched only from the versioned configuration store
+    (``runtime.configurations``). Servers of MCServer 0.9.1 are launched after
+    they were imported with ``management.import_legacy_servers`` (ADR 0009).
     """
     output = ServerOutputBuffer(output_capacity)
     configurations = JsonServerConfigurationRepository(servers_directory)
-    settings_source: LaunchSettingsSource
-    if launch_from_configuration_store:
-        settings_source = StoredServerLaunchSettings(configurations, servers_directory)
-    else:
-        settings_source = LegacyServerConfigurationRepository(servers_directory)
+    settings_source = StoredServerLaunchSettings(configurations, servers_directory)
     resolver = java_resolver or JavaRuntimeResolver.for_current_application()
     factory = ConfiguredServerRunnerFactory(
         settings_source, resolver, output_sink=output, process_guard_factory=process_guard_factory

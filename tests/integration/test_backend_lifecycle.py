@@ -8,6 +8,7 @@ Minecraft, Java or network access is required.
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -27,7 +28,6 @@ from mcserver.bootstrap.server_runtime import ServerRuntime, build_server_runtim
 from mcserver.domain.diagnostics import FailureHint
 from mcserver.domain.lifecycle import ServerState
 from mcserver.domain.server_configuration import ServerConfiguration
-from mcserver.infrastructure.server_configuration import ServerConfigurationError
 from mcserver.infrastructure.server_configuration_store import StoredServerLaunchSettings
 from mcserver.infrastructure.session_markers import MARKER_DIRECTORY, MARKER_FILE
 from tests.integration.conftest import FakeJavaResolver
@@ -42,9 +42,7 @@ def root(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def runtime(root: Path, fake_java: Path) -> Iterator[ServerRuntime]:
-    with build_server_runtime(
-        root, FakeJavaResolver(fake_java), launch_from_configuration_store=True, startup_timeout=3, stop_timeout=WAIT
-    ) as built:
+    with build_server_runtime(root, FakeJavaResolver(fake_java), startup_timeout=3, stop_timeout=WAIT) as built:
         yield built
 
 
@@ -252,13 +250,13 @@ def test_unexpected_exit_during_startup_releases_the_reservation(runtime: Server
 
 
 def test_leftover_marker_is_reported_once_on_the_next_launch(root: Path, tmp_path: Path, fake_java: Path) -> None:
-    with build_server_runtime(root, FakeJavaResolver(fake_java), launch_from_configuration_store=True) as runtime:
+    with build_server_runtime(root, FakeJavaResolver(fake_java)) as runtime:
         create(runtime, "survival", make_jar(tmp_path, "paper.jar", "normal"))
     # Simulate MCServer ending while the server ran: the marker stays behind.
     marker(root, "survival").parent.mkdir(parents=True, exist_ok=True)
     marker(root, "survival").write_text('{"server_id": "survival", "started_at": "2026-11-15T09:00:00+00:00"}')
 
-    with build_server_runtime(root, FakeJavaResolver(fake_java), launch_from_configuration_store=True) as runtime:
+    with build_server_runtime(root, FakeJavaResolver(fake_java)) as runtime:
         incidents = runtime.health.unclean_shutdowns()
         assert [(i.server_id, i.started_at) for i in incidents] == [("survival", "2026-11-15T09:00:00+00:00")]
         runtime.health.acknowledge("survival")
@@ -269,7 +267,7 @@ def test_failed_launches_leave_the_coordinator_stopped_and_reusable(
     root: Path, tmp_path: Path, fake_java: Path
 ) -> None:
     missing_java = FakeJavaResolver(tmp_path / "no-such-java.exe")
-    with build_server_runtime(root, missing_java, launch_from_configuration_store=True) as runtime:
+    with build_server_runtime(root, missing_java) as runtime:
         create(runtime, "survival", make_jar(tmp_path, "paper.jar", "normal"))
 
         with pytest.raises(ServerStartFailed):
@@ -280,19 +278,28 @@ def test_failed_launches_leave_the_coordinator_stopped_and_reusable(
             runtime.coordinator.start_server("unknown")  # no such configuration
         assert runtime.coordinator.state is ServerState.STOPPED
 
-    with build_server_runtime(root, FakeJavaResolver(fake_java), launch_from_configuration_store=True) as runtime:
+    with build_server_runtime(root, FakeJavaResolver(fake_java)) as runtime:
         runtime.coordinator.start_server("survival")
         assert wait_until(lambda: runtime.coordinator.state is ServerState.RUNNING)
         assert runtime.coordinator.stop_server() is True
 
 
-def test_default_runtime_still_launches_from_legacy_file_only(root: Path, tmp_path: Path, fake_java: Path) -> None:
-    """Documents the transition state: servers created in the new store need the opt-in flag (ADR 0009 later)."""
+def test_imported_legacy_server_starts_from_the_configuration_store(
+    root: Path, tmp_path: Path, fake_java: Path
+) -> None:
+    """ADR 0009: a 0.9.1 server is launched only after it was imported into the store."""
+    folder = root / "oldworld"
+    folder.mkdir(parents=True)
+    (folder / "paper.jar").write_text("normal", encoding="utf-8")
+    (folder / "eula.txt").write_text("eula=true\n", encoding="utf-8")
+    legacy = {"oldworld": {"core_name": "paper.jar", "ram": 1024, "directory": str(folder)}}
+    (root / "servers_config.json").write_text(json.dumps(legacy), encoding="utf-8")
+
     with build_server_runtime(root, FakeJavaResolver(fake_java)) as runtime:
-        create(runtime, "survival", make_jar(tmp_path, "paper.jar", "normal"))
+        with pytest.raises(ServerStartFailed):
+            runtime.coordinator.start_server("oldworld")
+        assert runtime.management.import_legacy_servers().imported == ("oldworld",)
 
-        with pytest.raises(ServerStartFailed) as error:
-            runtime.coordinator.start_server("survival")
-
-        assert isinstance(error.value.__cause__, ServerConfigurationError)
-        assert runtime.coordinator.state is ServerState.STOPPED
+        runtime.coordinator.start_server("oldworld")
+        assert wait_until(lambda: runtime.coordinator.state is ServerState.RUNNING)
+        assert runtime.coordinator.stop_server() is True
