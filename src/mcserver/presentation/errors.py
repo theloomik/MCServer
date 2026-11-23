@@ -36,6 +36,13 @@ from mcserver.application.errors import (
 )
 from mcserver.application.server_coordinator import FailureKind, ServerFailure
 from mcserver.application.settings import InvalidSettings
+from mcserver.application.worlds import (
+    InvalidWorldName,
+    InvalidWorldSource,
+    WorldAlreadyExists,
+    WorldIsActive,
+    WorldNotFound,
+)
 from mcserver.domain.diagnostics import FailureHint
 from mcserver.domain.errors import InvalidServerConfiguration
 from mcserver.domain.server_properties import InvalidServerProperties
@@ -119,6 +126,16 @@ def _describe_runtime_error(error: BaseException, details: str) -> UserMessage |
         return UserMessage("errors.backup_not_possible", {"server_id": error.server_id}, details)
     if isinstance(error, BackupFailed):
         return UserMessage("errors.backup_failed", {"server_id": error.server_id, "reason": error.reason}, details)
+    if isinstance(error, WorldNotFound):
+        return UserMessage("errors.world_not_found", {"name": error.name}, details)
+    if isinstance(error, WorldAlreadyExists):
+        return UserMessage("errors.world_exists", {"name": error.name}, details)
+    if isinstance(error, WorldIsActive):
+        return UserMessage("errors.world_is_active", {"name": error.name}, details)
+    if isinstance(error, InvalidWorldName):
+        return UserMessage("errors.invalid_world_name", {"name": error.name}, details)
+    if isinstance(error, InvalidWorldSource):
+        return UserMessage("errors.invalid_world_source", {"reason": error.reason}, details)
     if isinstance(error, BackupNotFound):
         return UserMessage("errors.backup_not_found", {}, details)
     if isinstance(error, ServerIsRunning):

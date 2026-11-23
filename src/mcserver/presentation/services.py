@@ -21,6 +21,7 @@ from mcserver.application.server_output import ServerOutputBuffer
 from mcserver.application.server_properties import ServerPropertiesService
 from mcserver.application.server_provisioning import ServerProvisioning
 from mcserver.application.settings import SettingsService
+from mcserver.application.worlds import WorldService
 
 
 class PresentationServices:
@@ -53,6 +54,7 @@ class PresentationServices:
         auto_restart: AutoRestartPolicy | None = None,
         address: ServerAddressLookup | None = None,
         scheduled_backups: ScheduledBackups | None = None,
+        worlds: WorldService | None = None,
     ) -> None:
         """Hold the services; ``closer`` releases backend resources on shutdown."""
         self.servers_root = servers_root
@@ -85,6 +87,8 @@ class PresentationServices:
         """LAN address and port of a server."""
         self.scheduled_backups = scheduled_backups
         """Backups made automatically while a server runs."""
+        self.worlds = worlds
+        """World folders of each server."""
         self.crashed = False
         """Set when an unhandled exception ends the application (the graceful stop was already tried)."""
         self._closer = closer

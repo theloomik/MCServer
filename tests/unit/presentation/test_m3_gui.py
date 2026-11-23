@@ -16,10 +16,12 @@ from mcserver.application.server_management import ServerManagement
 from mcserver.application.server_metrics import ServerMetricsSnapshot
 from mcserver.application.server_output import ServerOutputBuffer
 from mcserver.application.server_properties import ServerPropertiesService
+from mcserver.application.worlds import WorldService
 from mcserver.domain.lifecycle import ServerState
 from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.infrastructure.recycle_bin import RecycleBinServerFilesRemover
 from mcserver.infrastructure.server_properties_file import FileServerPropertiesStore
+from mcserver.infrastructure.world_folders import LocalWorldStore
 from mcserver.infrastructure.zip_backup_store import ZipBackupStore
 from mcserver.presentation.controllers.properties import PropertiesController
 from mcserver.presentation.i18n import messages_for
@@ -82,7 +84,16 @@ class Setup:
             metrics=self.metrics if with_m3 else None,  # type: ignore[arg-type]
             backups=self.backups if with_m3 else None,
             scheduled_backups=self.scheduled if with_m3 else None,
+            worlds=WorldService(
+                self.repository,
+                LocalWorldStore(root, RecycleBinServerFilesRemover(root, no_recycle_bin)),
+                ServerPropertiesService(FileServerPropertiesStore(root, self.repository)),
+                lambda: self.coordinator.active_server_id,
+            )
+            if with_m3
+            else None,
         )
+        self.world_answers = WorldAnswers()
         self.restore_questions: list[str] = []
         self.delete_questions: list[str] = []
 
@@ -102,6 +113,7 @@ class Setup:
             offer_legacy_import=lambda _count: False,
             confirm_restore=confirm_restore,
             confirm_delete_backup=confirm_delete,
+            world_dialogs=self.world_answers,
         )
         qtbot.addWidget(self.window)
         self.window.show()
@@ -112,6 +124,32 @@ class Setup:
 
     def wait_for_backups(self) -> None:
         self.qtbot.waitUntil(lambda: not self.window.backups_controller.busy, timeout=10000)
+
+
+class WorldAnswers:
+    def __init__(self) -> None:
+        self.new: tuple[str, str] | None = None
+        self.source: str | None = None
+        self.name: str | None = None
+        self.suggested: list[str] = []
+        self.export: str | None = None
+        self.delete = True
+
+    def new_world(self) -> tuple[str, str] | None:
+        return self.new
+
+    def import_source(self, zip_file: bool) -> str | None:
+        return self.source
+
+    def world_name(self, suggested: str) -> str | None:
+        self.suggested.append(suggested)
+        return self.name or suggested
+
+    def export_path(self, name: str) -> str | None:
+        return self.export
+
+    def confirm_delete(self, name: str) -> bool:
+        return self.delete
 
 
 class _NoLegacy:
@@ -128,7 +166,7 @@ class _NoLegacy:
 def test_dashboard_has_properties_and_backups_tabs(qtbot: QtBot, tmp_path: Path) -> None:
     setup = Setup(qtbot, tmp_path)
     tabs = setup.window.dashboard_view.tabs
-    assert [tabs.tabText(index) for index in range(tabs.count())] == ["Overview", "Properties", "Backups"]
+    assert [tabs.tabText(index) for index in range(tabs.count())] == ["Overview", "Properties", "Worlds", "Backups"]
     assert not setup.window.dashboard_view.metrics_card.isHidden()
 
 
@@ -394,3 +432,95 @@ def test_scheduled_run_reports_in_the_status_bar(qtbot: QtBot, tmp_path: Path) -
     qtbot.waitUntil(lambda: not controller.busy)
     expected = MESSAGES.text("backups.scheduled_created", server_id="survival", backup_id=backup.backup_id, removed=1)
     assert setup.window.statusBar().currentMessage() == expected
+
+
+# --- worlds (M3-GUI-07) ---------------------------------------------------------------------------
+
+
+def worlds_of(setup: Setup) -> list[str]:
+    return [world.name for world in setup.window.worlds_controller.state.worlds]
+
+
+def wait_for_worlds(setup: Setup) -> None:
+    controller = setup.window.worlds_controller
+    setup.qtbot.waitUntil(lambda: not controller.busy and not controller.state.loading, timeout=10000)
+
+
+def select_world(setup: Setup, name: str) -> None:
+    view = setup.window.worlds_view
+    assert view is not None
+    view.table.selectRow(worlds_of(setup).index(name))
+
+
+def test_worlds_tab_lists_switches_and_creates(qtbot: QtBot, tmp_path: Path) -> None:
+    setup = Setup(qtbot, tmp_path)
+    (tmp_path / "survival" / "lobby").mkdir()
+    (tmp_path / "survival" / "lobby" / "level.dat").write_bytes(b"lobby")
+    setup.select("survival")
+    wait_for_worlds(setup)
+    view = setup.window.worlds_view
+    assert view is not None
+    assert worlds_of(setup) == ["world", "lobby"]
+    assert view.table.item(0, 0).text() == MESSAGES.text("worlds.active_name", name="world")
+    assert view.current_label.text() == MESSAGES.text("worlds.current", name="world")
+
+    select_world(setup, "world")
+    assert not view.use_button.isEnabled() and not view.delete_button.isEnabled()  # the current world
+    select_world(setup, "lobby")
+    assert view.use_button.isEnabled()
+    view.use_button.click()
+    wait_for_worlds(setup)
+    assert "level-name=lobby" in (tmp_path / "survival" / "server.properties").read_text(encoding="latin-1")
+    assert worlds_of(setup)[0] == "lobby"
+    assert setup.window.properties_controller.state.values.get("level-name") == "lobby"  # Properties tab follows
+
+    setup.world_answers.new = ("fresh", "42")
+    view.new_button.click()
+    wait_for_worlds(setup)
+    assert view.current_label.text() == MESSAGES.text("worlds.current_new", name="fresh")
+
+
+def test_worlds_import_export_and_delete(qtbot: QtBot, tmp_path: Path) -> None:
+    setup = Setup(qtbot, tmp_path)
+    source = tmp_path / "downloads" / "Skyblock"
+    source.mkdir(parents=True)
+    (source / "level.dat").write_bytes(b"sky")
+    setup.select("survival")
+    wait_for_worlds(setup)
+    view = setup.window.worlds_view
+    assert view is not None
+
+    setup.world_answers.source = str(source)
+    view.import_folder_button.click()
+    wait_for_worlds(setup)
+    assert setup.world_answers.suggested == ["Skyblock"]
+    assert "Skyblock" in worlds_of(setup)
+
+    select_world(setup, "Skyblock")
+    setup.world_answers.export = str(tmp_path / "sky.zip")
+    view.export_button.click()
+    wait_for_worlds(setup)
+    assert (tmp_path / "sky.zip").is_file()
+
+    select_world(setup, "Skyblock")
+    view.delete_button.click()
+    wait_for_worlds(setup)
+    assert "Skyblock" not in worlds_of(setup)
+    assert (tmp_path / ".trash").is_dir()
+
+
+def test_switching_worlds_is_disabled_while_the_server_runs(qtbot: QtBot, tmp_path: Path) -> None:
+    setup = Setup(qtbot, tmp_path)
+    (tmp_path / "survival" / "lobby").mkdir()
+    (tmp_path / "survival" / "lobby" / "level.dat").write_bytes(b"lobby")
+    setup.select("survival")
+    wait_for_worlds(setup)
+    view = setup.window.worlds_view
+    assert view is not None
+    setup.window.worlds_controller.set_active_server("survival")
+    select_world(setup, "lobby")
+    assert not view.use_button.isEnabled() and not view.new_button.isEnabled()
+    assert view.running_hint.isVisibleTo(view)
+    assert view.delete_button.isEnabled()  # other worlds can still be managed
+    select_world(setup, "world")
+    assert not view.export_button.isEnabled()  # the running world: use a backup instead
