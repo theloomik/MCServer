@@ -188,4 +188,32 @@ QLabel#consoleUnavailable {{ color: {TEXT_MUTED}; }}
 /* Welcome */
 QLabel#welcomeTitle {{ color: #3f3f46; font-size: 34px; font-weight: 700; }}
 QLabel#welcomeText {{ color: {TEXT_MUTED}; font-size: 15px; }}
+
+/* Dashboard tabs, resources, backups (M3) */
+QTabWidget#dashboardTabs::pane {{ border: none; top: -1px; }}
+QTabWidget#dashboardTabs QTabBar {{ qproperty-drawBase: 0; }}
+QTabWidget#dashboardTabs QTabBar::tab {{
+    background: transparent; color: {TEXT_MUTED}; padding: 8px 16px; margin-right: 4px;
+    border: none; border-bottom: 2px solid transparent; font-weight: 600;
+}}
+QTabWidget#dashboardTabs QTabBar::tab:hover {{ color: {TEXT}; }}
+QTabWidget#dashboardTabs QTabBar::tab:selected {{ color: {TEXT}; border-bottom-color: {ACCENT}; }}
+QLabel#metricValue {{ color: {TEXT}; font-size: 14px; font-weight: 600; }}
+QTableWidget {{
+    background-color: {CARD}; alternate-background-color: {CARD_RAISED}; border: none;
+    selection-background-color: {ACCENT_DIM}; selection-color: {TEXT};
+}}
+QHeaderView::section {{
+    background-color: {CARD}; color: {TEXT_MUTED}; border: none; border-bottom: 1px solid {BORDER};
+    padding: 6px 8px; font-weight: 600;
+}}
+QProgressBar {{ background-color: {CARD_RAISED}; border: none; border-radius: 3px; }}
+QProgressBar::chunk {{ background-color: {ACCENT}; border-radius: 3px; }}
+QScrollArea, QScrollArea > QWidget > QWidget {{ background: transparent; }}
+QListWidget#versionList {{
+    background-color: {CARD_RAISED}; color: {TEXT}; border: 1px solid {BORDER}; border-radius: 8px; padding: 4px;
+}}
+QListWidget#versionList::item {{ padding: 5px 8px; border-radius: 6px; }}
+QListWidget#versionList::item:hover {{ background-color: {BORDER}; }}
+QListWidget#versionList::item:selected {{ background-color: {ACCENT_DIM}; color: {TEXT}; }}
 """

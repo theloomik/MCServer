@@ -3,12 +3,19 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 from types import TracebackType
 
+from mcserver.application.auto_restart import AutoRestartPolicy
+from mcserver.application.backup_schedule import ScheduledBackups
+from mcserver.application.backups import BackupService
 from mcserver.application.errors import ServerStopTimedOut
 from mcserver.application.java_setup import JavaSetup
 from mcserver.application.ports import JavaRuntimeProvider, Scheduler, ServerConfigurationRepository
+from mcserver.application.server_activity import ServerActivity
+from mcserver.application.server_address import ServerAddressLookup
 from mcserver.application.server_adoption import ServerAdoption
+from mcserver.application.server_catalog import CatalogSource, ServerJarCatalog, ServerType
 from mcserver.application.server_coordinator import (
     DEFAULT_STARTUP_TIMEOUT_SECONDS,
     DEFAULT_STOP_TIMEOUT_SECONDS,
@@ -17,12 +24,18 @@ from mcserver.application.server_coordinator import (
 from mcserver.application.server_creation import ServerCreation
 from mcserver.application.server_health import ServerHealth
 from mcserver.application.server_management import ServerManagement
+from mcserver.application.server_metrics import ServerMetrics
 from mcserver.application.server_output import DEFAULT_OUTPUT_CAPACITY, ServerOutputBuffer
+from mcserver.application.server_properties import ServerPropertiesService
 from mcserver.application.server_provisioning import ServerProvisioning
 from mcserver.application.settings import SettingsService
+from mcserver.application.worlds import WorldService
 from mcserver.infrastructure.java_runtime import JavaRuntimeResolver
 from mcserver.infrastructure.legacy_import import LegacyFileServerConfigurationSource
+from mcserver.infrastructure.network import lan_ipv4_address
+from mcserver.infrastructure.psutil_metrics import PsutilProcessMetrics
 from mcserver.infrastructure.recycle_bin import RecycleBinServerFilesRemover
+from mcserver.infrastructure.server_catalog_http import DownloadCache, HttpClient, MojangCatalog, PaperCatalog
 from mcserver.infrastructure.server_configuration import (
     ConfiguredServerRunnerFactory,
     LegacyServerConfigurationRepository,
@@ -33,9 +46,12 @@ from mcserver.infrastructure.server_configuration_store import (
 )
 from mcserver.infrastructure.server_files import LocalServerFilesystem
 from mcserver.infrastructure.server_folders import LocalServerFolderAdoption
+from mcserver.infrastructure.server_properties_file import FileServerPropertiesStore
 from mcserver.infrastructure.session_markers import FileSessionMarkerStore
 from mcserver.infrastructure.settings_store import JsonApplicationSettingsStore
 from mcserver.infrastructure.windows_job import ProcessGuard, default_process_guard
+from mcserver.infrastructure.world_folders import LocalWorldStore
+from mcserver.infrastructure.zip_backup_store import ZipBackupStore
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +79,24 @@ class ServerRuntime:
     """Application settings, already applied to Java detection and the coordinator's timeouts."""
     adoption: ServerAdoption
     """Registers or copies existing server folders (M2-BE-04)."""
+    properties: ServerPropertiesService
+    """Reads and changes ``server.properties`` (M3-BE-01)."""
+    metrics: ServerMetrics
+    """CPU, memory and uptime of the running server (M3-BE-02)."""
+    backups: BackupService
+    """Backups and restores (M3-BE-03)."""
+    activity: ServerActivity
+    """Players online and tick rate read from console output (M3-BE-04)."""
+    auto_restart: AutoRestartPolicy
+    """Opt-in restart after a crash (M3-BE-05)."""
+    address: ServerAddressLookup
+    """LAN address and port players connect to (M3-GUI-05)."""
+    scheduled_backups: ScheduledBackups
+    """Backups made automatically while a server runs (ADR 0008)."""
+    worlds: WorldService
+    """World folders of each server (M3-BE-07)."""
+    jar_catalog: ServerJarCatalog
+    """Official Paper and Vanilla server JARs, downloaded and verified (M3-BE-06)."""
 
     def close(self, timeout: float | None = None) -> bool:
         """Stop the active server gracefully, then end output delivery; never kills (ADR 0006).
@@ -137,6 +171,13 @@ def build_server_runtime(
     provisioning = build_server_provisioning(servers_directory, configurations)
     settings = SettingsService(JsonApplicationSettingsStore(servers_directory), resolver, coordinator)
     settings.apply(include_timeouts=startup_timeout is None and stop_timeout is None)
+    properties = ServerPropertiesService(
+        FileServerPropertiesStore(servers_directory, configurations), lambda: coordinator.active_server_id
+    )
+    backup_store = ZipBackupStore(servers_directory)
+    backups = BackupService(configurations, coordinator, backup_store)
+    activity = ServerActivity(lambda server_id: _max_players(properties, server_id))
+    output.subscribe(activity.on_line, replay=False)
     return ServerRuntime(
         coordinator=coordinator,
         output=output,
@@ -148,7 +189,32 @@ def build_server_runtime(
         health=ServerHealth(markers),
         settings=settings,
         adoption=ServerAdoption(management, LocalServerFolderAdoption(servers_directory)),
+        properties=properties,
+        metrics=ServerMetrics(coordinator, PsutilProcessMetrics(), configurations, monotonic),
+        backups=backups,
+        scheduled_backups=ScheduledBackups(backup_store, backups, coordinator),
+        jar_catalog=_jar_catalog(servers_directory),
+        worlds=WorldService(
+            configurations, LocalWorldStore(servers_directory), properties, lambda: coordinator.active_server_id
+        ),
+        activity=activity,
+        auto_restart=AutoRestartPolicy(lambda: settings.current.auto_restart),
+        address=ServerAddressLookup(properties, lan_ipv4_address),
     )
+
+
+def _jar_catalog(servers_directory: Path) -> ServerJarCatalog:
+    client = HttpClient()
+    sources: dict[ServerType, CatalogSource] = {
+        ServerType.PAPER: PaperCatalog(client),
+        ServerType.VANILLA: MojangCatalog(client),
+    }
+    return ServerJarCatalog(sources, DownloadCache(servers_directory, client))
+
+
+def _max_players(properties: ServerPropertiesService, server_id: str) -> int | None:
+    value = properties.load(server_id).values.get("max-players", "").strip()
+    return int(value) if value.isdigit() else None
 
 
 def build_server_creation(

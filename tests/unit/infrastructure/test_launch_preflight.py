@@ -9,7 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from mcserver.application.errors import EulaNotAccepted, JavaNotFound, JavaVersionTooOld, ServerWorldInUse
+from mcserver.application.errors import (
+    EulaNotAccepted,
+    JavaNotFound,
+    JavaVersionTooOld,
+    ServerPortInUse,
+    ServerWorldInUse,
+)
 from mcserver.application.ports import JavaInstallation, StartOptions
 from mcserver.infrastructure.jar_version import read_jar_version
 from mcserver.infrastructure.process_runner import SubprocessServerRunner
@@ -168,3 +174,21 @@ def test_world_locked_by_another_handle_is_in_use(tmp_path: Path) -> None:
                 ConfiguredServerRunnerFactory(settings, FakeJava(21)).create("survival")
         finally:
             msvcrt.locking(holder.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+def test_busy_server_port_is_refused_before_launching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = server(tmp_path, version_json={"id": "1.21.4", "java_version": 21})
+    write_eula_file(settings.directory, "survival")
+    (settings.directory / "server.properties").write_text("server-port=25600\n", encoding="utf-8")
+    probed: list[tuple[str, int]] = []
+
+    def busy(host: str, port: int) -> bool:
+        probed.append((host, port))
+        return True
+
+    monkeypatch.setattr("mcserver.infrastructure.server_configuration.port_in_use", busy)
+
+    with pytest.raises(ServerPortInUse) as error:
+        ConfiguredServerRunnerFactory(settings, FakeJava(21)).create("survival")
+
+    assert error.value.port == 25600 and probed == [("", 25600)]

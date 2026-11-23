@@ -289,5 +289,15 @@ class ServerFilesRemovalFailed(RuntimeError):
         super().__init__(f"The folder '{directory}' could not be moved away: {reason}")
 
 
+class ServerPortInUse(RuntimeError):
+    """Raised before a start when the server's port is already used by another program."""
+
+    def __init__(self, server_id: str, port: int) -> None:
+        """Describe the busy port."""
+        self.server_id = server_id
+        self.port = port
+        super().__init__(f"Port {port} of server '{server_id}' is already in use by another program.")
+
+
 class ProcessGuardUnavailable(RuntimeError):
     """Raised when the server process could not be placed under orphan protection; it never ran."""

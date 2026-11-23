@@ -12,10 +12,14 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QStackedWidget,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from mcserver.application.server_activity import ServerActivitySnapshot
+from mcserver.application.server_address import ServerAddress
+from mcserver.application.server_metrics import ServerMetricsSnapshot
 from mcserver.presentation.controllers.server_dashboard import DashboardState, Operation
 from mcserver.presentation.controllers.server_list import ServerStatus
 from mcserver.presentation.errors import UserMessage, render_message
@@ -28,6 +32,9 @@ INFO_FIELDS = ("directory", "location", "jar_file", "memory")
 
 _SIDE_PANEL_WIDTH = 300
 _INFO_VALUE_WIDTH = _SIDE_PANEL_WIDTH - 60  # card margins and border
+_NO_TOOLTIP = ""
+METRIC_TILES = ("cpu", "memory", "uptime", "players", "tps")
+"""Resource tiles; each has the label key ``metrics.<name>``."""
 
 
 def _card() -> QFrame:
@@ -49,10 +56,13 @@ class ServerDashboardView(QWidget):
     start_requested = Signal()
     stop_requested = Signal()
     kill_requested = Signal()
+    restart_requested = Signal()
     edit_requested = Signal()
     delete_requested = Signal()
     details_requested = Signal(object)  # UserMessage
     open_folder_requested = Signal(object)  # Path
+    open_logs_requested = Signal(object)  # Path
+    copy_address_requested = Signal(str)
 
     def __init__(self, messages: Messages, servers_root: Path, console_available: bool) -> None:
         """Build the dashboard for servers inside ``servers_root``."""
@@ -98,7 +108,13 @@ class ServerDashboardView(QWidget):
         main = QVBoxLayout()
         main.setSpacing(18)
         main.addWidget(self._build_header_card())
-        main.addWidget(self.console, 1)
+        # Overview holds the console; Properties and Backups are added by the window when available (M3).
+        self.tabs = QTabWidget()
+        self.tabs.setObjectName("dashboardTabs")
+        self.tabs.setDocumentMode(True)
+        self._tab_keys: list[str] = []
+        self.add_tab("overview", self.console)
+        main.addWidget(self.tabs, 1)
 
         side = QVBoxLayout()
         side.setSpacing(12)
@@ -106,6 +122,13 @@ class ServerDashboardView(QWidget):
         caption.setObjectName("sectionCaption")
         side.addWidget(caption)
         side.addWidget(self._build_info_card())
+        self.metrics_caption = QLabel(self._messages.text("metrics.title").upper())
+        self.metrics_caption.setObjectName("sectionCaption")
+        self.metrics_card = self._build_metrics_card()
+        self.metrics_caption.hide()
+        self.metrics_card.hide()
+        side.addWidget(self.metrics_caption)
+        side.addWidget(self.metrics_card)
         side.addStretch(1)
         side_widget = QWidget()
         side_widget.setLayout(side)
@@ -148,7 +171,11 @@ class ServerDashboardView(QWidget):
         self.kill_button.setObjectName("killButton")
         self.kill_button.clicked.connect(self.kill_requested)
         self.kill_button.hide()
-        for button in (self.start_button, self.stop_button, self.kill_button):
+        self.restart_button = QPushButton(self._messages.text("dashboard.restart"))
+        self.restart_button.setObjectName("secondaryButton")
+        self.restart_button.clicked.connect(self.restart_requested)
+        self.restart_button.hide()
+        for button in (self.start_button, self.stop_button, self.kill_button, self.restart_button):
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setMinimumWidth(150)
         self.hint_label = QLabel()
@@ -159,6 +186,7 @@ class ServerDashboardView(QWidget):
         controls.addWidget(self.start_button)
         controls.addWidget(self.stop_button)
         controls.addWidget(self.kill_button)
+        controls.addWidget(self.restart_button)
         controls.addStretch(1)
 
         self.banner = QLabel()
@@ -210,6 +238,26 @@ class ServerDashboardView(QWidget):
         self.open_folder_button.setObjectName("openFolderButton")
         self.open_folder_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.open_folder_button.clicked.connect(self._on_open_folder)
+        self.open_logs_button = QPushButton(self._messages.text("dashboard.open_logs"))
+        self.open_logs_button.setObjectName("secondaryButton")
+        self.open_logs_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.open_logs_button.clicked.connect(self._on_open_logs)
+        address_label = QLabel(self._messages.text("dashboard.address"))
+        address_label.setObjectName("fieldLabel")
+        self.address_value = QLabel()
+        self.address_value.setObjectName("fieldValue")
+        self.address_value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.copy_address_button = QPushButton(self._messages.text("dashboard.copy_address"))
+        self.copy_address_button.setObjectName("clearConsole")
+        self.copy_address_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.copy_address_button.clicked.connect(self._on_copy_address)
+        address_row = QHBoxLayout()
+        address_row.addWidget(self.address_value, 1)
+        address_row.addWidget(self.copy_address_button)
+        grid.addWidget(address_label, len(INFO_FIELDS) * 2, 0)
+        grid.addLayout(address_row, len(INFO_FIELDS) * 2 + 1, 0)
+        self._address: ServerAddress | None = None
+        self.show_address(None)
         self.edit_button = QPushButton(self._messages.text("dashboard.edit"))
         self.edit_button.setObjectName("secondaryButton")
         self.edit_button.clicked.connect(self.edit_requested)
@@ -229,10 +277,97 @@ class ServerDashboardView(QWidget):
         layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(14)
         layout.addLayout(grid)
-        layout.addWidget(self.open_folder_button)
+        folder_row = QHBoxLayout()
+        folder_row.setSpacing(8)
+        folder_row.addWidget(self.open_folder_button)
+        folder_row.addWidget(self.open_logs_button)
+        layout.addLayout(folder_row)
         layout.addLayout(manage_row)
         layout.addWidget(note)
         return card
+
+    def _build_metrics_card(self) -> QFrame:
+        card = _card()
+        card.setObjectName("metricsCard")
+        grid = QGridLayout(card)
+        grid.setContentsMargins(20, 14, 20, 14)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(4)
+        self.metric_values: dict[str, QLabel] = {}
+        grid.setVerticalSpacing(8)
+        for row, name in enumerate(METRIC_TILES):
+            label = QLabel(self._messages.text(f"metrics.{name}"))
+            label.setObjectName("fieldLabel")
+            value = QLabel(self._messages.text("metrics.idle"))
+            value.setObjectName("metricValue")
+            self.metric_values[name] = value
+            grid.addWidget(label, row, 0)
+            grid.addWidget(value, row, 1, Qt.AlignmentFlag.AlignRight)
+        return card
+
+    def add_tab(self, key: str, widget: QWidget) -> None:
+        """Add a main-column tab titled ``tabs.<key>``."""
+        self._tab_keys.append(key)
+        self.tabs.addTab(widget, self._messages.text(f"tabs.{key}"))
+
+    def show_tab(self, key: str) -> None:
+        """Switch to the tab ``key`` if it exists."""
+        if key in self._tab_keys:
+            self.tabs.setCurrentIndex(self._tab_keys.index(key))
+
+    @property
+    def current_tab(self) -> str:
+        """Return the key of the shown tab."""
+        return self._tab_keys[self.tabs.currentIndex()]
+
+    def set_metrics_available(self, available: bool) -> None:
+        """Show the resource tiles (only when metrics can be read at all)."""
+        self.metrics_caption.setVisible(available)
+        self.metrics_card.setVisible(available)
+
+    def show_address(self, address: ServerAddress | None) -> None:
+        """Show where LAN players connect (``None`` when it is not known)."""
+        self._address = address
+        self.address_value.setText(str(address) if address else self._messages.text("dashboard.address_unknown"))
+        self.copy_address_button.setEnabled(address is not None)
+
+    def show_activity(self, snapshot: ServerActivitySnapshot | None) -> None:
+        """Show players online and tick rate of the running server, or dashes."""
+        players, tps = self.metric_values["players"], self.metric_values["tps"]
+        idle = self._messages.text("metrics.idle")
+        if snapshot is None:
+            players.setText(idle)
+            players.setToolTip(_NO_TOOLTIP)
+            tps.setText(idle)
+            return
+        maximum = snapshot.max_players
+        players.setText(
+            self._messages.text("metrics.players_value", count=snapshot.player_count, maximum=maximum)
+            if maximum is not None
+            else str(snapshot.player_count)
+        )
+        players.setToolTip(self._messages.text("metrics.players_names", names=", ".join(snapshot.players)))
+        tps.setText(
+            self._messages.text("metrics.tps_value", tps=f"{snapshot.tps:.1f}") if snapshot.tps is not None else idle
+        )
+
+    def show_metrics(self, snapshot: ServerMetricsSnapshot | None) -> None:
+        """Show CPU, memory and uptime of the selected server, or dashes when it does not run."""
+        if snapshot is None:
+            for name in ("cpu", "memory", "uptime"):
+                value = self.metric_values[name]
+                value.setText(self._messages.text("metrics.idle"))
+            return
+        text = self._messages.text
+        self.metric_values["cpu"].setText(text("metrics.cpu_value", percent=f"{snapshot.cpu_percent:.0f}"))
+        self.metric_values["memory"].setText(
+            text("metrics.memory_value", used=f"{snapshot.memory_mb:.0f}", allocated=snapshot.allocated_mb)
+        )
+        hours, rest = divmod(max(0, snapshot.uptime_seconds), 3600)
+        minutes, seconds = divmod(rest, 60)
+        self.metric_values["uptime"].setText(
+            text("metrics.uptime_value", hours=hours, minutes=minutes, seconds=seconds)
+        )
 
     # --- rendering ------------------------------------------------------------------------
 
@@ -277,6 +412,10 @@ class ServerDashboardView(QWidget):
         starting = state.operation is Operation.STARTING or state.status is ServerStatus.STARTING
         stopping = state.operation is Operation.STOPPING
         killing = state.operation is Operation.KILLING
+        restarting = state.operation is Operation.RESTARTING
+        self.restart_button.setVisible(state.can_restart or restarting)
+        self.restart_button.setEnabled(state.can_restart)
+        self.restart_button.setText(self._messages.text("dashboard.restarting" if restarting else "dashboard.restart"))
         self.start_button.setText(self._messages.text("dashboard.starting" if starting else "dashboard.start"))
         self.stop_button.setText(self._messages.text("dashboard.stopping" if stopping else "dashboard.stop"))
         self.kill_button.setText(self._messages.text("dashboard.killing" if killing else "dashboard.kill"))
@@ -291,6 +430,8 @@ class ServerDashboardView(QWidget):
         self.pages.setCurrentWidget(self.dashboard_page)
 
     def _hint(self, state: DashboardState) -> str:
+        if state.hint is not None:
+            return render_message(self._messages, state.hint)
         if not state.java_available:
             return self._messages.text("dashboard.hint.java_missing")
         if state.other_active_server is not None:
@@ -322,6 +463,14 @@ class ServerDashboardView(QWidget):
     def _on_details(self) -> None:
         if self._banner_message is not None:
             self.details_requested.emit(self._banner_message)
+
+    def _on_open_logs(self) -> None:
+        if self._folder is not None:
+            self.open_logs_requested.emit(self._folder / "logs")
+
+    def _on_copy_address(self) -> None:
+        if self._address is not None:
+            self.copy_address_requested.emit(str(self._address))
 
     def _on_open_folder(self) -> None:
         if self._folder is not None:

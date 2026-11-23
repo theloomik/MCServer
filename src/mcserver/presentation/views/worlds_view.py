@@ -1,0 +1,206 @@
+"""Worlds of the selected server (M3-GUI-07)."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+)
+
+from mcserver.application.worlds import WorldInfo
+from mcserver.presentation.controllers.worlds import WorldsState
+from mcserver.presentation.errors import render_message
+from mcserver.presentation.i18n import Messages
+
+COLUMNS = ("name", "size", "modified", "dimensions")
+
+
+class WorldsView(QFrame):
+    """Render ``WorldsState``; emits intents and asks no questions itself."""
+
+    use_requested = Signal(str)
+    new_requested = Signal()
+    import_folder_requested = Signal()
+    import_zip_requested = Signal()
+    export_requested = Signal(str)
+    delete_requested = Signal(str)
+
+    def __init__(self, messages: Messages) -> None:
+        """Build the empty view."""
+        super().__init__()
+        self.setProperty("card", True)
+        self._messages = messages
+        self._worlds: tuple[WorldInfo, ...] = ()
+        self._state = WorldsState()
+        title = QLabel(messages.text("worlds.title"))
+        title.setObjectName("consoleTitle")
+        self.new_button = QPushButton(messages.text("worlds.new"))
+        self.new_button.setObjectName("secondaryButton")
+        self.new_button.clicked.connect(self.new_requested)
+        self.import_folder_button = QPushButton(messages.text("worlds.import_folder"))
+        self.import_folder_button.setObjectName("secondaryButton")
+        self.import_folder_button.clicked.connect(self.import_folder_requested)
+        self.import_zip_button = QPushButton(messages.text("worlds.import_zip"))
+        self.import_zip_button.setObjectName("secondaryButton")
+        self.import_zip_button.clicked.connect(self.import_zip_requested)
+        header = QHBoxLayout()
+        header.addWidget(title, 1)
+        header.addWidget(self.new_button)
+        header.addWidget(self.import_folder_button)
+        header.addWidget(self.import_zip_button)
+
+        self.current_label = QLabel()
+        self.current_label.setObjectName("controlHint")
+        self.current_label.setWordWrap(True)
+        self.message = QLabel()
+        self.message.setObjectName("banner")
+        self.message.setWordWrap(True)
+        self.message.hide()
+        self.progress = QProgressBar()
+        self.progress.setTextVisible(False)
+        self.progress.setMaximumHeight(6)
+        self.progress.hide()
+
+        self.table = QTableWidget(0, len(COLUMNS))
+        self.table.setHorizontalHeaderLabels([messages.text(f"worlds.column.{name}") for name in COLUMNS])
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.verticalHeader().hide()
+        self.table.setShowGrid(False)
+        header_view = self.table.horizontalHeader()
+        for column in range(len(COLUMNS) - 1):
+            header_view.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        header_view.setSectionResizeMode(len(COLUMNS) - 1, QHeaderView.ResizeMode.Stretch)
+        self.table.itemSelectionChanged.connect(self._update_buttons)
+        self.empty_label = QLabel(messages.text("worlds.empty"))
+        self.empty_label.setObjectName("controlHint")
+        self.empty_label.setWordWrap(True)
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.running_hint = QLabel(messages.text("worlds.stop_to_switch"))
+        self.running_hint.setObjectName("controlHint")
+        self.use_button = QPushButton(messages.text("worlds.use"))
+        self.use_button.setObjectName("primaryButton")
+        self.use_button.clicked.connect(self._on_use)
+        self.export_button = QPushButton(messages.text("worlds.export"))
+        self.export_button.setObjectName("secondaryButton")
+        self.export_button.clicked.connect(self._on_export)
+        self.delete_button = QPushButton(messages.text("worlds.delete"))
+        self.delete_button.setObjectName("secondaryButton")
+        self.delete_button.clicked.connect(self._on_delete)
+        actions = QHBoxLayout()
+        actions.addWidget(self.running_hint)
+        actions.addStretch(1)
+        actions.addWidget(self.use_button)
+        actions.addWidget(self.export_button)
+        actions.addWidget(self.delete_button)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 12, 16, 16)
+        layout.setSpacing(10)
+        layout.addLayout(header)
+        layout.addWidget(self.current_label)
+        layout.addWidget(self.progress)
+        layout.addWidget(self.message)
+        layout.addWidget(self.table, 1)
+        layout.addWidget(self.empty_label, 1)
+        layout.addLayout(actions)
+        self.show_state(self._state)
+
+    def selected_world(self) -> WorldInfo | None:
+        """Return the selected world, if any."""
+        rows = self.table.selectionModel().selectedRows()
+        if not rows:
+            return None
+        index = rows[0].row()
+        return self._worlds[index] if 0 <= index < len(self._worlds) else None
+
+    def show_state(self, state: WorldsState) -> None:
+        """Render ``state``; keeps the selection when the same world is still listed."""
+        previous = self.selected_world()
+        self._state = state
+        if state.worlds != self._worlds:
+            self._fill(state.worlds, previous.name if previous else None)
+        self.table.setVisible(bool(state.worlds))
+        self.empty_label.setVisible(not state.worlds and not state.loading)
+        if state.level_name:
+            key = "worlds.current" if state.level_exists else "worlds.current_new"
+            self.current_label.setText(self._messages.text(key, name=state.level_name))
+        self.current_label.setVisible(bool(state.level_name))
+        self.progress.setVisible(state.busy or state.loading)
+        if state.busy or state.loading:
+            self.progress.setRange(0, 0)
+        if state.message is None:
+            self.message.hide()
+        else:
+            self.message.setText(render_message(self._messages, state.message))
+            self.message.setProperty("tone", state.tone)
+            style = self.message.style()
+            style.unpolish(self.message)
+            style.polish(self.message)
+            self.message.show()
+        self.running_hint.setVisible(state.server_active)
+        self.new_button.setEnabled(state.can_switch)
+        for button in (self.import_folder_button, self.import_zip_button):
+            button.setEnabled(state.can_change_files)
+        self._update_buttons()
+
+    def show_progress(self, done: int, total: int) -> None:
+        """Show the progress of the running copy or archive."""
+        if total > 0:
+            self.progress.setRange(0, 1000)
+            self.progress.setValue(min(1000, done * 1000 // total))
+
+    def _fill(self, worlds: tuple[WorldInfo, ...], selected: str | None) -> None:
+        self._worlds = worlds
+        self.table.setRowCount(len(worlds))
+        for row, world in enumerate(worlds):
+            name = self._messages.text("worlds.active_name", name=world.name) if world.active else world.name
+            modified = datetime.fromtimestamp(world.modified_at).strftime("%Y-%m-%d %H:%M")
+            folders = self._messages.text("worlds.folders", folders=", ".join(world.folders))
+            for column, text in enumerate((name, self._size(world.size_bytes), modified, folders)):
+                item = QTableWidgetItem(text)
+                self.table.setItem(row, column, item)
+            if world.name == selected:
+                self.table.selectRow(row)
+
+    def _size(self, size_bytes: int) -> str:
+        if size_bytes < 1024 * 1024:
+            return self._messages.text("backups.size_kb", kilobytes=max(1, round(size_bytes / 1024)))
+        return self._messages.text("backups.size_value", megabytes=f"{size_bytes / (1024 * 1024):.1f}")
+
+    def _update_buttons(self) -> None:
+        world = self.selected_world()
+        state = self._state
+        self.use_button.setEnabled(world is not None and not world.active and state.can_switch)
+        self.export_button.setEnabled(
+            world is not None and state.can_change_files and not (world.active and state.server_active)
+        )
+        self.delete_button.setEnabled(world is not None and not world.active and state.can_change_files)
+
+    def _on_use(self) -> None:
+        world = self.selected_world()
+        if world is not None:
+            self.use_requested.emit(world.name)
+
+    def _on_export(self) -> None:
+        world = self.selected_world()
+        if world is not None:
+            self.export_requested.emit(world.name)
+
+    def _on_delete(self) -> None:
+        world = self.selected_world()
+        if world is not None:
+            self.delete_requested.emit(world.name)

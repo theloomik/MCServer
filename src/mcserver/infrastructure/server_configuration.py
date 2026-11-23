@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from mcserver.application.errors import EulaNotAccepted, JavaVersionTooOld, ServerWorldInUse
+from mcserver.application.errors import EulaNotAccepted, JavaVersionTooOld, ServerPortInUse, ServerWorldInUse
 from mcserver.application.ports import (
     JavaRuntimeProvider,
     LaunchWarning,
@@ -22,6 +22,7 @@ from mcserver.domain.server_configuration import is_safe_name
 from mcserver.infrastructure.jar_version import read_jar_version
 from mcserver.infrastructure.process_runner import MinecraftProcessConfig, SubprocessServerRunner
 from mcserver.infrastructure.server_files import eula_file_accepted
+from mcserver.infrastructure.server_properties_file import PROPERTIES_FILE, port_in_use, read_properties
 from mcserver.infrastructure.windows_job import NoProcessGuard, ProcessGuard
 
 
@@ -158,8 +159,10 @@ class ConfiguredServerRunnerFactory:
         java: JavaRuntimeProvider | str,
         output_sink: ServerOutputSink | None = None,
         process_guard_factory: Callable[[], ProcessGuard] | None = None,
+        check_port: bool = True,
     ) -> None:
         """Use ``java`` and forward runner output to ``output_sink`` when given."""
+        self._check_port = check_port
         self._repository = repository
         self._java = java
         self._output_sink = output_sink
@@ -174,6 +177,9 @@ class ConfiguredServerRunnerFactory:
         world = locked_world(settings.working_directory)
         if world is not None:
             raise ServerWorldInUse(server_id, world)
+        host, port = server_address(settings.working_directory)
+        if self._check_port and port_in_use(host, port):
+            raise ServerPortInUse(server_id, port)
         java_executable, warnings = self._java_for(server_id, settings, options)
         config = MinecraftProcessConfig(
             java_executable=java_executable,
@@ -232,6 +238,21 @@ def locked_world(server_directory: Path) -> str | None:
         return world if not _try_lock(handle.fileno()) else None
 
 
+def world_folder_locked(world: Path) -> bool:
+    """Return whether a running Minecraft server holds the ``session.lock`` of the world folder ``world``."""
+    lock_path = world / "session.lock"
+    if not lock_path.is_file():
+        return False
+    try:
+        handle = lock_path.open("r+b")
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    with handle:
+        return not _try_lock(handle.fileno())
+
+
 def _try_lock(fileno: int) -> bool:
     """Try to take and release the lock Minecraft holds on ``session.lock``."""
     try:
@@ -252,13 +273,18 @@ def _try_lock(fileno: int) -> bool:
 
 def _level_name(server_directory: Path) -> str:
     """Return ``level-name`` from ``server.properties`` (default ``world``), if it is a safe name."""
+    name = read_properties(server_directory / PROPERTIES_FILE).values.get("level-name", "world").strip()
+    return name if is_safe_name(name) else "world"
+
+
+DEFAULT_SERVER_PORT = 25565
+
+
+def server_address(server_directory: Path) -> tuple[str, int]:
+    """Return ``server-ip`` and ``server-port`` as the server will bind them (defaults: all addresses, 25565)."""
+    values = read_properties(server_directory / PROPERTIES_FILE).values
     try:
-        text = (server_directory / "server.properties").read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return "world"
-    for line in text.splitlines():
-        key, separator, value = line.partition("=")
-        if separator and key.strip() == "level-name":
-            name = value.strip()
-            return name if is_safe_name(name) else "world"
-    return "world"
+        port = int(values.get("server-port", "").strip() or DEFAULT_SERVER_PORT)
+    except ValueError:
+        port = DEFAULT_SERVER_PORT
+    return values.get("server-ip", "").strip(), port if 0 < port < 65536 else DEFAULT_SERVER_PORT

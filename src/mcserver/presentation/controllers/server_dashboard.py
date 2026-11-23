@@ -6,11 +6,12 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
 
+from mcserver.application.auto_restart import RESTART_DELAY_SECONDS, AutoRestartPolicy
 from mcserver.application.errors import EulaNotAccepted, JavaNotFound, JavaVersionTooOld, ServerStopTimedOut
 from mcserver.application.ports import StartOptions
-from mcserver.application.server_coordinator import ServerCoordinator, ServerFailure, StartReport
+from mcserver.application.server_coordinator import FailureKind, ServerCoordinator, ServerFailure, StartReport
 from mcserver.presentation.adapters.status_poller import CoordinatorSnapshot, StatusPoller
 from mcserver.presentation.controllers.server_list import ServerRow, ServerStatus, status_for
 from mcserver.presentation.errors import UserMessage, describe_error, describe_failure
@@ -25,6 +26,7 @@ class Operation(Enum):
     STARTING = "starting"
     STOPPING = "stopping"
     KILLING = "killing"
+    RESTARTING = "restarting"
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +45,8 @@ class DashboardState:
     notice: UserMessage | None = None
     success: UserMessage | None = None
     """A confirmation such as "server created"; cleared when the server is started."""
+    hint: UserMessage | None = None
+    """Replaces the usual hint under the controls (automatic restart, M3-BE-05)."""
 
     @property
     def can_start(self) -> bool:
@@ -75,6 +79,16 @@ class DashboardState:
         )
 
     @property
+    def can_restart(self) -> bool:
+        """Return whether Restart should be enabled: a graceful stop, then a start."""
+        return (
+            self.row is not None
+            and self.java_available
+            and self.operation is None
+            and self.status is ServerStatus.RUNNING
+        )
+
+    @property
     def can_send_command(self) -> bool:
         """Return whether console commands can be sent."""
         return self.row is not None and self.status is ServerStatus.RUNNING
@@ -100,9 +114,17 @@ class ServerDashboardController(QObject):
         poller: StatusPoller | None,
         runner: BackgroundRunner,
         parent: QObject | None = None,
+        *,
+        auto_restart: AutoRestartPolicy | None = None,
+        auto_restart_delay_ms: int = int(RESTART_DELAY_SECONDS * 1000),
     ) -> None:
         """Control ``coordinator``; both it and ``poller`` may be ``None`` (no backend in some tests)."""
         super().__init__(parent)
+        self._auto_restart = auto_restart
+        self._auto_restart_delay_ms = auto_restart_delay_ms
+        self._auto_pending: dict[str, UserMessage] = {}
+        """Servers waiting for an automatic start, with the notice to show once it began."""
+        self._hints: dict[str, UserMessage] = {}
         self._coordinator = coordinator
         self._poller = poller
         self._runner = runner
@@ -163,6 +185,7 @@ class ServerDashboardController(QObject):
         self._notices.pop(server_id, None)
         self._successes.pop(server_id, None)
         self._stop_requested.discard(server_id)
+        self._forget_auto_restart(server_id)
         self._begin(Operation.STARTING)
         self._runner.run(
             lambda: coordinator.start_server(server_id, options),
@@ -184,6 +207,7 @@ class ServerDashboardController(QObject):
         coordinator = self._coordinator
         self._errors.pop(target, None)
         self._stop_requested.add(target)
+        self._forget_auto_restart(target)
         self._begin(Operation.STOPPING)
         self._runner.run(
             coordinator.stop_server,
@@ -191,6 +215,29 @@ class ServerDashboardController(QObject):
             lambda error: self._stop_failed(target, error),
         )
         return True
+
+    def restart(self) -> None:
+        """Stop the selected running server gracefully and start it again, in the background."""
+        if not self._state.can_restart or self._coordinator is None or self._row is None:
+            return
+        server_id = self._row.server_id
+        coordinator = self._coordinator
+        self._errors.pop(server_id, None)
+        self._notices.pop(server_id, None)
+        self._successes.pop(server_id, None)
+        self._stop_requested.add(server_id)
+        self._forget_auto_restart(server_id)
+
+        def stop_then_start() -> StartReport:
+            coordinator.stop_server()
+            return coordinator.start_server(server_id)
+
+        def restarted(report: StartReport) -> None:
+            self._stop_requested.discard(server_id)
+            self._started(server_id, report)
+
+        self._begin(Operation.RESTARTING)
+        self._runner.run(stop_then_start, restarted, lambda error: self._restart_failed(server_id, error))
 
     def kill(self) -> bool:
         """Kill the active server immediately (the caller has asked the user); return whether it was started."""
@@ -256,6 +303,13 @@ class ServerDashboardController(QObject):
             return
         self._fail(server_id, error)
 
+    def _restart_failed(self, server_id: str, error: BaseException) -> None:
+        if isinstance(error, ServerStopTimedOut):
+            self._stop_failed(server_id, error)
+            return
+        self._stop_requested.discard(server_id)
+        self._start_failed(server_id, error)
+
     def _stop_failed(self, server_id: str, error: BaseException) -> None:
         self._fail(server_id, error)
         if isinstance(error, ServerStopTimedOut):
@@ -291,6 +345,7 @@ class ServerDashboardController(QObject):
             self._seen_failure = failure
             self._errors[failure.server_id] = describe_failure(failure)
             self._notices.pop(failure.server_id, None)
+            self._consider_auto_restart(failure)
         stopped = previous.active_server_id if previous else None
         if stopped is not None and snapshot.active_server_id != stopped:
             if stopped in self._stop_requested:
@@ -298,6 +353,52 @@ class ServerDashboardController(QObject):
             elif stopped not in self._errors:
                 self._notices[stopped] = UserMessage("dashboard.notice.stopped_unexpectedly", {"server_id": stopped})
         self._publish()
+
+    # --- automatic restart (M3-BE-05) ---------------------------------------------------------
+
+    def _consider_auto_restart(self, failure: ServerFailure) -> None:
+        if self._auto_restart is None or failure.kind is not FailureKind.UNEXPECTED_EXIT:
+            return
+        server_id = failure.server_id
+        decision = self._auto_restart.decide(failure)
+        limit = self._auto_restart.max_restarts
+        if decision.gave_up:
+            self._hints[server_id] = UserMessage("dashboard.hint.auto_restart_gave_up", {"limit": limit})
+            return
+        if not decision.restart:
+            return
+        params = {"attempt": decision.attempt, "limit": limit}
+        details = self._errors[server_id].details
+        self._auto_pending[server_id] = UserMessage("dashboard.notice.auto_restarted", params, details)
+        self._hints[server_id] = UserMessage(
+            "dashboard.hint.auto_restarting", {**params, "delay": self._auto_restart_delay_ms // 1000}
+        )
+        QTimer.singleShot(self._auto_restart_delay_ms, lambda: self._auto_start(server_id))
+
+    def _auto_start(self, server_id: str) -> None:
+        notice = self._auto_pending.pop(server_id, None)
+        coordinator = self._coordinator
+        if notice is None or coordinator is None:
+            return  # the user started, stopped or restarted it meanwhile
+        self._hints.pop(server_id, None)
+        if coordinator.active_server_id is not None or self._operation is not None:
+            self._publish()
+            return
+        self._errors.pop(server_id, None)
+        self._notices[server_id] = notice
+        self._stop_requested.discard(server_id)
+        self._begin(Operation.STARTING)
+        self._runner.run(
+            lambda: coordinator.start_server(server_id),
+            lambda report: self._started(server_id, report),
+            lambda error: self._start_failed(server_id, error),
+        )
+
+    def _forget_auto_restart(self, server_id: str) -> None:
+        self._auto_pending.pop(server_id, None)
+        self._hints.pop(server_id, None)
+        if self._auto_restart is not None:
+            self._auto_restart.reset(server_id)
 
     def _publish(self) -> None:
         row = self._row
@@ -322,5 +423,6 @@ class ServerDashboardController(QObject):
             error=self._errors.get(row.server_id) if row else None,
             notice=self._notices.get(row.server_id) if row else None,
             success=self._successes.get(row.server_id) if row else None,
+            hint=self._hints.get(row.server_id) if row else None,
         )
         self.state_changed.emit(self._state)

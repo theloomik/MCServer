@@ -5,15 +5,24 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from mcserver.application.auto_restart import AutoRestartPolicy
+from mcserver.application.backup_schedule import ScheduledBackups
+from mcserver.application.backups import BackupService
 from mcserver.application.java_setup import JavaSetup
+from mcserver.application.server_activity import ServerActivity
+from mcserver.application.server_address import ServerAddressLookup
 from mcserver.application.server_adoption import ServerAdoption
+from mcserver.application.server_catalog import ServerJarCatalog
 from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_creation import ServerCreation
 from mcserver.application.server_health import ServerHealth
 from mcserver.application.server_management import ServerManagement
+from mcserver.application.server_metrics import ServerMetrics
 from mcserver.application.server_output import ServerOutputBuffer
+from mcserver.application.server_properties import ServerPropertiesService
 from mcserver.application.server_provisioning import ServerProvisioning
 from mcserver.application.settings import SettingsService
+from mcserver.application.worlds import WorldService
 
 
 class PresentationServices:
@@ -39,6 +48,15 @@ class PresentationServices:
         health: ServerHealth | None = None,
         settings: SettingsService | None = None,
         adoption: ServerAdoption | None = None,
+        properties: ServerPropertiesService | None = None,
+        metrics: ServerMetrics | None = None,
+        backups: BackupService | None = None,
+        activity: ServerActivity | None = None,
+        auto_restart: AutoRestartPolicy | None = None,
+        address: ServerAddressLookup | None = None,
+        scheduled_backups: ScheduledBackups | None = None,
+        worlds: WorldService | None = None,
+        jar_catalog: ServerJarCatalog | None = None,
     ) -> None:
         """Hold the services; ``closer`` releases backend resources on shutdown."""
         self.servers_root = servers_root
@@ -57,6 +75,24 @@ class PresentationServices:
         """Application settings (Java, timeouts, one-time legacy import offer)."""
         self.adoption = adoption
         """Imports existing server folders."""
+        self.properties = properties
+        """Reads and changes server.properties."""
+        self.metrics = metrics
+        """CPU, memory and uptime of the running server."""
+        self.backups = backups
+        """Backups and restores."""
+        self.activity = activity
+        """Players online and tick rate."""
+        self.auto_restart = auto_restart
+        """Opt-in restart after a crash."""
+        self.address = address
+        """LAN address and port of a server."""
+        self.scheduled_backups = scheduled_backups
+        """Backups made automatically while a server runs."""
+        self.worlds = worlds
+        """World folders of each server."""
+        self.jar_catalog = jar_catalog
+        """Official server JARs to download."""
         self.crashed = False
         """Set when an unhandled exception ends the application (the graceful stop was already tried)."""
         self._closer = closer

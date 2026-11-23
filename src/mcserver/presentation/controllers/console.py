@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from enum import Enum
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal, Slot
 
@@ -13,6 +14,23 @@ from mcserver.presentation.adapters.output_bridge import OutputBridge
 FLUSH_INTERVAL_MS = 50
 
 _ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+_LEVEL = re.compile(r"[/\[ ](?P<level>WARN|WARNING|ERROR|FATAL|SEVERE)\]")
+
+
+class LineLevel(str, Enum):
+    """How important a console line is (from its log level, M3-GUI-01)."""
+
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+
+
+def line_level(text: str, is_error: bool = False) -> LineLevel:
+    """Return the level of a log line; stderr output without a level counts as an error."""
+    match = _LEVEL.search(text[:80])
+    if match is not None:
+        return LineLevel.WARNING if match.group("level").startswith("WARN") else LineLevel.ERROR
+    return LineLevel.ERROR if is_error else LineLevel.INFO
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +42,11 @@ class ConsoleLine:
     text: str
     is_command: bool = False
     """A command the user sent, echoed into the console."""
+
+    @property
+    def level(self) -> LineLevel:
+        """Return the line's level (commands count as information)."""
+        return LineLevel.INFO if self.is_command else line_level(self.text, self.is_error)
 
 
 class ConsoleController(QObject):

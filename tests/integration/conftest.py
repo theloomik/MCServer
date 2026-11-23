@@ -15,6 +15,7 @@ JAR it provisions. Behaviour is ``normal`` or whitespace-separated
 * ``crash_after=<s>``  exit on its own after this many seconds with ``exit_code``
 * ``exit_code=<n>``    exit code for ``crash_after`` (default 1)
 * ``crash_on_start=1`` exit 3 right away with an error line
+* ``never_saves=1``    never confirm ``save-all flush`` (for backup timeout tests)
 
 Every console line other than ``stop`` is echoed as ``echo: <line>``. The
 first action is writing ``started.flag`` in the working directory, so a test
@@ -24,6 +25,7 @@ can tell whether the process ran at all.
 from __future__ import annotations
 
 import os
+import socket
 import stat
 import sys
 from pathlib import Path
@@ -86,6 +88,13 @@ for line in sys.stdin:
         time.sleep(float(options.get("stop_delay", "0")))
         print("Saved the world", flush=True)
         sys.exit(0)
+    if command == "save-off":
+        print("[Server thread/INFO]: Automatic saving is now disabled", flush=True)
+    elif command == "save-all flush":
+        if options.get("never_saves") != "1":
+            print("[Server thread/INFO]: Saved the game", flush=True)
+    elif command == "save-on":
+        print("[Server thread/INFO]: Automatic saving is now enabled", flush=True)
     print("echo: " + command, flush=True)
 """
 
@@ -131,3 +140,13 @@ def fake_java(tmp_path: Path) -> Path:
 @pytest.fixture
 def fake_server_script(fake_java: Path) -> Path:
     return fake_java.parent / "fake_server.py"
+
+
+def use_free_port(server_folder: Path) -> int:
+    """Give a test server its own free port, so tests never depend on 25565 being free on this machine."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = int(probe.getsockname()[1])
+    server_folder.mkdir(parents=True, exist_ok=True)
+    (server_folder / "server.properties").write_text(f"server-port={port}\n", encoding="utf-8")
+    return port

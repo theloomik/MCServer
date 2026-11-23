@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from mcserver.application.backups import BackupFailed, BackupNotFound, BackupNotPossible
 from mcserver.application.errors import (
     ActiveServerAlreadyExists,
     EulaNotAccepted,
@@ -26,16 +27,26 @@ from mcserver.application.errors import (
     ServerIsRunning,
     ServerJarAlreadyExists,
     ServerNotRunning,
+    ServerPortInUse,
     ServerProvisioningError,
     ServerStartFailed,
     ServerStopFailed,
     ServerStopTimedOut,
     ServerWorldInUse,
 )
+from mcserver.application.server_catalog import CatalogUnavailable, DownloadFailed
 from mcserver.application.server_coordinator import FailureKind, ServerFailure
 from mcserver.application.settings import InvalidSettings
+from mcserver.application.worlds import (
+    InvalidWorldName,
+    InvalidWorldSource,
+    WorldAlreadyExists,
+    WorldIsActive,
+    WorldNotFound,
+)
 from mcserver.domain.diagnostics import FailureHint
 from mcserver.domain.errors import InvalidServerConfiguration
+from mcserver.domain.server_properties import InvalidServerProperties
 from mcserver.presentation.i18n.catalog import Messages
 
 
@@ -108,6 +119,30 @@ def _describe_runtime_error(error: BaseException, details: str) -> UserMessage |
         return UserMessage("errors.invalid_command", {}, details)
     if isinstance(error, ServerCommandFailed):
         return UserMessage("errors.command_failed", {"server_id": error.server_id}, details)
+    if isinstance(error, ServerPortInUse):
+        return UserMessage("errors.server_port_in_use", {"server_id": error.server_id, "port": error.port}, details)
+    if isinstance(error, InvalidServerProperties):
+        return UserMessage("errors.invalid_properties", {}, details)
+    if isinstance(error, BackupNotPossible):
+        return UserMessage("errors.backup_not_possible", {"server_id": error.server_id}, details)
+    if isinstance(error, BackupFailed):
+        return UserMessage("errors.backup_failed", {"server_id": error.server_id, "reason": error.reason}, details)
+    if isinstance(error, CatalogUnavailable):
+        return UserMessage("errors.catalog_unavailable", {"reason": error.reason}, details)
+    if isinstance(error, DownloadFailed):
+        return UserMessage("errors.download_failed", {"file_name": error.file_name, "reason": error.reason}, details)
+    if isinstance(error, WorldNotFound):
+        return UserMessage("errors.world_not_found", {"name": error.name}, details)
+    if isinstance(error, WorldAlreadyExists):
+        return UserMessage("errors.world_exists", {"name": error.name}, details)
+    if isinstance(error, WorldIsActive):
+        return UserMessage("errors.world_is_active", {"name": error.name}, details)
+    if isinstance(error, InvalidWorldName):
+        return UserMessage("errors.invalid_world_name", {"name": error.name}, details)
+    if isinstance(error, InvalidWorldSource):
+        return UserMessage("errors.invalid_world_source", {"reason": error.reason}, details)
+    if isinstance(error, BackupNotFound):
+        return UserMessage("errors.backup_not_found", {}, details)
     if isinstance(error, ServerIsRunning):
         return UserMessage("errors.server_is_running", {"server_id": error.server_id}, details)
     if isinstance(error, ServerFilesRemovalFailed):

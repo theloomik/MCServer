@@ -89,8 +89,21 @@ def test_real_server_creates_starts_takes_a_command_and_stops_gracefully(tmp_pat
             30,
         )
 
+        # Online backup: the real server must confirm "save-all flush" (M3-BE-03).
+        online = runtime.backups.create("smoke", "online smoke test")
+        assert online.online and online.size_bytes > 0
+
         assert runtime.coordinator.stop_server() is True
         assert runtime.coordinator.state is ServerState.STOPPED
         assert runtime.coordinator.status().last_failure is None
         assert not (server_directory / ".mcserver" / "running").exists()
         assert (server_directory / "world" / "level.dat").is_file()  # the world was saved
+
+        # Restore while stopped: a safety backup is made, and the world from the online backup comes back.
+        (server_directory / "world" / "level.dat").write_bytes(b"damaged")
+        safety = runtime.backups.restore("smoke", online.backup_id)
+        assert safety.kind.value == "safety"
+        assert (server_directory / "world" / "level.dat").read_bytes() != b"damaged"
+        runtime.coordinator.start_server("smoke")
+        assert wait_until(lambda: runtime.coordinator.state is ServerState.RUNNING, STARTUP_TIMEOUT)
+        assert runtime.coordinator.stop_server() is True
