@@ -21,6 +21,7 @@ from mcserver.application.ports import JavaInstallation, OutputStream
 from mcserver.application.server_activity import ServerActivity
 from mcserver.application.server_address import ServerAddressLookup
 from mcserver.application.server_adoption import ServerAdoption
+from mcserver.application.server_catalog import ServerJarCatalog
 from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_creation import ServerCreation
 from mcserver.application.server_health import ServerHealth
@@ -100,6 +101,7 @@ def runtime_with(runner: FakeRunner) -> ServerRuntime:
             coordinator,
         ),
         activity=ServerActivity(),
+        jar_catalog=ServerJarCatalog({}, None),  # type: ignore[arg-type]
         worlds=WorldService(
             configurations,
             LocalWorldStore(unused_root),

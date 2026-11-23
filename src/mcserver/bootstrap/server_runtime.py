@@ -15,6 +15,7 @@ from mcserver.application.ports import JavaRuntimeProvider, Scheduler, ServerCon
 from mcserver.application.server_activity import ServerActivity
 from mcserver.application.server_address import ServerAddressLookup
 from mcserver.application.server_adoption import ServerAdoption
+from mcserver.application.server_catalog import CatalogSource, ServerJarCatalog, ServerType
 from mcserver.application.server_coordinator import (
     DEFAULT_STARTUP_TIMEOUT_SECONDS,
     DEFAULT_STOP_TIMEOUT_SECONDS,
@@ -34,6 +35,7 @@ from mcserver.infrastructure.legacy_import import LegacyFileServerConfigurationS
 from mcserver.infrastructure.network import lan_ipv4_address
 from mcserver.infrastructure.psutil_metrics import PsutilProcessMetrics
 from mcserver.infrastructure.recycle_bin import RecycleBinServerFilesRemover
+from mcserver.infrastructure.server_catalog_http import DownloadCache, HttpClient, MojangCatalog, PaperCatalog
 from mcserver.infrastructure.server_configuration import (
     ConfiguredServerRunnerFactory,
     LegacyServerConfigurationRepository,
@@ -93,6 +95,8 @@ class ServerRuntime:
     """Backups made automatically while a server runs (ADR 0008)."""
     worlds: WorldService
     """World folders of each server (M3-BE-07)."""
+    jar_catalog: ServerJarCatalog
+    """Official Paper and Vanilla server JARs, downloaded and verified (M3-BE-06)."""
 
     def close(self, timeout: float | None = None) -> bool:
         """Stop the active server gracefully, then end output delivery; never kills (ADR 0006).
@@ -189,6 +193,7 @@ def build_server_runtime(
         metrics=ServerMetrics(coordinator, PsutilProcessMetrics(), configurations, monotonic),
         backups=backups,
         scheduled_backups=ScheduledBackups(backup_store, backups, coordinator),
+        jar_catalog=_jar_catalog(servers_directory),
         worlds=WorldService(
             configurations, LocalWorldStore(servers_directory), properties, lambda: coordinator.active_server_id
         ),
@@ -196,6 +201,15 @@ def build_server_runtime(
         auto_restart=AutoRestartPolicy(lambda: settings.current.auto_restart),
         address=ServerAddressLookup(properties, lan_ipv4_address),
     )
+
+
+def _jar_catalog(servers_directory: Path) -> ServerJarCatalog:
+    client = HttpClient()
+    sources: dict[ServerType, CatalogSource] = {
+        ServerType.PAPER: PaperCatalog(client),
+        ServerType.VANILLA: MojangCatalog(client),
+    }
+    return ServerJarCatalog(sources, DownloadCache(servers_directory, client))
 
 
 def _max_players(properties: ServerPropertiesService, server_id: str) -> int | None:
