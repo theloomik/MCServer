@@ -242,10 +242,10 @@ def test_delete_removes_only_the_configuration_record() -> None:
 
     result = management(repository).delete_server("survival")
 
-    assert result is None
+    assert result.server_id == "survival" and result.files is None
     assert list(repository.items) == ["creative"]
     # The only side effect is the repository record removal; no file operation exists here.
-    assert repository.calls == ["remove:survival"]
+    assert repository.calls == ["get:survival", "remove:survival"]
 
 
 def test_delete_unknown_server_raises_not_found() -> None:

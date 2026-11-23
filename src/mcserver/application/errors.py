@@ -267,5 +267,27 @@ class ServerWorldInUse(RuntimeError):
         super().__init__(f"The world '{world}' of server '{server_id}' is in use by another process.")
 
 
+class ServerIsRunning(RuntimeError):
+    """Raised when a change needs the server stopped (moving its folder or JAR, deleting it)."""
+
+    def __init__(self, server_id: str) -> None:
+        """Describe the active server."""
+        self.server_id = server_id
+        super().__init__(f"Server '{server_id}' is running; stop it first.")
+
+
+class ServerFilesRemovalFailed(RuntimeError):
+    """Raised when a server folder could be moved neither to the Recycle Bin nor to the trash folder.
+
+    Nothing was deleted and the configuration was kept.
+    """
+
+    def __init__(self, directory: str, reason: str) -> None:
+        """Describe the folder and why it was not moved."""
+        self.directory = directory
+        self.reason = reason
+        super().__init__(f"The folder '{directory}' could not be moved away: {reason}")
+
+
 class ProcessGuardUnavailable(RuntimeError):
     """Raised when the server process could not be placed under orphan protection; it never ran."""

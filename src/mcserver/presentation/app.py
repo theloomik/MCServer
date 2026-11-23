@@ -31,12 +31,11 @@ _JAVA_MISSING = "No usable Java runtime was found."
 def build_services(root: Path, java_resolver: JavaRuntimeProvider | None = None) -> PresentationServices:
     """Build the backend for ``root``.
 
-    The runtime launches servers from the new configuration store
-    (``launch_from_configuration_store=True``), so servers created in the GUI
-    can be started. ``java_problem`` describes a missing Java at startup; the
+    The runtime launches servers from the configuration store (ADR 0009);
+    MCServer 0.9.1 servers are offered for import at startup. ``java_problem`` describes a missing Java at startup; the
     GUI can detect Java again later without a restart.
     """
-    runtime = build_server_runtime(root, java_resolver, launch_from_configuration_store=True)
+    runtime = build_server_runtime(root, java_resolver)
 
     def close() -> object:
         # After an unhandled exception the graceful stop was already attempted (30 s).
@@ -53,6 +52,8 @@ def build_services(root: Path, java_resolver: JavaRuntimeProvider | None = None)
         provisioning=runtime.provisioning,
         java=runtime.java,
         health=runtime.health,
+        settings=runtime.settings,
+        adoption=runtime.adoption,
     )
     return services
 

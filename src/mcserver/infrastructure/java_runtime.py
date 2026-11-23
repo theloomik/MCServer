@@ -149,6 +149,14 @@ class JavaRuntimeResolver:
             self._configured = path
         return JavaInstallation(str(path.resolve()), major, JavaRuntimeSource.CONFIGURED.value)
 
+    def inspect(self, executable: str) -> JavaInstallation:
+        """Probe ``executable`` (a per-server Java) without changing the configured one."""
+        path = Path(executable)
+        major = self._probe(path)
+        if major is None:
+            raise InvalidJavaExecutable(executable)
+        return JavaInstallation(str(path.resolve()), major, "server")
+
     def find(self, minimum_major: int | None = None) -> JavaInstallation:
         """Return the configured Java, else the first runtime meeting ``minimum_major`` (else the first found)."""
         runtime = self.resolve(minimum_major)

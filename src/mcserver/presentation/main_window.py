@@ -15,6 +15,7 @@ from mcserver.application.errors import InvalidJavaExecutable, JavaNotFound, Jav
 from mcserver.application.java_setup import JavaStatus
 from mcserver.application.ports import StartOptions
 from mcserver.application.server_health import UncleanShutdown
+from mcserver.application.server_management import LegacyImportResult
 from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.presentation import theme
 from mcserver.presentation.adapters.output_bridge import OutputBridge
@@ -23,9 +24,14 @@ from mcserver.presentation.controllers.console import ConsoleController
 from mcserver.presentation.controllers.server_creation import ServerCreationController
 from mcserver.presentation.controllers.server_dashboard import ServerDashboardController
 from mcserver.presentation.controllers.server_list import ServerListController, ServerListState
+from mcserver.presentation.controllers.server_management import ManagementController
+from mcserver.presentation.dialogs.adopt_server_dialog import AdoptServerDialog
 from mcserver.presentation.dialogs.create_server_dialog import CreateServerDialog
+from mcserver.presentation.dialogs.delete_server_dialog import DeleteServerDialog
+from mcserver.presentation.dialogs.edit_server_dialog import EditServerDialog
 from mcserver.presentation.dialogs.error_details_dialog import ErrorDetailsDialog
 from mcserver.presentation.dialogs.java_setup_dialog import JavaChoice, JavaSetupDialog, pick_java_with_system_dialog
+from mcserver.presentation.dialogs.settings_dialog import SettingsDialog
 from mcserver.presentation.errors import UserMessage, describe_error, render_message
 from mcserver.presentation.i18n import Messages
 from mcserver.presentation.services import PresentationServices
@@ -44,6 +50,10 @@ Confirm = Callable[[str], bool]
 JavaProblem = JavaNotFound | JavaVersionTooOld
 JavaProblemHandler = Callable[[JavaProblem], JavaChoice]
 UncleanNotifier = Callable[[UncleanShutdown], None]
+AskDelete = Callable[[ServerConfiguration, Path], bool | None]
+"""Return ``None`` to cancel, else whether the folder goes to the Recycle Bin too."""
+LegacyOffer = Callable[[int], bool]
+LegacyResultNotifier = Callable[[LegacyImportResult], None]
 
 
 class StopTimeoutChoice(Enum):
@@ -86,6 +96,9 @@ class MainWindow(QMainWindow):
         handle_java_problem: JavaProblemHandler | None = None,
         notify_unclean: UncleanNotifier | None = None,
         ask_after_stop_timeout: AskAfterStopTimeout | None = None,
+        ask_delete: AskDelete | None = None,
+        offer_legacy_import: LegacyOffer | None = None,
+        notify_legacy_result: LegacyResultNotifier | None = None,
     ) -> None:
         """Build the window from already-created services and messages, then load the servers."""
         super().__init__(parent)
@@ -99,7 +112,13 @@ class MainWindow(QMainWindow):
         self._handle_java_problem = handle_java_problem or self._show_java_dialog
         self._notify_unclean = notify_unclean or self._show_unclean_notice
         self._ask_after_stop_timeout = ask_after_stop_timeout or self._ask_after_timeout
+        self._ask_delete = ask_delete or self._show_delete_dialog
+        self._offer_legacy_import = offer_legacy_import or self._ask_legacy_import
+        self._notify_legacy_result = notify_legacy_result or self._show_legacy_result
         self.create_dialog: CreateServerDialog | None = None
+        self.edit_dialog: EditServerDialog | None = None
+        self.adopt_dialog: AdoptServerDialog | None = None
+        self.settings_dialog: SettingsDialog | None = None
         self._exit_after_stop = False
         self._torn_down = False
         self.setWindowTitle(messages.text("app.title"))
@@ -118,6 +137,7 @@ class MainWindow(QMainWindow):
         self.creation_controller = ServerCreationController(
             services.server_creation, services.management, self.background, self
         )
+        self.management_controller = ManagementController(services, self.background, self)
 
         self.server_list_view = ServerListView(messages)
         self.dashboard_view = ServerDashboardView(messages, services.servers_root, self.console_controller.available)
@@ -130,8 +150,9 @@ class MainWindow(QMainWindow):
         if self.poller is not None:
             self.poller.start()
         self.server_list_controller.refresh()
-        # Shown once the window is up, once per incident from the previous session (M1-GUI-06).
-        QTimer.singleShot(0, self.report_unclean_shutdowns)
+        # Shown once the window is up: incidents from the previous session (M1-GUI-06),
+        # then the one-time offer to import MCServer 0.9.1 servers (M2-GUI-02).
+        QTimer.singleShot(0, self._after_start)
 
     # --- construction ---------------------------------------------------------------------
 
@@ -141,6 +162,10 @@ class MainWindow(QMainWindow):
         self.new_server_action.setShortcut(QKeySequence(QKeySequence.StandardKey.New))
         self.refresh_action = file_menu.addAction(self._messages.text("menu.file.refresh"))
         self.refresh_action.setShortcut(QKeySequence(QKeySequence.StandardKey.Refresh))
+        self.import_folder_action = file_menu.addAction(self._messages.text("menu.file.import_folder"))
+        self.import_legacy_action = file_menu.addAction(self._messages.text("menu.file.import_legacy"))
+        file_menu.addSeparator()
+        self.settings_action = file_menu.addAction(self._messages.text("menu.file.settings"))
         file_menu.addSeparator()
         self.exit_action = file_menu.addAction(self._messages.text("menu.file.exit"))
         self.exit_action.triggered.connect(self.close)
@@ -209,6 +234,17 @@ class MainWindow(QMainWindow):
         self.dashboard_view.open_folder_requested.connect(self._open_server_folder)
         self.java_check_button.clicked.connect(self.check_java)
         self.java_choose_button.clicked.connect(self.choose_java)
+
+        management = self.management_controller
+        self.dashboard_view.edit_requested.connect(self.open_edit_dialog)
+        self.dashboard_view.delete_requested.connect(self.request_delete)
+        self.import_folder_action.triggered.connect(self.open_adopt_dialog)
+        self.import_legacy_action.triggered.connect(management.import_legacy)
+        self.settings_action.triggered.connect(self.open_settings_dialog)
+        management.changed.connect(self._on_servers_changed)
+        management.message.connect(self._show_message_in_status_bar)
+        management.failed.connect(self._show_message_in_status_bar)
+        management.legacy_imported.connect(self._notify_legacy_result)
 
         console = self.console_controller
         console.lines_appended.connect(self.dashboard_view.console.append_lines)
@@ -322,6 +358,89 @@ class MainWindow(QMainWindow):
     def _show_error_in_status_bar(self, error: BaseException) -> None:
         self.statusBar().showMessage(render_message(self._messages, describe_error(error)), 8000)
 
+    def _show_message_in_status_bar(self, message: UserMessage) -> None:
+        self.statusBar().showMessage(render_message(self._messages, message), 8000)
+
+    # --- M2: edit, delete, import, settings ---------------------------------------------------
+
+    def _selected_configuration(self) -> ServerConfiguration | None:
+        row = self.dashboard_controller.state.row
+        return row.configuration if row is not None else None
+
+    def _on_servers_changed(self, server_id: object) -> None:
+        self.server_list_controller.refresh()
+        if isinstance(server_id, str):
+            self.server_list_controller.select(server_id)
+
+    def open_edit_dialog(self) -> None:
+        """Edit the selected server (folder and JAR are locked while it runs)."""
+        configuration = self._selected_configuration()
+        if configuration is None:
+            return
+        running = self.dashboard_controller.active_server_id == configuration.server_id
+        dialog = EditServerDialog(self.management_controller, configuration, self._messages, self, running=running)
+        self.edit_dialog = dialog
+        dialog.finished.connect(lambda _result: self._forget_dialog("edit_dialog"))
+        dialog.open()
+
+    def request_delete(self) -> None:
+        """Delete the selected, stopped server after confirmation."""
+        configuration = self._selected_configuration()
+        if configuration is None or self.dashboard_controller.active_server_id == configuration.server_id:
+            return
+        remove_files = self._ask_delete(configuration, self.management_controller.server_folder(configuration))
+        if remove_files is not None:
+            self.management_controller.delete(configuration, remove_files=remove_files)
+
+    def open_adopt_dialog(self) -> None:
+        """Import an existing server folder."""
+        if self.adopt_dialog is not None:
+            self.adopt_dialog.raise_()
+            return
+        dialog = AdoptServerDialog(self.management_controller, self._messages, self)
+        self.adopt_dialog = dialog
+        dialog.finished.connect(lambda _result: self._forget_dialog("adopt_dialog"))
+        dialog.open()
+
+    def open_settings_dialog(self) -> None:
+        """Show the application settings."""
+        settings = self._services.settings
+        if settings is None:
+            return
+        dialog = SettingsDialog(
+            self.management_controller,
+            settings.current,
+            self._services.java,
+            self._messages,
+            self,
+            open_folder=self._open_folder,
+        )
+        dialog.import_legacy_requested.connect(self.management_controller.import_legacy)
+        dialog.accepted.connect(self.check_java)
+        self.settings_dialog = dialog
+        dialog.finished.connect(lambda _result: self._forget_dialog("settings_dialog"))
+        dialog.open()
+
+    def _forget_dialog(self, name: str) -> None:
+        dialog = getattr(self, name)
+        setattr(self, name, None)
+        if dialog is not None:
+            dialog.deleteLater()
+
+    def _after_start(self) -> None:
+        self.report_unclean_shutdowns()
+        self.offer_legacy_import()
+
+    def offer_legacy_import(self) -> None:
+        """Offer once to import MCServer 0.9.1 servers that are not in the list yet."""
+        controller = self.management_controller
+        if not controller.should_offer_legacy_import():
+            return
+        pending = controller.pending_legacy_servers()
+        controller.mark_legacy_import_offered()
+        if self._offer_legacy_import(len(pending)):
+            controller.import_legacy()
+
     def report_unclean_shutdowns(self) -> None:
         """Tell the user once about each server that was not stopped cleanly last time (no recovery offered yet)."""
         health = self._services.health
@@ -357,6 +476,42 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.Cancel,
         )
         return answer == QMessageBox.StandardButton.Yes
+
+    def _show_delete_dialog(self, configuration: ServerConfiguration, folder: Path) -> bool | None:
+        dialog = DeleteServerDialog(configuration, folder, self._messages, self)
+        accepted = dialog.exec() == DeleteServerDialog.DialogCode.Accepted
+        remove_files = dialog.remove_files
+        dialog.deleteLater()
+        return remove_files if accepted else None
+
+    def _ask_legacy_import(self, count: int) -> bool:
+        answer = QMessageBox.question(
+            self,
+            self._messages.text("legacy.offer.title"),
+            self._messages.plural("legacy.offer.text", count),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def _show_legacy_result(self, result: LegacyImportResult) -> None:
+        if not (result.imported or result.skipped or result.rejected):
+            text = self._messages.text("legacy.result.nothing")
+        else:
+            lines = [
+                self._messages.text(
+                    "legacy.result.text",
+                    imported=result.imported_count,
+                    skipped=result.skipped_count,
+                    rejected=result.rejected_count,
+                )
+            ]
+            lines += [
+                self._messages.text("legacy.result.rejected", server_id=item.server_id, reason=item.reason)
+                for item in result.rejected
+            ]
+            text = "\n".join(lines)
+        QMessageBox.information(self, self._messages.text("legacy.result.title"), text)
 
     def _ask_to_kill(self, server_id: str) -> bool:
         answer = QMessageBox.warning(
@@ -412,7 +567,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Stop a running server (after confirmation) before closing; release GUI resources."""
-        if self.dashboard_controller.busy or self.creation_controller.busy:
+        if self.dashboard_controller.busy or self.creation_controller.busy or self.management_controller.busy:
             event.ignore()
             self.statusBar().showMessage(self._messages.text("exit.wait_for_operation"), 6000)
             return

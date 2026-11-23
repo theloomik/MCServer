@@ -81,7 +81,13 @@ QPushButton#createServerButton {{
 QPushButton#createServerButton:hover {{ border-color: {ACCENT_DIM}; color: {ACCENT}; background-color: {CARD_RAISED}; }}
 
 /* Dialogs and forms */
-QDialog#createServerDialog {{ background-color: {BACKGROUND}; }}
+QDialog#createServerDialog, QDialog#formDialog {{ background-color: {BACKGROUND}; }}
+QComboBox {{
+    background-color: {CARD_RAISED}; color: {TEXT}; border: 1px solid {BORDER};
+    border-radius: 8px; padding: 7px 10px;
+}}
+QComboBox:disabled {{ color: {TEXT_FAINT}; background-color: {BACKGROUND}; }}
+QComboBox QAbstractItemView {{ background-color: {CARD_RAISED}; color: {TEXT}; selection-background-color: {ACCENT_DIM}; }}
 QLabel#dialogTitle {{ font-size: 24px; font-weight: 700; }}
 QLabel#dialogSubtitle {{ color: {TEXT_MUTED}; font-size: 13px; }}
 QLabel#formLabel {{ color: {TEXT}; font-size: 13px; font-weight: 600; padding-bottom: 2px; }}

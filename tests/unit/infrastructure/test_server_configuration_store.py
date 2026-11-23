@@ -83,8 +83,20 @@ def test_add_persists_versioned_format_with_relative_names(
 
     document = json.loads(repository.path.read_text(encoding="utf-8"))
     assert document == {
-        "format_version": 1,
-        "servers": [{"server_id": "survival", "directory": "survival", "jar_file": "paper.jar", "memory_mb": 4096}],
+        "format_version": 2,
+        "servers": [
+            {
+                "server_id": "survival",
+                "directory": "survival",
+                "jar_file": "paper.jar",
+                "memory_mb": 4096,
+                "display_name": "",
+                "jvm_arguments": [],
+                "java_path": None,
+                "server_type": None,
+                "minecraft_version": None,
+            }
+        ],
     }
     assert str(root) not in repository.path.read_text(encoding="utf-8")
 
@@ -252,7 +264,7 @@ def test_shared_directory_in_file_is_reported(root: Path) -> None:
         JsonServerConfigurationRepository(root).list_all()
 
 
-@pytest.mark.parametrize("version", [0, 2, 99])
+@pytest.mark.parametrize("version", [0, 3, 99])
 def test_unknown_format_version_is_reported(root: Path, version: int) -> None:
     write_document(root, {"format_version": version, "servers": []})
 

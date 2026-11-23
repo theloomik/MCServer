@@ -30,3 +30,15 @@ If the record cannot be removed, or was changed by someone else and is kept, `Se
 ## Consequences
 
 Provisioning is safe to call from the GUI without Java (`build_server_provisioning`, `ServerRuntime.provisioning`). Provisioning into an existing folder (for example adding a JAR to an imported server) is not supported yet and would need its own rules. Provisioning does not download JARs, check that a JAR is a Minecraft server, accept the EULA, write `server.properties`, launch servers or delete server files. A process killed mid-copy can leave a partial JAR, which the next attempt reports as a directory conflict rather than overwriting.
+
+## Amendment (M1, M2): EULA consent, folder adoption and safe deletion
+
+**EULA (M1-BE-01).** Provisioning writes `eula=true` only when the caller passes the user's explicit consent (`accept_eula=True`). It is written atomically before the JAR is copied, and a failed provisioning removes it together with the directory, so rollback still removes only what the same call created.
+
+**Adopting an existing folder (M2-BE-04, `ServerAdoption`).** Rules for servers that MCServer did not create:
+
+- A folder directly inside the servers root is registered **in place**; nothing on disk changes.
+- A folder elsewhere is **copied** into a new folder created exclusively inside the root (never overwriting). The source is only read: it is never moved or changed. A world whose `session.lock` is held is not copied. MCServer's own `.mcserver` marker folder is skipped.
+- The record is validated, and its `server_id` is checked for being free, **before** copying. If storing the record still fails, the copy is undone file by file. Only what this copy created is removed (no recursive delete), and anything that cannot be removed is reported as leftovers.
+
+**Deleting a server (M2-BE-03).** `delete_server` removes only the record unless the user ticks "also move its folder to the Recycle Bin". Then the folder goes to the Windows Recycle Bin (`FOF_ALLOWUNDO`, with `FOF_WANTNUKEWARNING` so Windows asks before destroying anything on a drive without a Recycle Bin). If that fails, the folder is renamed into `<root>/.trash/<name>-<timestamp>`. If both fail, nothing is deleted and the record is kept. Files are moved before the record is removed, and a running server cannot be deleted. Server files are never deleted permanently by MCServer.

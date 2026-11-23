@@ -8,6 +8,9 @@ MESSAGES: Catalog = {
     "menu.file.new_server": "&New server…",
     "menu.file.refresh": "&Refresh servers",
     "menu.file.exit": "E&xit",
+    "menu.file.import_folder": "&Import server folder…",
+    "menu.file.import_legacy": "Import from MCServer &0.9.1…",
+    "menu.file.settings": "&Settings…",
     "status.servers_folder": "Servers folder: {path}",
     "status.java_available": "Java: ready",
     "status.java_ready": "Java {major}: ready",
@@ -25,7 +28,9 @@ MESSAGES: Catalog = {
     "server_list.create": "+  Create server",
     "server_list.item": "{server_id}\n{status}",
     "server_list.subtitle": "{status} · {memory}",
-    "server_list.empty": "No servers yet.\nServers you create will appear here.",
+    "server_list.empty": (
+        "No servers yet.\nCreate one, or use File › Import server folder for a server you already have."
+    ),
     "server_list.error.load": (
         "The server list couldn't be loaded. The configuration file may be damaged or from a newer "
         "MCServer version. Details were written to the log."
@@ -215,4 +220,87 @@ MESSAGES: Catalog = {
         "without saving. Changes since its last autosave (normally within about 5 minutes) may be lost, and a "
         "chunk being written may be damaged. Start the server and check the world before playing."
     ),
+    "dashboard.edit": "Edit…",
+    "dashboard.delete": "Delete…",
+    "legacy.offer.title": "Import your MCServer 0.9.1 servers?",
+    "legacy.offer.text": {
+        "one": (
+            "MCServer found {count} server from MCServer 0.9.1 that is not in this list yet. Import it? "
+            "Its folder is not moved or changed."
+        ),
+        "other": (
+            "MCServer found {count} servers from MCServer 0.9.1 that are not in this list yet. Import them? "
+            "Their folders are not moved or changed."
+        ),
+    },
+    "legacy.result.title": "Import finished",
+    "legacy.result.text": "Imported: {imported}. Already in the list: {skipped}. Could not be imported: {rejected}.",
+    "legacy.result.rejected": "{server_id}: {reason}",
+    "legacy.result.nothing": "There is nothing to import from MCServer 0.9.1.",
+    "edit.title": "Edit {server_id}",
+    "edit.display_name.label": "Name",
+    "edit.display_name.hint": "Shown in the server list. The server ID {server_id} never changes.",
+    "edit.memory.label": "Memory",
+    "edit.jar.label": "Server JAR",
+    "edit.jar.hint_running": "Stop the server to choose another JAR.",
+    "edit.jvm.label": "Extra Java arguments",
+    "edit.jvm.hint": "Separated by spaces, for example -XX:+UseG1GC. Memory is set above.",
+    "edit.java.label": "Java for this server",
+    "edit.java.auto": "Same as the application (automatic)",
+    "edit.java.choose": "Choose…",
+    "edit.java.clear": "Use automatic",
+    "edit.note": "Changes apply the next time the server starts.",
+    "edit.save": "Save",
+    "edit.cancel": "Cancel",
+    "edit.saved": "{name} was saved.",
+    "delete.title": "Delete {name}?",
+    "delete.text": "{name} will be removed from MCServer.",
+    "delete.files": "Also move its folder to the Recycle Bin",
+    "delete.files_hint": "Without this, the folder {path} stays where it is and can be imported again later.",
+    "delete.confirm": "Delete",
+    "delete.cancel": "Cancel",
+    "delete.done.kept": "{name} was removed. Its folder was kept.",
+    "delete.done.recycle_bin": "{name} was removed and its folder was moved to the Recycle Bin.",
+    "delete.done.trash": "{name} was removed and its folder was moved to {location}.",
+    "delete.done.missing": "{name} was removed; its folder no longer existed.",
+    "adopt.title": "Import a server folder",
+    "adopt.subtitle": "Use a server you already have. Its files are never moved or changed.",
+    "adopt.folder.label": "Folder",
+    "adopt.folder.placeholder": "No folder selected",
+    "adopt.folder.browse": "Browse…",
+    "adopt.folder.dialog_title": "Choose the server folder",
+    "adopt.inside": "This folder is inside the servers folder, so it is used where it is.",
+    "adopt.outside": "This folder will be copied into the servers folder; the original stays unchanged.",
+    "adopt.jar.label": "Server JAR",
+    "adopt.no_jars": "This folder has no .jar file, so it can't be imported.",
+    "adopt.server_id.label": "Server ID",
+    "adopt.memory.label": "Memory",
+    "adopt.submit": "Import",
+    "adopt.submitting": "Importing…",
+    "adopt.cancel": "Cancel",
+    "adopt.done": "{server_id} was imported.",
+    "settings.title": "Settings",
+    "settings.servers_folder": "Servers folder",
+    "settings.open_folder": "Open",
+    "settings.java.label": "Java",
+    "settings.java.auto": "Detect automatically",
+    "settings.java.choose": "Choose java.exe…",
+    "settings.java.found": "{executable} (Java {major})",
+    "settings.java.missing": "No Java found",
+    "settings.stop_timeout.label": "Stop timeout",
+    "settings.stop_timeout.hint": "How long Stop waits for the server to save before Kill is offered.",
+    "settings.startup_timeout.label": "Startup timeout",
+    "settings.startup_timeout.hint": "How long a start may take before MCServer stops the server gracefully.",
+    "settings.seconds": " s",
+    "settings.import_legacy": "Import MCServer 0.9.1 servers…",
+    "settings.save": "Save",
+    "settings.cancel": "Cancel",
+    "settings.saved": "Settings were saved.",
+    "errors.server_is_running": "{server_id} is running; stop it first.",
+    "errors.files_removal_failed": (
+        "The folder {directory} could be moved neither to the Recycle Bin nor to the trash folder, so nothing "
+        "was deleted. {reason}"
+    ),
+    "errors.invalid_settings": "{reason}",
+    "errors.legacy_unavailable": "The MCServer 0.9.1 server list could not be read.",
 }

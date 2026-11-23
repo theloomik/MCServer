@@ -37,6 +37,9 @@ class ServerLaunchSettings:
     server_jar_path: Path
     working_directory: Path
     memory_megabytes: int
+    jvm_arguments: tuple[str, ...] = ()
+    java_path: str | None = None
+    """A per-server Java executable that overrides detection (ADR 0007)."""
 
 
 class LaunchSettingsSource(Protocol):
@@ -85,24 +88,40 @@ class LegacyServerConfigurationRepository:
         return data
 
     def _managed_directory(self, value: object, server_id: str) -> Path:
-        """Require a configured directory that is an immediate child of the servers root."""
+        """Require a configured directory that is an immediate child of the servers root.
+
+        MCServer 0.9.1 stored absolute paths in packaged builds but paths relative
+        to its working directory in development runs (``minecraft_servers\\x``).
+        A relative path is therefore taken by its last part, inside the servers
+        root, so the result does not depend on the current directory.
+        """
         if not isinstance(value, str) or not value:
             raise ServerConfigurationError(f"Server '{server_id}' has no directory.")
-        directory = Path(value).resolve()
+        configured = Path(value)
+        directory = configured.resolve() if configured.is_absolute() else (self._servers_directory / configured.name)
         if directory.parent != self._servers_directory:
             raise ServerConfigurationError(f"Server '{server_id}' directory is outside the managed root.")
         return directory
 
     @staticmethod
     def _jar_path(entry: dict[str, Any], directory: Path) -> Path:
-        """Resolve the configured JAR and keep it inside the selected server directory."""
-        value = entry.get("jar_path") or entry.get("core_name")
-        if not isinstance(value, str) or not value:
+        """Return the server JAR the way MCServer 0.9.1 launched it: ``<directory>/<core_name>``.
+
+        ``jar_path`` (where the JAR was copied from, possibly relative to the old
+        working directory) only supplies the file name when ``core_name`` is
+        missing. The JAR must be directly inside the server directory.
+        """
+        core_name = entry.get("core_name")
+        jar_path_value = entry.get("jar_path")
+        if isinstance(core_name, str) and core_name:
+            name = core_name
+        elif isinstance(jar_path_value, str) and jar_path_value:
+            name = Path(jar_path_value).name
+        else:
             raise ServerConfigurationError("Server configuration has no JAR path.")
-        jar_path = Path(value)
-        if not jar_path.is_absolute():
-            jar_path = directory / jar_path
-        jar_path = jar_path.resolve()
+        if Path(name).name != name:
+            raise ServerConfigurationError("Server JAR must be directly inside its server directory.")
+        jar_path = (directory / name).resolve()
         if jar_path.parent != directory or jar_path.suffix.lower() != ".jar":
             raise ServerConfigurationError("Server JAR must be directly inside its server directory.")
         return jar_path
@@ -158,7 +177,11 @@ class ConfiguredServerRunnerFactory:
         java_executable, warnings = self._java_for(server_id, settings, options)
         config = MinecraftProcessConfig(
             java_executable=java_executable,
-            jvm_arguments=(f"-Xms{settings.memory_megabytes}M", f"-Xmx{settings.memory_megabytes}M"),
+            jvm_arguments=(
+                f"-Xms{settings.memory_megabytes}M",
+                f"-Xmx{settings.memory_megabytes}M",
+                *settings.jvm_arguments,
+            ),
             server_jar_path=settings.server_jar_path,
             working_directory=settings.working_directory,
             server_arguments=("nogui",),
@@ -175,7 +198,7 @@ class ConfiguredServerRunnerFactory:
             return self._java, ()
         jar = read_jar_version(settings.server_jar_path)
         required = jar.declared_java_major or required_java_major(jar.version)
-        java = self._java.find(required)
+        java = self._java.inspect(settings.java_path) if settings.java_path else self._java.find(required)
         warnings: list[LaunchWarning] = []
         if required is None:
             warnings.append(
