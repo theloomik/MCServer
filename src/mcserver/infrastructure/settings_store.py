@@ -27,6 +27,7 @@ _FIELDS = (
     "stop_timeout_seconds",
     "startup_timeout_seconds",
     "legacy_import_offered",
+    "auto_restart",
 )
 
 

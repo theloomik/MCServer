@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from mcserver.application.auto_restart import AutoRestartPolicy
 from mcserver.application.backups import BackupService
 from mcserver.application.errors import (
     EulaNotAccepted,
@@ -16,6 +17,8 @@ from mcserver.application.errors import (
 )
 from mcserver.application.java_setup import JavaSetup
 from mcserver.application.ports import JavaInstallation, OutputStream
+from mcserver.application.server_activity import ServerActivity
+from mcserver.application.server_address import ServerAddressLookup
 from mcserver.application.server_adoption import ServerAdoption
 from mcserver.application.server_coordinator import ServerCoordinator
 from mcserver.application.server_creation import ServerCreation
@@ -88,6 +91,11 @@ def runtime_with(runner: FakeRunner) -> ServerRuntime:
         properties=ServerPropertiesService(FileServerPropertiesStore(unused_root, configurations)),
         metrics=ServerMetrics(coordinator, PsutilProcessMetrics(), configurations, lambda: 0.0),
         backups=BackupService(configurations, coordinator, ZipBackupStore(unused_root)),
+        activity=ServerActivity(),
+        auto_restart=AutoRestartPolicy(lambda: False),
+        address=ServerAddressLookup(
+            ServerPropertiesService(FileServerPropertiesStore(unused_root, configurations)), lambda: None
+        ),
     )
 
 

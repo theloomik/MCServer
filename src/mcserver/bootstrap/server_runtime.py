@@ -6,10 +6,13 @@ from pathlib import Path
 from time import monotonic
 from types import TracebackType
 
+from mcserver.application.auto_restart import AutoRestartPolicy
 from mcserver.application.backups import BackupService
 from mcserver.application.errors import ServerStopTimedOut
 from mcserver.application.java_setup import JavaSetup
 from mcserver.application.ports import JavaRuntimeProvider, Scheduler, ServerConfigurationRepository
+from mcserver.application.server_activity import ServerActivity
+from mcserver.application.server_address import ServerAddressLookup
 from mcserver.application.server_adoption import ServerAdoption
 from mcserver.application.server_coordinator import (
     DEFAULT_STARTUP_TIMEOUT_SECONDS,
@@ -26,6 +29,7 @@ from mcserver.application.server_provisioning import ServerProvisioning
 from mcserver.application.settings import SettingsService
 from mcserver.infrastructure.java_runtime import JavaRuntimeResolver
 from mcserver.infrastructure.legacy_import import LegacyFileServerConfigurationSource
+from mcserver.infrastructure.network import lan_ipv4_address
 from mcserver.infrastructure.psutil_metrics import PsutilProcessMetrics
 from mcserver.infrastructure.recycle_bin import RecycleBinServerFilesRemover
 from mcserver.infrastructure.server_configuration import (
@@ -76,6 +80,12 @@ class ServerRuntime:
     """CPU, memory and uptime of the running server (M3-BE-02)."""
     backups: BackupService
     """Backups and restores (M3-BE-03)."""
+    activity: ServerActivity
+    """Players online and tick rate read from console output (M3-BE-04)."""
+    auto_restart: AutoRestartPolicy
+    """Opt-in restart after a crash (M3-BE-05)."""
+    address: ServerAddressLookup
+    """LAN address and port players connect to (M3-GUI-05)."""
 
     def close(self, timeout: float | None = None) -> bool:
         """Stop the active server gracefully, then end output delivery; never kills (ADR 0006).
@@ -150,6 +160,11 @@ def build_server_runtime(
     provisioning = build_server_provisioning(servers_directory, configurations)
     settings = SettingsService(JsonApplicationSettingsStore(servers_directory), resolver, coordinator)
     settings.apply(include_timeouts=startup_timeout is None and stop_timeout is None)
+    properties = ServerPropertiesService(
+        FileServerPropertiesStore(servers_directory, configurations), lambda: coordinator.active_server_id
+    )
+    activity = ServerActivity(lambda server_id: _max_players(properties, server_id))
+    output.subscribe(activity.on_line, replay=False)
     return ServerRuntime(
         coordinator=coordinator,
         output=output,
@@ -161,12 +176,18 @@ def build_server_runtime(
         health=ServerHealth(markers),
         settings=settings,
         adoption=ServerAdoption(management, LocalServerFolderAdoption(servers_directory)),
-        properties=ServerPropertiesService(
-            FileServerPropertiesStore(servers_directory, configurations), lambda: coordinator.active_server_id
-        ),
+        properties=properties,
         metrics=ServerMetrics(coordinator, PsutilProcessMetrics(), configurations, monotonic),
         backups=BackupService(configurations, coordinator, ZipBackupStore(servers_directory)),
+        activity=activity,
+        auto_restart=AutoRestartPolicy(lambda: settings.current.auto_restart),
+        address=ServerAddressLookup(properties, lan_ipv4_address),
     )
+
+
+def _max_players(properties: ServerPropertiesService, server_id: str) -> int | None:
+    value = properties.load(server_id).values.get("max-players", "").strip()
+    return int(value) if value.isdigit() else None
 
 
 def build_server_creation(

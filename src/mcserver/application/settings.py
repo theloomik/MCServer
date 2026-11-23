@@ -35,6 +35,8 @@ class ApplicationSettings:
     stop_timeout_seconds: int = 90
     startup_timeout_seconds: int = 600
     legacy_import_offered: bool = False
+    auto_restart: bool = False
+    """Start a crashed server again (at most 3 times in 10 minutes, M3-BE-05)."""
 
     def __post_init__(self) -> None:
         """Reject values the application cannot use."""
@@ -50,8 +52,9 @@ class ApplicationSettings:
         ):
             if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
                 raise InvalidSettings(f"The {name} must be between {low} and {high} seconds.")
-        if not isinstance(self.legacy_import_offered, bool):
-            raise InvalidSettings("legacy_import_offered must be true or false.")
+        for flag in ("legacy_import_offered", "auto_restart"):
+            if not isinstance(getattr(self, flag), bool):
+                raise InvalidSettings(f"{flag} must be true or false.")
 
 
 class ApplicationSettingsRepository(Protocol):
