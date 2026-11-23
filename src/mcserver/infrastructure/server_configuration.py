@@ -238,6 +238,21 @@ def locked_world(server_directory: Path) -> str | None:
         return world if not _try_lock(handle.fileno()) else None
 
 
+def world_folder_locked(world: Path) -> bool:
+    """Return whether a running Minecraft server holds the ``session.lock`` of the world folder ``world``."""
+    lock_path = world / "session.lock"
+    if not lock_path.is_file():
+        return False
+    try:
+        handle = lock_path.open("r+b")
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    with handle:
+        return not _try_lock(handle.fileno())
+
+
 def _try_lock(fileno: int) -> bool:
     """Try to take and release the lock Minecraft holds on ``session.lock``."""
     try:

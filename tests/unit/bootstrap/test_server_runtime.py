@@ -30,6 +30,7 @@ from mcserver.application.server_output import ServerOutputBuffer
 from mcserver.application.server_properties import ServerPropertiesService
 from mcserver.application.server_provisioning import ProvisionedServer, ServerProvisioning
 from mcserver.application.settings import SettingsService
+from mcserver.application.worlds import WorldService
 from mcserver.bootstrap.server_runtime import (
     ServerRuntime,
     build_server_coordinator,
@@ -48,6 +49,7 @@ from mcserver.infrastructure.server_configuration_store import (
 from mcserver.infrastructure.server_folders import LocalServerFolderAdoption
 from mcserver.infrastructure.server_properties_file import FileServerPropertiesStore
 from mcserver.infrastructure.settings_store import JsonApplicationSettingsStore
+from mcserver.infrastructure.world_folders import LocalWorldStore
 from mcserver.infrastructure.zip_backup_store import ZipBackupStore
 from tests.runtime_fakes import FakeRunner, FakeRunnerFactory, ManualScheduler, MemoryMarkers
 
@@ -98,6 +100,12 @@ def runtime_with(runner: FakeRunner) -> ServerRuntime:
             coordinator,
         ),
         activity=ServerActivity(),
+        worlds=WorldService(
+            configurations,
+            LocalWorldStore(unused_root),
+            ServerPropertiesService(FileServerPropertiesStore(unused_root, configurations)),
+            lambda: None,
+        ),
         auto_restart=AutoRestartPolicy(lambda: False),
         address=ServerAddressLookup(
             ServerPropertiesService(FileServerPropertiesStore(unused_root, configurations)), lambda: None

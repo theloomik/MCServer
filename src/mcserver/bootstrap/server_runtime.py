@@ -28,6 +28,7 @@ from mcserver.application.server_output import DEFAULT_OUTPUT_CAPACITY, ServerOu
 from mcserver.application.server_properties import ServerPropertiesService
 from mcserver.application.server_provisioning import ServerProvisioning
 from mcserver.application.settings import SettingsService
+from mcserver.application.worlds import WorldService
 from mcserver.infrastructure.java_runtime import JavaRuntimeResolver
 from mcserver.infrastructure.legacy_import import LegacyFileServerConfigurationSource
 from mcserver.infrastructure.network import lan_ipv4_address
@@ -47,6 +48,7 @@ from mcserver.infrastructure.server_properties_file import FileServerPropertiesS
 from mcserver.infrastructure.session_markers import FileSessionMarkerStore
 from mcserver.infrastructure.settings_store import JsonApplicationSettingsStore
 from mcserver.infrastructure.windows_job import ProcessGuard, default_process_guard
+from mcserver.infrastructure.world_folders import LocalWorldStore
 from mcserver.infrastructure.zip_backup_store import ZipBackupStore
 
 
@@ -89,6 +91,8 @@ class ServerRuntime:
     """LAN address and port players connect to (M3-GUI-05)."""
     scheduled_backups: ScheduledBackups
     """Backups made automatically while a server runs (ADR 0008)."""
+    worlds: WorldService
+    """World folders of each server (M3-BE-07)."""
 
     def close(self, timeout: float | None = None) -> bool:
         """Stop the active server gracefully, then end output delivery; never kills (ADR 0006).
@@ -185,6 +189,9 @@ def build_server_runtime(
         metrics=ServerMetrics(coordinator, PsutilProcessMetrics(), configurations, monotonic),
         backups=backups,
         scheduled_backups=ScheduledBackups(backup_store, backups, coordinator),
+        worlds=WorldService(
+            configurations, LocalWorldStore(servers_directory), properties, lambda: coordinator.active_server_id
+        ),
         activity=activity,
         auto_restart=AutoRestartPolicy(lambda: settings.current.auto_restart),
         address=ServerAddressLookup(properties, lan_ipv4_address),
