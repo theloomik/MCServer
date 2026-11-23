@@ -5,6 +5,16 @@ from mcserver.presentation.i18n.catalog import Catalog
 MESSAGES: Catalog = {
     "app.title": "MCServer",
     "menu.file": "&File",
+    "dialog.cancel": "Cancel",
+    "dialog.ok": "OK",
+    "dialog.move_to_recycle_bin": "Move to Recycle Bin",
+    "exit.confirm.yes": "Stop and exit",
+    "legacy.offer.yes": "Import",
+    "legacy.offer.no": "Not now",
+    "kill.confirm.yes": "Kill",
+    "eula.accept": "Accept the EULA",
+    "backups.restore.continue": "Continue",
+    "backups.restore.yes": "Restore now",
     "menu.file.new_server": "&New server…",
     "menu.file.refresh": "&Refresh servers",
     "menu.server": "&Server",
@@ -109,7 +119,7 @@ MESSAGES: Catalog = {
         "Files left on disk: {leftovers}. Check the details below and remove what is left manually."
     ),
     "create.title": "Create server",
-    "create.subtitle": "Set up a new server from a server JAR you already have (Paper, Fabric, Vanilla…).",
+    "create.subtitle": "Set up a new server from a server JAR you have (Paper, Fabric, Vanilla…) or download one here.",
     "create.server_id.label": "Server ID",
     "create.server_id.placeholder": "e.g. survival",
     "create.server_id.hint": "Shown in the server list. Must be unique.",
@@ -317,6 +327,11 @@ MESSAGES: Catalog = {
     "settings.save": "Save",
     "settings.cancel": "Cancel",
     "settings.saved": "Settings were saved.",
+    "settings.language.label": "Language",
+    "settings.language.auto": "Automatic (Windows language)",
+    "settings.language.en": "English",
+    "settings.language.uk": "Українська",
+    "settings.language.hint": "Takes effect after restarting MCServer.",
     "errors.server_is_running": "{server_id} is running; stop it first.",
     "errors.files_removal_failed": (
         "The folder {directory} could be moved neither to the Recycle Bin nor to the trash folder, so nothing "

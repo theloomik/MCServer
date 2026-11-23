@@ -19,6 +19,16 @@ def english_plural(count: int) -> str:
     return "one" if count == 1 else "other"
 
 
+def ukrainian_plural(count: int) -> str:
+    """Return the Ukrainian (CLDR) plural category for the whole number ``count``: one, few or many."""
+    tens, units = abs(count) % 100, abs(count) % 10
+    if units == 1 and tens != 11:
+        return "one"
+    if 2 <= units <= 4 and not 12 <= tens <= 14:
+        return "few"
+    return "many"
+
+
 class Messages:
     """Look up user-visible text by stable key, with named parameters and plurals.
 
