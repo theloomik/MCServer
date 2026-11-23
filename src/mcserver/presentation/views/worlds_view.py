@@ -8,11 +8,9 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
-    QHBoxLayout,
     QHeaderView,
     QLabel,
     QProgressBar,
-    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -22,6 +20,7 @@ from mcserver.application.worlds import WorldInfo
 from mcserver.presentation.controllers.worlds import WorldsState
 from mcserver.presentation.errors import render_message
 from mcserver.presentation.i18n import Messages
+from mcserver.presentation.views.widgets import Banner, button, icon_label, panel_bar
 
 COLUMNS = ("name", "size", "modified", "dimensions")
 
@@ -43,64 +42,63 @@ class WorldsView(QFrame):
         self._messages = messages
         self._worlds: tuple[WorldInfo, ...] = ()
         self._state = WorldsState()
-        title = QLabel(messages.text("worlds.title"))
-        title.setObjectName("consoleTitle")
-        self.new_button = QPushButton(messages.text("worlds.new"))
-        self.new_button.setObjectName("secondaryButton")
-        self.new_button.clicked.connect(self.new_requested)
-        self.import_folder_button = QPushButton(messages.text("worlds.import_folder"))
-        self.import_folder_button.setObjectName("secondaryButton")
-        self.import_folder_button.clicked.connect(self.import_folder_requested)
-        self.import_zip_button = QPushButton(messages.text("worlds.import_zip"))
-        self.import_zip_button.setObjectName("secondaryButton")
-        self.import_zip_button.clicked.connect(self.import_zip_requested)
-        header = QHBoxLayout()
-        header.addWidget(title, 1)
-        header.addWidget(self.new_button)
-        header.addWidget(self.import_folder_button)
-        header.addWidget(self.import_zip_button)
-
+        toolbar, bar = panel_bar("top")
         self.current_label = QLabel()
         self.current_label.setObjectName("controlHint")
-        self.current_label.setWordWrap(True)
-        self.message = QLabel()
-        self.message.setObjectName("banner")
-        self.message.setWordWrap(True)
-        self.message.hide()
+        self.new_button = button(messages.text("worlds.new"), "secondary", "plus")
+        self.new_button.clicked.connect(self.new_requested)
+        self.import_folder_button = button(messages.text("worlds.import_folder"), "secondary", "folder")
+        self.import_folder_button.clicked.connect(self.import_folder_requested)
+        self.import_zip_button = button(messages.text("worlds.import_zip"), "secondary", "import")
+        self.import_zip_button.clicked.connect(self.import_zip_requested)
+        bar.addWidget(icon_label("world"))
+        bar.addWidget(self.current_label, 1)
+        bar.addWidget(self.new_button)
+        bar.addWidget(self.import_folder_button)
+        bar.addWidget(self.import_zip_button)
+
+        self.message_banner = Banner()
+        self.message = self.message_banner.text
         self.progress = QProgressBar()
         self.progress.setTextVisible(False)
-        self.progress.setMaximumHeight(6)
+        self.progress.setFixedHeight(4)
         self.progress.hide()
+        notices = QVBoxLayout()
+        notices.setContentsMargins(16, 12, 16, 4)
+        notices.setSpacing(8)
+        notices.addWidget(self.message_banner)
+        notices.addWidget(self.progress)
 
         self.table = QTableWidget(0, len(COLUMNS))
-        self.table.setHorizontalHeaderLabels([messages.text(f"worlds.column.{name}") for name in COLUMNS])
+        self.table.setHorizontalHeaderLabels([messages.text(f"worlds.column.{name}").upper() for name in COLUMNS])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().hide()
         self.table.setShowGrid(False)
+        self.table.setFrameShape(QFrame.Shape.NoFrame)
+        self.table.verticalHeader().setDefaultSectionSize(38)
         header_view = self.table.horizontalHeader()
+        header_view.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         for column in range(len(COLUMNS) - 1):
             header_view.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         header_view.setSectionResizeMode(len(COLUMNS) - 1, QHeaderView.ResizeMode.Stretch)
         self.table.itemSelectionChanged.connect(self._update_buttons)
         self.empty_label = QLabel(messages.text("worlds.empty"))
-        self.empty_label.setObjectName("controlHint")
+        self.empty_label.setObjectName("emptyText")
         self.empty_label.setWordWrap(True)
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+        footer, actions = panel_bar("bottom")
+        actions.setContentsMargins(16, 10, 12, 10)
         self.running_hint = QLabel(messages.text("worlds.stop_to_switch"))
         self.running_hint.setObjectName("controlHint")
-        self.use_button = QPushButton(messages.text("worlds.use"))
-        self.use_button.setObjectName("primaryButton")
+        self.use_button = button(messages.text("worlds.use"), "primary", "check")
         self.use_button.clicked.connect(self._on_use)
-        self.export_button = QPushButton(messages.text("worlds.export"))
-        self.export_button.setObjectName("secondaryButton")
+        self.export_button = button(messages.text("worlds.export"), "secondary", "download")
         self.export_button.clicked.connect(self._on_export)
-        self.delete_button = QPushButton(messages.text("worlds.delete"))
-        self.delete_button.setObjectName("secondaryButton")
+        self.delete_button = button(messages.text("worlds.delete"), "danger", "trash")
         self.delete_button.clicked.connect(self._on_delete)
-        actions = QHBoxLayout()
         actions.addWidget(self.running_hint)
         actions.addStretch(1)
         actions.addWidget(self.use_button)
@@ -108,15 +106,13 @@ class WorldsView(QFrame):
         actions.addWidget(self.delete_button)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 12, 16, 16)
-        layout.setSpacing(10)
-        layout.addLayout(header)
-        layout.addWidget(self.current_label)
-        layout.addWidget(self.progress)
-        layout.addWidget(self.message)
+        layout.setContentsMargins(1, 1, 1, 1)
+        layout.setSpacing(0)
+        layout.addWidget(toolbar)
+        layout.addLayout(notices)
         layout.addWidget(self.table, 1)
         layout.addWidget(self.empty_label, 1)
-        layout.addLayout(actions)
+        layout.addWidget(footer)
         self.show_state(self._state)
 
     def selected_world(self) -> WorldInfo | None:
@@ -143,18 +139,13 @@ class WorldsView(QFrame):
         if state.busy or state.loading:
             self.progress.setRange(0, 0)
         if state.message is None:
-            self.message.hide()
+            self.message_banner.clear()
         else:
-            self.message.setText(render_message(self._messages, state.message))
-            self.message.setProperty("tone", state.tone)
-            style = self.message.style()
-            style.unpolish(self.message)
-            style.polish(self.message)
-            self.message.show()
+            self.message_banner.show_message(render_message(self._messages, state.message), state.tone)
         self.running_hint.setVisible(state.server_active)
         self.new_button.setEnabled(state.can_switch)
-        for button in (self.import_folder_button, self.import_zip_button):
-            button.setEnabled(state.can_change_files)
+        for import_button in (self.import_folder_button, self.import_zip_button):
+            import_button.setEnabled(state.can_change_files)
         self._update_buttons()
 
     def show_progress(self, done: int, total: int) -> None:

@@ -9,12 +9,10 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QFrame,
-    QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
     QProgressBar,
-    QPushButton,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -26,6 +24,7 @@ from mcserver.application.backups import BackupInfo
 from mcserver.presentation.controllers.backups import BackupsState
 from mcserver.presentation.errors import render_message
 from mcserver.presentation.i18n import Messages
+from mcserver.presentation.views.widgets import Banner, button, icon_label, panel_bar
 
 COLUMNS = ("date", "kind", "size", "note")
 
@@ -56,19 +55,16 @@ class BackupsView(QFrame):
         self._messages = messages
         self._backups: tuple[BackupInfo, ...] = ()
         self._state = BackupsState()
-        title = QLabel(messages.text("backups.title"))
-        title.setObjectName("consoleTitle")
+        toolbar, bar = panel_bar("top")
         self.note_edit = QLineEdit()
         self.note_edit.setPlaceholderText(messages.text("backups.note.placeholder"))
         self.note_edit.setMaxLength(200)
         self.note_edit.returnPressed.connect(self._on_create)
-        self.create_button = QPushButton(messages.text("backups.create"))
-        self.create_button.setObjectName("primaryButton")
+        self.create_button = button(messages.text("backups.create"), "primary", "archive")
         self.create_button.clicked.connect(self._on_create)
-        header = QHBoxLayout()
-        header.addWidget(title)
-        header.addWidget(self.note_edit, 1)
-        header.addWidget(self.create_button)
+        bar.addWidget(icon_label("archive"))
+        bar.addWidget(self.note_edit, 1)
+        bar.addWidget(self.create_button)
 
         self._filling = False
         self.schedule_check = QCheckBox(messages.text("backups.schedule.enabled"))
@@ -86,8 +82,9 @@ class BackupsView(QFrame):
         self.schedule_check.toggled.connect(self._on_schedule_edited)
         self.interval_spin.valueChanged.connect(self._on_schedule_edited)
         self.keep_spin.valueChanged.connect(self._on_schedule_edited)
-        schedule_row = QHBoxLayout()
-        schedule_row.setSpacing(8)
+        self.schedule_host, schedule_row = panel_bar("band")
+        schedule_row.setContentsMargins(16, 8, 12, 8)
+        schedule_row.addWidget(icon_label("clock"))
         schedule_row.addWidget(self.schedule_check)
         schedule_row.addStretch(1)
         schedule_row.addWidget(every)
@@ -95,63 +92,65 @@ class BackupsView(QFrame):
         schedule_row.addSpacing(8)
         schedule_row.addWidget(keep)
         schedule_row.addWidget(self.keep_spin)
-        self.schedule_host = QFrame()
-        self.schedule_host.setLayout(schedule_row)
-        schedule_row.setContentsMargins(0, 0, 0, 0)
         self.schedule_hint = QLabel(messages.text("backups.schedule.hint"))
         self.schedule_hint.setObjectName("controlHint")
         self.schedule_hint.setWordWrap(True)
-        self.message = QLabel()
-        self.message.setObjectName("banner")
-        self.message.setWordWrap(True)
-        self.message.hide()
+
+        self.message_banner = Banner()
+        self.message = self.message_banner.text
         self.progress = QProgressBar()
         self.progress.setTextVisible(False)
-        self.progress.setMaximumHeight(6)
+        self.progress.setFixedHeight(4)
         self.progress.hide()
+        notices = QVBoxLayout()
+        notices.setContentsMargins(16, 10, 16, 6)
+        notices.setSpacing(8)
+        notices.addWidget(self.schedule_hint)
+        notices.addWidget(self.progress)
+        notices.addWidget(self.message_banner)
 
         self.table = QTableWidget(0, len(COLUMNS))
-        self.table.setHorizontalHeaderLabels([messages.text(f"backups.column.{name}") for name in COLUMNS])
+        self.table.setHorizontalHeaderLabels([messages.text(f"backups.column.{name}").upper() for name in COLUMNS])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().hide()
         self.table.setShowGrid(False)
+        self.table.setFrameShape(QFrame.Shape.NoFrame)
+        self.table.verticalHeader().setDefaultSectionSize(38)
         header_view = self.table.horizontalHeader()
+        header_view.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         for column in range(len(COLUMNS) - 1):
             header_view.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         header_view.setSectionResizeMode(len(COLUMNS) - 1, QHeaderView.ResizeMode.Stretch)
         self.table.itemSelectionChanged.connect(self._update_buttons)
         self.empty_label = QLabel(messages.text("backups.empty"))
-        self.empty_label.setObjectName("controlHint")
+        self.empty_label.setObjectName("emptyText")
         self.empty_label.setWordWrap(True)
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+        footer, actions = panel_bar("bottom")
+        actions.setContentsMargins(16, 10, 12, 10)
         self.restore_hint = QLabel(messages.text("backups.restore_running"))
         self.restore_hint.setObjectName("controlHint")
-        self.restore_button = QPushButton(messages.text("backups.restore"))
-        self.restore_button.setObjectName("secondaryButton")
+        self.restore_button = button(messages.text("backups.restore"), "secondary", "restart")
         self.restore_button.clicked.connect(self._on_restore)
-        self.delete_button = QPushButton(messages.text("backups.delete"))
-        self.delete_button.setObjectName("secondaryButton")
+        self.delete_button = button(messages.text("backups.delete"), "danger", "trash")
         self.delete_button.clicked.connect(self._on_delete)
-        actions = QHBoxLayout()
         actions.addWidget(self.restore_hint)
         actions.addStretch(1)
         actions.addWidget(self.restore_button)
         actions.addWidget(self.delete_button)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 12, 16, 16)
-        layout.setSpacing(10)
-        layout.addLayout(header)
+        layout.setContentsMargins(1, 1, 1, 1)
+        layout.setSpacing(0)
+        layout.addWidget(toolbar)
         layout.addWidget(self.schedule_host)
-        layout.addWidget(self.schedule_hint)
-        layout.addWidget(self.progress)
-        layout.addWidget(self.message)
+        layout.addLayout(notices)
         layout.addWidget(self.table, 1)
         layout.addWidget(self.empty_label, 1)
-        layout.addLayout(actions)
+        layout.addWidget(footer)
         self.show_state(self._state)
 
     def selected_backup(self) -> BackupInfo | None:
@@ -175,14 +174,9 @@ class BackupsView(QFrame):
         if state.busy:
             self.progress.setRange(0, 0)  # busy indicator until the first progress report
         if state.message is None:
-            self.message.hide()
+            self.message_banner.clear()
         else:
-            self.message.setText(render_message(self._messages, state.message))
-            self.message.setProperty("tone", state.tone)
-            style = self.message.style()
-            style.unpolish(self.message)
-            style.polish(self.message)
-            self.message.show()
+            self.message_banner.show_message(render_message(self._messages, state.message), state.tone)
         self.restore_hint.setVisible(state.server_active)
         self._show_schedule(state.schedule)
         self.note_edit.setEnabled(state.can_create)
