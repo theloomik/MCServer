@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QMessageBox,
     QPushButton,
     QWidget,
 )
@@ -49,6 +48,7 @@ from mcserver.presentation.controllers.server_list import ServerListController, 
 from mcserver.presentation.controllers.server_management import ManagementController
 from mcserver.presentation.controllers.worlds import WorldsController
 from mcserver.presentation.dialogs.adopt_server_dialog import AdoptServerDialog
+from mcserver.presentation.dialogs.confirm_dialog import Choice, ask
 from mcserver.presentation.dialogs.create_server_dialog import CreateServerDialog
 from mcserver.presentation.dialogs.delete_server_dialog import DeleteServerDialog
 from mcserver.presentation.dialogs.download_jar_dialog import DownloadJarDialog
@@ -785,14 +785,18 @@ class MainWindow(QMainWindow):
     # --- default dialogs --------------------------------------------------------------------
 
     def _ask_to_stop_and_exit(self, server_id: str) -> bool:
-        answer = QMessageBox.question(
-            self,
-            self._messages.text("exit.confirm.title"),
-            self._messages.text("exit.confirm.text", server_id=server_id),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
+        text = self._messages.text
+        return (
+            ask(
+                self,
+                text("exit.confirm.title"),
+                text("exit.confirm.text", server_id=server_id),
+                [Choice("cancel", text("dialog.cancel")), Choice("yes", text("exit.confirm.yes"), "primary")],
+                tone="warning",
+                default="cancel",
+            )
+            == "yes"
         )
-        return answer == QMessageBox.StandardButton.Yes
 
     def _show_delete_dialog(self, configuration: ServerConfiguration, folder: Path) -> bool | None:
         dialog = DeleteServerDialog(configuration, folder, self._messages, self)
@@ -802,14 +806,17 @@ class MainWindow(QMainWindow):
         return remove_files if accepted else None
 
     def _ask_legacy_import(self, count: int) -> bool:
-        answer = QMessageBox.question(
-            self,
-            self._messages.text("legacy.offer.title"),
-            self._messages.plural("legacy.offer.text", count),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
+        text = self._messages.text
+        return (
+            ask(
+                self,
+                text("legacy.offer.title"),
+                self._messages.plural("legacy.offer.text", count),
+                [Choice("no", text("legacy.offer.no")), Choice("yes", text("legacy.offer.yes"), "primary")],
+                default="yes",
+            )
+            == "yes"
         )
-        return answer == QMessageBox.StandardButton.Yes
 
     def _show_legacy_result(self, result: LegacyImportResult) -> None:
         if not (result.imported or result.skipped or result.rejected):
@@ -828,27 +835,39 @@ class MainWindow(QMainWindow):
                 for item in result.rejected
             ]
             text = "\n".join(lines)
-        QMessageBox.information(self, self._messages.text("legacy.result.title"), text)
+        ask(
+            self,
+            self._messages.text("legacy.result.title"),
+            text,
+            [Choice("ok", self._messages.text("dialog.ok"), "primary")],
+        )
 
     def _ask_to_kill(self, server_id: str) -> bool:
-        answer = QMessageBox.warning(
-            self,
-            self._messages.text("kill.confirm.title"),
-            self._messages.text("kill.confirm.text", server_id=server_id),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
+        text = self._messages.text
+        return (
+            ask(
+                self,
+                text("kill.confirm.title"),
+                text("kill.confirm.text", server_id=server_id),
+                [Choice("cancel", text("dialog.cancel")), Choice("yes", text("kill.confirm.yes"), "danger")],
+                tone="danger",
+                default="cancel",
+            )
+            == "yes"
         )
-        return answer == QMessageBox.StandardButton.Yes
 
     def _ask_to_accept_eula(self, server_id: str) -> bool:
-        answer = QMessageBox.question(
-            self,
-            self._messages.text("eula.title"),
-            self._messages.text("eula.text", server_id=server_id),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
+        text = self._messages.text
+        return (
+            ask(
+                self,
+                text("eula.title"),
+                text("eula.text", server_id=server_id),
+                [Choice("cancel", text("dialog.cancel")), Choice("yes", text("eula.accept"), "primary")],
+                default="cancel",
+            )
+            == "yes"
         )
-        return answer == QMessageBox.StandardButton.Yes
 
     def _show_java_dialog(self, problem: JavaProblem) -> JavaChoice:
         java = self._services.java
@@ -859,18 +878,19 @@ class MainWindow(QMainWindow):
         return dialog.choice
 
     def _show_unclean_notice(self, incident: UncleanShutdown) -> None:
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Warning)
-        box.setWindowTitle(self._messages.text("unclean.title", server_id=incident.server_id))
-        box.setText(
-            self._messages.text("unclean.text", server_id=incident.server_id, started_at=incident.started_at or "?")
-        )
-        box.addButton(QMessageBox.StandardButton.Ok)
-        backups = None
+        text = self._messages.text
+        choices = [Choice("ok", text("dialog.ok"), "primary")]
         if self.backups_controller.available:
-            backups = box.addButton(self._messages.text("unclean.open_backups"), QMessageBox.ButtonRole.ActionRole)
-        box.exec()
-        if backups is not None and box.clickedButton() is backups:
+            choices.insert(0, Choice("backups", text("unclean.open_backups")))
+        answer = ask(
+            self,
+            text("unclean.title", server_id=incident.server_id),
+            text("unclean.text", server_id=incident.server_id, started_at=incident.started_at or "?"),
+            choices,
+            tone="warning",
+            default="ok",
+        )
+        if answer == "backups":
             self.open_backups(incident.server_id)
 
     def _ask_log_path(self, server_id: str) -> str:
@@ -884,52 +904,61 @@ class MainWindow(QMainWindow):
         return path
 
     def _ask_to_restore(self, backup: BackupInfo) -> bool:
+        text = self._messages.text
         name = self._server_name(backup.server_id)
-        yes, cancel = QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.Cancel
-        first = QMessageBox.warning(
+        first = ask(
             self,
-            self._messages.text("backups.restore.title", backup_id=backup.backup_id),
-            self._messages.text("backups.restore.text", name=name),
-            yes | cancel,
-            cancel,
+            text("backups.restore.title", backup_id=backup.backup_id),
+            text("backups.restore.text", name=name),
+            [Choice("cancel", text("dialog.cancel")), Choice("yes", text("backups.restore.continue"), "primary")],
+            tone="warning",
+            default="cancel",
         )
-        if first != yes:
+        if first != "yes":
             return False
-        second = QMessageBox.warning(
-            self,
-            self._messages.text("backups.restore.confirm_title"),
-            self._messages.text(
-                "backups.restore.confirm_text", name=name, created_at=format_created_at(backup.created_at)
-            ),
-            yes | cancel,
-            cancel,
+        return (
+            ask(
+                self,
+                text("backups.restore.confirm_title"),
+                text("backups.restore.confirm_text", name=name, created_at=format_created_at(backup.created_at)),
+                [Choice("cancel", text("dialog.cancel")), Choice("yes", text("backups.restore.yes"), "danger")],
+                tone="danger",
+                default="cancel",
+            )
+            == "yes"
         )
-        return second == yes
 
     def _ask_to_delete_backup(self, backup: BackupInfo) -> bool:
-        answer = QMessageBox.question(
-            self,
-            self._messages.text("backups.delete.title", backup_id=backup.backup_id),
-            self._messages.text("backups.delete.text"),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
+        text = self._messages.text
+        return (
+            ask(
+                self,
+                text("backups.delete.title", backup_id=backup.backup_id),
+                text("backups.delete.text"),
+                [Choice("cancel", text("dialog.cancel")), Choice("yes", text("dialog.move_to_recycle_bin"), "danger")],
+                tone="danger",
+                default="cancel",
+            )
+            == "yes"
         )
-        return answer == QMessageBox.StandardButton.Yes
 
     def _ask_after_timeout(self, server_id: str, timeout: float) -> StopTimeoutChoice:
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Warning)
-        box.setWindowTitle(self._messages.text("exit.stop_timed_out.title"))
-        box.setText(self._messages.text("exit.stop_timed_out.text", server_id=server_id, timeout=f"{timeout:g}"))
-        wait = box.addButton(self._messages.text("exit.keep_waiting"), QMessageBox.ButtonRole.AcceptRole)
-        kill = box.addButton(self._messages.text("exit.kill"), QMessageBox.ButtonRole.DestructiveRole)
-        box.addButton(self._messages.text("exit.cancel"), QMessageBox.ButtonRole.RejectRole)
-        box.setDefaultButton(wait)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is wait:
+        text = self._messages.text
+        answer = ask(
+            self,
+            text("exit.stop_timed_out.title"),
+            text("exit.stop_timed_out.text", server_id=server_id, timeout=f"{timeout:g}"),
+            [
+                Choice("cancel", text("exit.cancel")),
+                Choice("kill", text("exit.kill"), "danger"),
+                Choice("wait", text("exit.keep_waiting"), "primary"),
+            ],
+            tone="warning",
+            default="wait",
+        )
+        if answer == "wait":
             return StopTimeoutChoice.KEEP_WAITING
-        if clicked is kill:
+        if answer == "kill":
             return StopTimeoutChoice.KILL
         return StopTimeoutChoice.CANCEL
 

@@ -5,8 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
-from PySide6.QtWidgets import QFileDialog, QInputDialog, QLineEdit, QMessageBox, QWidget
+from PySide6.QtWidgets import QFileDialog, QInputDialog, QLineEdit, QWidget
 
+from mcserver.presentation.dialogs.confirm_dialog import Choice, ask
 from mcserver.presentation.i18n import Messages
 
 
@@ -80,11 +81,12 @@ class QtWorldDialogs:
     def confirm_delete(self, name: str) -> bool:
         """Ask before moving a world to the Recycle Bin."""
         text = self._messages.text
-        answer = QMessageBox.question(
+        answer = ask(
             self._parent,
             text("worlds.delete.title", name=name),
             text("worlds.delete.text", name=name),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
+            [Choice("cancel", text("dialog.cancel")), Choice("yes", text("dialog.move_to_recycle_bin"), "danger")],
+            tone="danger",
+            default="cancel",
         )
-        return answer == QMessageBox.StandardButton.Yes
+        return answer == "yes"

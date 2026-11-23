@@ -159,7 +159,10 @@ QComboBox QAbstractItemView {{
     background-color: {SURFACE_RAISED}; color: {TEXT}; border: 1px solid {BORDER_STRONG};
     selection-background-color: {ACCENT_SUBTLE}; outline: none;
 }}
-QLabel#dialogTitle {{ font-size: 22px; font-weight: 600; }}
+QLabel#dialogTitle {{ font-size: 18px; font-weight: 600; }}
+QFrame#dialogCard {{ background-color: {SURFACE_CARD}; border: none; }}
+QFrame#dialogCard QLabel {{ background: transparent; }}
+QFrame#dialogFooter {{ background-color: {BG_SIDEBAR}; border: none; border-top: 1px solid {BORDER}; }}
 QLabel#dialogSubtitle {{ color: {TEXT_SECONDARY}; font-size: 13px; }}
 QLabel#formLabel {{ color: {TEXT}; font-size: 13px; font-weight: 600; padding-bottom: 2px; }}
 QLabel#fieldHint {{ color: {TEXT_MUTED}; font-size: 12px; }}
