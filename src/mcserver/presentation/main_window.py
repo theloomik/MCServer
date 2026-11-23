@@ -20,11 +20,11 @@ from PySide6.QtGui import (
     QPixmap,
 )
 from PySide6.QtWidgets import (
+    QDialog,
     QFileDialog,
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QMessageBox,
     QPushButton,
     QWidget,
 )
@@ -49,6 +49,7 @@ from mcserver.presentation.controllers.server_list import ServerListController, 
 from mcserver.presentation.controllers.server_management import ManagementController
 from mcserver.presentation.controllers.worlds import WorldsController
 from mcserver.presentation.dialogs.adopt_server_dialog import AdoptServerDialog
+from mcserver.presentation.dialogs.confirm_dialog import Choice, ask
 from mcserver.presentation.dialogs.create_server_dialog import CreateServerDialog
 from mcserver.presentation.dialogs.delete_server_dialog import DeleteServerDialog
 from mcserver.presentation.dialogs.download_jar_dialog import DownloadJarDialog
@@ -61,6 +62,7 @@ from mcserver.presentation.errors import UserMessage, describe_error, render_mes
 from mcserver.presentation.i18n import Messages
 from mcserver.presentation.services import PresentationServices
 from mcserver.presentation.views.backups_view import BackupsView, format_created_at
+from mcserver.presentation.views.page_host import PageHost
 from mcserver.presentation.views.server_dashboard_view import ServerDashboardView
 from mcserver.presentation.views.server_list_view import ServerListView
 from mcserver.presentation.views.server_properties_view import ServerPropertiesView
@@ -288,13 +290,22 @@ class MainWindow(QMainWindow):
     def _build_content(self) -> None:
         central = QWidget()
         central.setObjectName("central")
-        self.server_list_view.setFixedWidth(280)
+        # Dialogs open as pages in the content area; the server list stays visible (M4 design).
+        self.page_host = PageHost(self.dashboard_view)
         layout = QHBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self.server_list_view)
-        layout.addWidget(self.dashboard_view, 1)
+        layout.addWidget(self.page_host, 1)
         self.setCentralWidget(central)
+
+    def show_page(self, dialog: QDialog, *, compact: bool = False) -> None:
+        """Open ``dialog`` as a page in the content area (it closes itself when finished)."""
+        self.page_host.open_page(dialog, compact=compact)
+
+    def run_page(self, dialog: QDialog, *, compact: bool = True) -> int:
+        """Open ``dialog`` as a page and wait for its answer; return its result code."""
+        return self.page_host.run_page(dialog, compact=compact)
 
     def _update_server_menu(self) -> None:
         """Mirror the toolbar: a menu action is enabled when its button is usable."""
@@ -340,7 +351,7 @@ class MainWindow(QMainWindow):
     def _connect(self) -> None:
         servers = self.server_list_controller
         servers.state_changed.connect(self._show_list_state)
-        self.server_list_view.server_selected.connect(servers.select)
+        self.server_list_view.server_selected.connect(self._on_server_picked)
         self.server_list_view.refresh_requested.connect(servers.refresh)
         self.refresh_action.triggered.connect(servers.refresh)
         self.server_list_view.create_requested.connect(self.open_create_dialog)
@@ -435,16 +446,21 @@ class MainWindow(QMainWindow):
         self.sample_metrics()
         self.show_address(selected_id)
 
+    def _on_server_picked(self, server_id: object) -> None:
+        """Picking a server closes open pages first; a page that is still working keeps the old selection."""
+        if not self.page_host.dismiss_all():
+            self.server_list_view.show_state(self.server_list_controller.state)
+            return
+        self.server_list_controller.select(server_id if isinstance(server_id, str) else None)
+
     def open_create_dialog(self) -> None:
         """Show the create-server dialog (only one at a time)."""
         if self.create_dialog is not None:
-            self.create_dialog.raise_()
-            self.create_dialog.activateWindow()
-            return
+            return  # already open as a page
         dialog = self._create_dialog_factory(self.creation_controller, self._messages, self)
         dialog.finished.connect(self._on_create_dialog_finished)
         self.create_dialog = dialog
-        dialog.open()
+        self.show_page(dialog)
 
     def _default_create_dialog(
         self, controller: ServerCreationController, messages: Messages, parent: QWidget
@@ -458,7 +474,7 @@ class MainWindow(QMainWindow):
         if controller is None:
             return None
         dialog = DownloadJarDialog(controller, self._messages, parent)
-        dialog.exec()
+        self.run_page(dialog, compact=False)
         path = dialog.path
         dialog.deleteLater()
         return path
@@ -618,7 +634,7 @@ class MainWindow(QMainWindow):
         """Show the technical details of a banner message."""
         dialog = ErrorDetailsDialog(message, self._messages, self)
         dialog.finished.connect(dialog.deleteLater)
-        dialog.open()
+        self.show_page(dialog)
 
     def _on_eula_required(self, server_id: str) -> None:
         provisioning = self._services.provisioning
@@ -698,7 +714,7 @@ class MainWindow(QMainWindow):
         dialog = EditServerDialog(self.management_controller, configuration, self._messages, self, running=running)
         self.edit_dialog = dialog
         dialog.finished.connect(lambda _result: self._forget_dialog("edit_dialog"))
-        dialog.open()
+        self.show_page(dialog)
 
     def request_delete(self) -> None:
         """Delete the selected, stopped server after confirmation."""
@@ -717,7 +733,7 @@ class MainWindow(QMainWindow):
         dialog = AdoptServerDialog(self.management_controller, self._messages, self)
         self.adopt_dialog = dialog
         dialog.finished.connect(lambda _result: self._forget_dialog("adopt_dialog"))
-        dialog.open()
+        self.show_page(dialog)
 
     def open_settings_dialog(self) -> None:
         """Show the application settings."""
@@ -736,7 +752,7 @@ class MainWindow(QMainWindow):
         dialog.accepted.connect(self.check_java)
         self.settings_dialog = dialog
         dialog.finished.connect(lambda _result: self._forget_dialog("settings_dialog"))
-        dialog.open()
+        self.show_page(dialog)
 
     def _forget_dialog(self, name: str) -> None:
         dialog = getattr(self, name)
@@ -785,31 +801,38 @@ class MainWindow(QMainWindow):
     # --- default dialogs --------------------------------------------------------------------
 
     def _ask_to_stop_and_exit(self, server_id: str) -> bool:
-        answer = QMessageBox.question(
-            self,
-            self._messages.text("exit.confirm.title"),
-            self._messages.text("exit.confirm.text", server_id=server_id),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
+        text = self._messages.text
+        return (
+            ask(
+                self,
+                text("exit.confirm.title"),
+                text("exit.confirm.text", server_id=server_id),
+                [Choice("cancel", text("dialog.cancel")), Choice("yes", text("exit.confirm.yes"), "primary")],
+                tone="warning",
+                default="cancel",
+            )
+            == "yes"
         )
-        return answer == QMessageBox.StandardButton.Yes
 
     def _show_delete_dialog(self, configuration: ServerConfiguration, folder: Path) -> bool | None:
         dialog = DeleteServerDialog(configuration, folder, self._messages, self)
-        accepted = dialog.exec() == DeleteServerDialog.DialogCode.Accepted
+        accepted = self.run_page(dialog) == DeleteServerDialog.DialogCode.Accepted
         remove_files = dialog.remove_files
         dialog.deleteLater()
         return remove_files if accepted else None
 
     def _ask_legacy_import(self, count: int) -> bool:
-        answer = QMessageBox.question(
-            self,
-            self._messages.text("legacy.offer.title"),
-            self._messages.plural("legacy.offer.text", count),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
+        text = self._messages.text
+        return (
+            ask(
+                self,
+                text("legacy.offer.title"),
+                self._messages.plural("legacy.offer.text", count),
+                [Choice("no", text("legacy.offer.no")), Choice("yes", text("legacy.offer.yes"), "primary")],
+                default="yes",
+            )
+            == "yes"
         )
-        return answer == QMessageBox.StandardButton.Yes
 
     def _show_legacy_result(self, result: LegacyImportResult) -> None:
         if not (result.imported or result.skipped or result.rejected):
@@ -828,49 +851,62 @@ class MainWindow(QMainWindow):
                 for item in result.rejected
             ]
             text = "\n".join(lines)
-        QMessageBox.information(self, self._messages.text("legacy.result.title"), text)
+        ask(
+            self,
+            self._messages.text("legacy.result.title"),
+            text,
+            [Choice("ok", self._messages.text("dialog.ok"), "primary")],
+        )
 
     def _ask_to_kill(self, server_id: str) -> bool:
-        answer = QMessageBox.warning(
-            self,
-            self._messages.text("kill.confirm.title"),
-            self._messages.text("kill.confirm.text", server_id=server_id),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
+        text = self._messages.text
+        return (
+            ask(
+                self,
+                text("kill.confirm.title"),
+                text("kill.confirm.text", server_id=server_id),
+                [Choice("cancel", text("dialog.cancel")), Choice("yes", text("kill.confirm.yes"), "danger")],
+                tone="danger",
+                default="cancel",
+            )
+            == "yes"
         )
-        return answer == QMessageBox.StandardButton.Yes
 
     def _ask_to_accept_eula(self, server_id: str) -> bool:
-        answer = QMessageBox.question(
-            self,
-            self._messages.text("eula.title"),
-            self._messages.text("eula.text", server_id=server_id),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
+        text = self._messages.text
+        return (
+            ask(
+                self,
+                text("eula.title"),
+                text("eula.text", server_id=server_id),
+                [Choice("cancel", text("dialog.cancel")), Choice("yes", text("eula.accept"), "primary")],
+                default="cancel",
+            )
+            == "yes"
         )
-        return answer == QMessageBox.StandardButton.Yes
 
     def _show_java_dialog(self, problem: JavaProblem) -> JavaChoice:
         java = self._services.java
         if java is None:
             return JavaChoice.CANCELLED
         dialog = JavaSetupDialog(problem, java, self._messages, self)
-        dialog.exec()
+        self.run_page(dialog)
         return dialog.choice
 
     def _show_unclean_notice(self, incident: UncleanShutdown) -> None:
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Warning)
-        box.setWindowTitle(self._messages.text("unclean.title", server_id=incident.server_id))
-        box.setText(
-            self._messages.text("unclean.text", server_id=incident.server_id, started_at=incident.started_at or "?")
-        )
-        box.addButton(QMessageBox.StandardButton.Ok)
-        backups = None
+        text = self._messages.text
+        choices = [Choice("ok", text("dialog.ok"), "primary")]
         if self.backups_controller.available:
-            backups = box.addButton(self._messages.text("unclean.open_backups"), QMessageBox.ButtonRole.ActionRole)
-        box.exec()
-        if backups is not None and box.clickedButton() is backups:
+            choices.insert(0, Choice("backups", text("unclean.open_backups")))
+        answer = ask(
+            self,
+            text("unclean.title", server_id=incident.server_id),
+            text("unclean.text", server_id=incident.server_id, started_at=incident.started_at or "?"),
+            choices,
+            tone="warning",
+            default="ok",
+        )
+        if answer == "backups":
             self.open_backups(incident.server_id)
 
     def _ask_log_path(self, server_id: str) -> str:
@@ -884,57 +920,70 @@ class MainWindow(QMainWindow):
         return path
 
     def _ask_to_restore(self, backup: BackupInfo) -> bool:
+        text = self._messages.text
         name = self._server_name(backup.server_id)
-        yes, cancel = QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.Cancel
-        first = QMessageBox.warning(
+        first = ask(
             self,
-            self._messages.text("backups.restore.title", backup_id=backup.backup_id),
-            self._messages.text("backups.restore.text", name=name),
-            yes | cancel,
-            cancel,
+            text("backups.restore.title", backup_id=backup.backup_id),
+            text("backups.restore.text", name=name),
+            [Choice("cancel", text("dialog.cancel")), Choice("yes", text("backups.restore.continue"), "primary")],
+            tone="warning",
+            default="cancel",
         )
-        if first != yes:
+        if first != "yes":
             return False
-        second = QMessageBox.warning(
-            self,
-            self._messages.text("backups.restore.confirm_title"),
-            self._messages.text(
-                "backups.restore.confirm_text", name=name, created_at=format_created_at(backup.created_at)
-            ),
-            yes | cancel,
-            cancel,
+        return (
+            ask(
+                self,
+                text("backups.restore.confirm_title"),
+                text("backups.restore.confirm_text", name=name, created_at=format_created_at(backup.created_at)),
+                [Choice("cancel", text("dialog.cancel")), Choice("yes", text("backups.restore.yes"), "danger")],
+                tone="danger",
+                default="cancel",
+            )
+            == "yes"
         )
-        return second == yes
 
     def _ask_to_delete_backup(self, backup: BackupInfo) -> bool:
-        answer = QMessageBox.question(
-            self,
-            self._messages.text("backups.delete.title", backup_id=backup.backup_id),
-            self._messages.text("backups.delete.text"),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
+        text = self._messages.text
+        return (
+            ask(
+                self,
+                text("backups.delete.title", backup_id=backup.backup_id),
+                text("backups.delete.text"),
+                [Choice("cancel", text("dialog.cancel")), Choice("yes", text("dialog.move_to_recycle_bin"), "danger")],
+                tone="danger",
+                default="cancel",
+            )
+            == "yes"
         )
-        return answer == QMessageBox.StandardButton.Yes
 
     def _ask_after_timeout(self, server_id: str, timeout: float) -> StopTimeoutChoice:
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Warning)
-        box.setWindowTitle(self._messages.text("exit.stop_timed_out.title"))
-        box.setText(self._messages.text("exit.stop_timed_out.text", server_id=server_id, timeout=f"{timeout:g}"))
-        wait = box.addButton(self._messages.text("exit.keep_waiting"), QMessageBox.ButtonRole.AcceptRole)
-        kill = box.addButton(self._messages.text("exit.kill"), QMessageBox.ButtonRole.DestructiveRole)
-        box.addButton(self._messages.text("exit.cancel"), QMessageBox.ButtonRole.RejectRole)
-        box.setDefaultButton(wait)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is wait:
+        text = self._messages.text
+        answer = ask(
+            self,
+            text("exit.stop_timed_out.title"),
+            text("exit.stop_timed_out.text", server_id=server_id, timeout=f"{timeout:g}"),
+            [
+                Choice("cancel", text("exit.cancel")),
+                Choice("kill", text("exit.kill"), "danger"),
+                Choice("wait", text("exit.keep_waiting"), "primary"),
+            ],
+            tone="warning",
+            default="wait",
+        )
+        if answer == "wait":
             return StopTimeoutChoice.KEEP_WAITING
-        if clicked is kill:
+        if answer == "kill":
             return StopTimeoutChoice.KILL
         return StopTimeoutChoice.CANCEL
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Stop a running server (after confirmation) before closing; release GUI resources."""
+        if not self.page_host.dismiss_all():
+            event.ignore()
+            self.statusBar().showMessage(self._messages.text("exit.wait_for_operation"), 6000)
+            return
         if (
             self.dashboard_controller.busy
             or self.creation_controller.busy

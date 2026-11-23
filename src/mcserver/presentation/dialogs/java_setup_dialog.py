@@ -6,13 +6,14 @@ from collections.abc import Callable
 from enum import Enum
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog, QFileDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFileDialog, QLabel, QWidget
 
 from mcserver.application.errors import InvalidJavaExecutable, JavaNotFound, JavaVersionTooOld
 from mcserver.application.java_setup import JavaSetup, JavaStatus
-from mcserver.presentation import theme
+from mcserver.presentation.dialogs.form import FormDialog, danger_button, primary_button, secondary_button
 from mcserver.presentation.errors import describe_error, render_message
 from mcserver.presentation.i18n import Messages
+from mcserver.presentation.views.widgets import button
 
 JavaPicker = Callable[[QWidget], "str | None"]
 
@@ -39,7 +40,7 @@ def pick_java_with_system_dialog(messages: Messages) -> JavaPicker:
     return pick
 
 
-class JavaSetupDialog(QDialog):
+class JavaSetupDialog(FormDialog):
     """Explain the Java problem and offer: Check again, Choose java.exe…, (too old) Start anyway, Cancel.
 
     Java checks run synchronously: ``java -version`` returns within seconds and
@@ -56,44 +57,33 @@ class JavaSetupDialog(QDialog):
         pick_java: JavaPicker | None = None,
     ) -> None:
         """Build the dialog for ``problem``."""
-        super().__init__(parent)
+        super().__init__(messages.text("java.dialog.title"), "", parent, tone="warning")
         self._problem = problem
         self._java = java
         self._messages = messages
         self._pick_java = pick_java or pick_java_with_system_dialog(messages)
         self.choice = JavaChoice.CANCELLED
-        self.setWindowTitle(messages.text("java.dialog.title"))
-        self.setStyleSheet(theme.STYLESHEET)
-        self.setMinimumWidth(560)
 
         self.explanation = QLabel(self._explanation())
+        self.explanation.setObjectName("dialogSubtitle")
         self.explanation.setWordWrap(True)
         self.explanation.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.status_label = QLabel()
         self.status_label.setObjectName("controlHint")
         self.status_label.setWordWrap(True)
+        self.body.addWidget(self.explanation)
+        self.body.addWidget(self.status_label)
 
-        self.check_button = QPushButton(messages.text("java.check"))
+        self.check_button = secondary_button(messages.text("java.check"), "restart")
         self.check_button.clicked.connect(self.check_again)
-        self.choose_button = QPushButton(messages.text("java.choose"))
+        self.choose_button = primary_button(messages.text("java.choose"), "java")
         self.choose_button.clicked.connect(self.choose_executable)
-        self.start_anyway_button = QPushButton(messages.text("java.start_anyway"))
+        self.start_anyway_button = danger_button(messages.text("java.start_anyway"))
         self.start_anyway_button.clicked.connect(self._start_anyway)
         self.start_anyway_button.setVisible(isinstance(problem, JavaVersionTooOld))
-        cancel = QPushButton(messages.text("java.cancel"))
+        cancel = button(messages.text("java.cancel"), "ghost")
         cancel.clicked.connect(self.reject)
-
-        buttons = QHBoxLayout()
-        buttons.addWidget(self.check_button)
-        buttons.addWidget(self.choose_button)
-        buttons.addStretch(1)
-        buttons.addWidget(self.start_anyway_button)
-        buttons.addWidget(cancel)
-        layout = QVBoxLayout(self)
-        layout.setSpacing(14)
-        layout.addWidget(self.explanation)
-        layout.addWidget(self.status_label)
-        layout.addLayout(buttons)
+        self.add_buttons(cancel, self.start_anyway_button, self.check_button, self.choose_button)
 
     def _explanation(self) -> str:
         problem = self._problem

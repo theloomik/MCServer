@@ -2,48 +2,30 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import (
-    QApplication,
-    QDialog,
-    QHBoxLayout,
-    QLabel,
-    QPlainTextEdit,
-    QPushButton,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QApplication, QPlainTextEdit, QWidget
 
-from mcserver.presentation import theme
+from mcserver.presentation.dialogs.form import FormDialog, primary_button, secondary_button
 from mcserver.presentation.errors import UserMessage, render_message
 from mcserver.presentation.i18n import Messages
 
 
-class ErrorDetailsDialog(QDialog):
+class ErrorDetailsDialog(FormDialog):
     """Show the message and its untranslated details, with a Copy button."""
 
     def __init__(self, message: UserMessage, messages: Messages, parent: QWidget | None = None) -> None:
         """Build the dialog for ``message``."""
-        super().__init__(parent)
-        self.setWindowTitle(messages.text("details.title"))
-        self.setStyleSheet(theme.STYLESHEET)
-        self.resize(760, 460)
-        summary = QLabel(render_message(messages, message))
-        summary.setWordWrap(True)
+        super().__init__(messages.text("details.title"), render_message(messages, message), parent, tone="danger")
+        self.resize(760, 480)
         self.details = QPlainTextEdit(message.details)
         self.details.setObjectName("console")
         self.details.setReadOnly(True)
-        self.copy_button = QPushButton(messages.text("details.copy"))
+        self.details.setMinimumHeight(260)
+        self.body.addWidget(self.details, 1)
+        self.copy_button = secondary_button(messages.text("details.copy"), "copy")
         self.copy_button.clicked.connect(self._copy)
-        close_button = QPushButton(messages.text("details.close"))
+        close_button = primary_button(messages.text("details.close"))
         close_button.clicked.connect(self.accept)
-        buttons = QHBoxLayout()
-        buttons.addStretch(1)
-        buttons.addWidget(self.copy_button)
-        buttons.addWidget(close_button)
-        layout = QVBoxLayout(self)
-        layout.addWidget(summary)
-        layout.addWidget(self.details, 1)
-        layout.addLayout(buttons)
+        self.add_buttons(self.copy_button, close_button)
 
     def _copy(self) -> None:
         clipboard = QApplication.clipboard()

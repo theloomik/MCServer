@@ -1,42 +1,98 @@
-"""Shared layout for MCServer form dialogs: a card with a title, labelled fields and buttons."""
+"""Shared dialog layout from the M4 design: header (optional tone icon), body, footer with error line and buttons."""
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QLayout, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLayout,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
-from mcserver.presentation import theme
+from mcserver.presentation import icons, theme
+from mcserver.presentation.views.widgets import button
+
+TONES = {
+    "info": ("info", theme.INFO, theme.INFO_SUBTLE),
+    "warning": ("alert", theme.WARNING_TEXT, theme.WARNING_SUBTLE),
+    "danger": ("alert", theme.DANGER_TEXT, theme.DANGER_SUBTLE),
+    "success": ("check", theme.ACCENT_HOVER, theme.ACCENT_SUBTLE),
+}
+"""Header tone → (icon, icon colour, tile colour)."""
 
 
 class FormDialog(QDialog):
-    """A dialog whose content is a card; subclasses add fields with ``add_field``."""
+    """A dialog whose content is a card; subclasses add fields with ``add_field`` and finish with ``add_buttons``."""
 
-    def __init__(self, title: str, subtitle: str = "", parent: QWidget | None = None) -> None:
-        """Build the card with ``title`` and an optional ``subtitle``."""
+    def __init__(
+        self, title: str, subtitle: str = "", parent: QWidget | None = None, *, tone: str | None = None
+    ) -> None:
+        """Build the card with ``title``, an optional ``subtitle`` and an optional header ``tone`` icon."""
         super().__init__(parent)
         self.setObjectName("formDialog")
         self.setStyleSheet(theme.STYLESHEET)
         self.setWindowTitle(title)
         self.setMinimumWidth(560)
+        self.card = QFrame()
+        self.card.setObjectName("dialogCard")
+
         heading = QLabel(title)
         heading.setObjectName("dialogTitle")
-        self.card = QFrame()
-        self.card.setProperty("card", True)
-        self.body = QVBoxLayout(self.card)
-        self.body.setContentsMargins(32, 28, 32, 28)
-        self.body.setSpacing(6)
-        self.body.addWidget(heading)
+        heading.setWordWrap(True)
+        titles = QVBoxLayout()
+        titles.setSpacing(4)
+        titles.addWidget(heading)
+        self.subtitle_label: QLabel | None = None
         if subtitle:
-            sub = QLabel(subtitle)
-            sub.setObjectName("fieldHint")
-            sub.setWordWrap(True)
-            self.body.addWidget(sub)
-        self.body.addSpacing(12)
+            self.subtitle_label = QLabel(subtitle)
+            self.subtitle_label.setObjectName("dialogSubtitle")
+            self.subtitle_label.setWordWrap(True)
+            self.subtitle_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            titles.addWidget(self.subtitle_label)
+        header = QHBoxLayout()
+        header.setSpacing(14)
+        if tone in TONES:
+            icon_name, color, tile_color = TONES[tone]
+            tile = QLabel()
+            tile.setObjectName("dialogTone")
+            tile.setFixedSize(36, 36)
+            tile.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            tile.setStyleSheet(f"background-color: {tile_color}; border-radius: 8px;")
+            tile.setPixmap(icons.pixmap(icon_name, color, 18))
+            # Beside a one-line title the icon is centred; with a subtitle it lines up with the title.
+            header.addWidget(tile, 0, Qt.AlignmentFlag.AlignTop if subtitle else Qt.AlignmentFlag.AlignVCenter)
+        header.addLayout(titles, 1)
+
+        self.body = QVBoxLayout()
+        self.body.setSpacing(6)
         self.error_label = QLabel()
         self.error_label.setObjectName("fieldError")
         self.error_label.setWordWrap(True)
         self.error_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.error_label.hide()
+
+        content = QVBoxLayout()
+        content.setContentsMargins(28, 24, 28, 18)
+        content.setSpacing(16)
+        content.addLayout(header)
+        content.addLayout(self.body)
+        self.footer = QFrame()
+        self.footer.setObjectName("dialogFooter")
+        self.footer_layout = QHBoxLayout(self.footer)
+        self.footer_layout.setContentsMargins(28, 12, 20, 12)
+        self.footer_layout.setSpacing(8)
+        self.footer.hide()
+
+        card_layout = QVBoxLayout(self.card)
+        card_layout.setContentsMargins(0, 0, 0, 0)
+        card_layout.setSpacing(0)
+        card_layout.addLayout(content, 1)
+        card_layout.addWidget(self.footer)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.card)
@@ -67,18 +123,17 @@ class FormDialog(QDialog):
         self.body.addWidget(note)
         return note
 
-    def add_buttons(self, *buttons: QPushButton) -> None:
-        """Add the error line and the button row (the last button is the default)."""
+    def add_buttons(self, *buttons: QPushButton, default: QPushButton | None = None) -> None:
+        """Put the error line and ``buttons`` in the footer; ``default`` (else the last button) answers Enter."""
         self.body.addWidget(self.error_label)
-        row = QHBoxLayout()
-        row.addStretch(1)
-        for button in buttons:
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            row.addWidget(button)
-        if buttons:
-            buttons[-1].setDefault(True)
-        self.body.addSpacing(8)
-        self.body.addLayout(row)
+        self.footer_layout.addStretch(1)
+        for widget in buttons:
+            widget.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.footer_layout.addWidget(widget)
+        chosen = default or (buttons[-1] if buttons else None)
+        if chosen is not None:
+            chosen.setDefault(True)
+        self.footer.show()
 
     def show_error(self, text: str | None) -> None:
         """Show ``text`` above the buttons, or hide the error line for ``None``."""
@@ -86,15 +141,16 @@ class FormDialog(QDialog):
         self.error_label.setVisible(bool(text))
 
 
-def primary_button(text: str) -> QPushButton:
+def primary_button(text: str, icon_name: str | None = None) -> QPushButton:
     """Return an accent button."""
-    button = QPushButton(text)
-    button.setObjectName("primaryButton")
-    return button
+    return button(text, "primary", icon_name)
 
 
-def secondary_button(text: str) -> QPushButton:
+def secondary_button(text: str, icon_name: str | None = None) -> QPushButton:
     """Return a neutral button."""
-    button = QPushButton(text)
-    button.setObjectName("secondaryButton")
-    return button
+    return button(text, "secondary", icon_name)
+
+
+def danger_button(text: str, icon_name: str | None = None) -> QPushButton:
+    """Return a button for a destructive or forceful action."""
+    return button(text, "danger", icon_name)

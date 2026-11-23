@@ -14,13 +14,13 @@ from collections.abc import Sequence
 from pathlib import Path
 from types import TracebackType
 
-from PySide6.QtCore import QThreadPool
+from PySide6.QtCore import QLocale, QThreadPool
 from PySide6.QtWidgets import QApplication
 
 from mcserver.application.ports import JavaRuntimeProvider
 from mcserver.bootstrap.server_runtime import build_server_runtime
 from mcserver.presentation.adapters.session_end import CRASH_STOP_TIMEOUT_SECONDS, CrashHandler, SessionEndHandler
-from mcserver.presentation.i18n import DEFAULT_LANGUAGE, Messages, messages_for
+from mcserver.presentation.i18n import Messages, messages_for, resolve_language
 from mcserver.presentation.main_window import MainWindow
 from mcserver.presentation.paths import servers_root
 from mcserver.presentation.services import PresentationServices
@@ -100,4 +100,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     existing = QApplication.instance()
     app = existing if isinstance(existing, QApplication) else QApplication(list(sys.argv if argv is None else argv))
     app.setApplicationName("MCServer")
-    return run(app, build_services(servers_root()), messages_for(DEFAULT_LANGUAGE))
+    services = build_services(servers_root())
+    setting = services.settings.current.language if services.settings is not None else None
+    return run(app, services, messages_for(resolve_language(setting, QLocale.system().name())))

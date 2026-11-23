@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox, QWidget
+from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox, QWidget
 
 from mcserver.application.errors import InvalidJavaExecutable
 from mcserver.application.java_setup import JavaSetup
@@ -15,7 +15,7 @@ from mcserver.presentation.controllers.server_management import ManagementContro
 from mcserver.presentation.dialogs.edit_server_dialog import JavaPicker, pick_java_with_system_dialog
 from mcserver.presentation.dialogs.form import FormDialog, primary_button, secondary_button
 from mcserver.presentation.errors import describe_error, render_message
-from mcserver.presentation.i18n import Messages
+from mcserver.presentation.i18n import Messages, available_languages
 
 FolderOpener = Callable[[Path], bool]
 
@@ -71,6 +71,15 @@ class SettingsDialog(FormDialog):
         java_buttons.addStretch(1)
         self.body.addLayout(java_buttons)
         self.body.addSpacing(10)
+
+        self.language_combo = QComboBox()
+        self.language_combo.addItem(messages.text("settings.language.auto"), None)
+        for code in available_languages():
+            self.language_combo.addItem(messages.text(f"settings.language.{code}"), code)
+        self.language_combo.setCurrentIndex(max(0, self.language_combo.findData(settings.language)))
+        self.add_field(
+            messages.text("settings.language.label"), self.language_combo, messages.text("settings.language.hint")
+        )
 
         self.stop_spin = self._seconds(STOP_TIMEOUT_RANGE, settings.stop_timeout_seconds)
         self.add_field(
@@ -135,6 +144,7 @@ class SettingsDialog(FormDialog):
             stop_timeout_seconds=self.stop_spin.value(),
             startup_timeout_seconds=self.startup_spin.value(),
             auto_restart=self.auto_restart_check.isChecked(),
+            language=self.language_combo.currentData(),
         )
         if error is not None:
             self.show_error(render_message(self._messages, error))

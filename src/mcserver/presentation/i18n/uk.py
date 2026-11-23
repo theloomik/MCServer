@@ -1,0 +1,546 @@
+"""Ukrainian message catalog. Keys and placeholders match ``en.py``; missing keys fall back to English."""
+
+from mcserver.presentation.i18n.catalog import Catalog
+
+MESSAGES: Catalog = {
+    "app.title": "MCServer",
+    "menu.file": "&Файл",
+    "dialog.cancel": "Скасувати",
+    "dialog.ok": "Гаразд",
+    "dialog.move_to_recycle_bin": "Перемістити в кошик",
+    "exit.confirm.yes": "Зупинити й вийти",
+    "legacy.offer.yes": "Імпортувати",
+    "legacy.offer.no": "Не зараз",
+    "kill.confirm.yes": "Примусово завершити",
+    "eula.accept": "Прийняти EULA",
+    "backups.restore.continue": "Продовжити",
+    "backups.restore.yes": "Відновити зараз",
+    "menu.file.new_server": "&Новий сервер…",
+    "menu.file.refresh": "&Оновити список серверів",
+    "menu.server": "&Сервер",
+    "menu.server.start": "Запустити",
+    "menu.server.stop": "Зупинити",
+    "menu.server.restart": "Перезапустити",
+    "menu.server.kill": "Примусово завершити…",
+    "menu.server.open_folder": "Відкрити теку сервера",
+    "menu.server.open_logs": "Відкрити теку журналів",
+    "menu.server.edit": "Змінити…",
+    "menu.server.delete": "Видалити…",
+    "menu.file.exit": "В&ихід",
+    "menu.file.import_folder": "&Імпортувати теку сервера…",
+    "menu.file.import_legacy": "Імпортувати з MCServer &0.9.1…",
+    "menu.file.settings": "&Налаштування…",
+    "status.servers_folder": "Тека серверів: {path}",
+    "status.java_available": "Java: готова",
+    "status.java_ready": "Java {major}: готова",
+    "status.java_missing": "Java не знайдено: сервери не запустяться, доки Java не встановлено або не вибрано.",
+    "status.java_check": "Перевірити Java",
+    "status.java_choose": "Вибрати Java…",
+    "status.server.stopped": "Зупинено",
+    "status.server.starting": "Запускається",
+    "status.server.running": "Працює",
+    "status.server.stopping": "Зупиняється",
+    "status.server.killing": "Завершується",
+    "status.server.unknown": "Стан невідомий",
+    "server_list.title": "Сервери",
+    "server_list.title_count": "Сервери  {count}",
+    "server_list.refresh": "Оновити",
+    "server_list.create": "Новий сервер",
+    "server_list.import": "Імпортувати теку сервера…",
+    "server_list.settings": "Налаштування",
+    "server_list.item": "{server_id}\n{status}",
+    "server_list.subtitle": "{status} · {memory}",
+    "server_list.empty": "Серверів ще немає. Створіть сервер або імпортуйте наявну теку.",
+    "server_list.error.load": (
+        "Не вдалося завантажити список серверів. Файл конфігурації може бути пошкоджений або створений новішою "
+        "версією MCServer. Подробиці записано в журнал."
+    ),
+    "server_details.error.gone": "Цього сервера більше немає. Оновіть список, щоб побачити поточні сервери.",
+    "server_details.error.load": "Не вдалося завантажити дані сервера. Подробиці записано в журнал.",
+    "server_details.field.directory": "Тека",
+    "server_details.field.location": "Розташування",
+    "server_details.field.jar_file": "JAR сервера",
+    "server_details.field.memory": "Пам’ять",
+    "server_details.memory_value": "{memory_mb} МБ",
+    "server_details.next_launch_note": "Зміни налаштувань застосуються під час наступного запуску сервера.",
+    "welcome.title": "Вітаємо в MCServer",
+    "welcome.text": "Виберіть сервер у списку ліворуч.",
+    "welcome.first": (
+        "Запускайте й керуйте серверами Minecraft Java на цьому ПК. Створіть сервер із завантаженого Paper чи "
+        "Vanilla або імпортуйте наявну теку сервера."
+    ),
+    "welcome.legacy": "Користувалися MCServer 0.9.1? Файл › Імпортувати з MCServer 0.9.1",
+    "dashboard.subtitle": "{jar_file} · {memory}",
+    "dashboard.subtitle_folder": "{jar_file} · {memory} · тека {folder}",
+    "dashboard.status_pill": "● {status}",
+    "dashboard.wait_again": "Чекати далі",
+    "dashboard.start": "Запустити",
+    "dashboard.starting": "Запуск…",
+    "dashboard.stop": "Зупинити",
+    "dashboard.stopping": "Зупинка…",
+    "dashboard.hint.java_missing": "Java не знайдено, тому сервери не запустяться. Встановіть Java і перезапустіть MCServer.",
+    "dashboard.hint.other_running": "Спершу зупиніть {server_id}: MCServer запускає лише один сервер одночасно.",
+    "dashboard.hint.running": "Зупинка надсилає команду stop і чекає, доки сервер збереже світ.",
+    "dashboard.notice.stopped_unexpectedly": "{server_id} несподівано зупинився. Подробиці дивіться в консолі.",
+    "dashboard.success.created": "{server_id} створено. Натисніть «Запустити», коли будете готові.",
+    "dashboard.info.title": "Сервер",
+    "dashboard.open_folder": "Відкрити теку",
+    "dashboard.open_folder_failed": "Не вдалося відкрити {path}. Можливо, теки ще немає.",
+    "console.title": "Консоль",
+    "console.line_count": "рядків: {count}",
+    "console.prompt": ">",
+    "console.input.disabled": "Команди можна надсилати, коли сервер працює",
+    "console.clear": "Очистити",
+    "console.placeholder": "Тут з’явиться вивід сервера.",
+    "console.unavailable": "Консоль недоступна, бо Java не знайдено.",
+    "errors.another_server_running": "{server_id} уже працює. Зупиніть його, перш ніж запускати інший сервер.",
+    "errors.start_failed": "Не вдалося запустити {server_id}. Наведіть сюди курсор, щоб побачити технічні подробиці.",
+    "errors.stop_failed": (
+        "MCServer не може підтвердити, що {server_id} зупинився. Можливо, він досі працює; перевірте java.exe "
+        "у Диспетчері завдань, перш ніж запускати знову. Наведіть сюди курсор, щоб побачити подробиці."
+    ),
+    "errors.unexpected": "Щось пішло не так. Наведіть сюди курсор, щоб побачити технічні подробиці.",
+    "errors.server_id_taken": "Сервер з ID {server_id} уже існує. Виберіть інший ID.",
+    "errors.directory_in_use": "Теку {directory} уже використовує {server_id}. Виберіть іншу теку.",
+    "errors.directory_exists": (
+        "Тека з назвою {directory} уже є в теці серверів. Її файли не змінено; виберіть іншу назву теки."
+    ),
+    "errors.jar_exists": "{directory} уже містить {jar_file}; файл не перезаписано.",
+    "errors.invalid_source_jar": "Вибраний файл не підходить: {reason}.",
+    "errors.invalid_configuration": "Ці налаштування не можна використати: {reason}",
+    "errors.provisioning_failed": "Не вдалося підготувати файли сервера. Нічого з цієї спроби не залишено.",
+    "errors.storage_failed": "MCServer не зміг зберегти список серверів. Нічого не створено.",
+    "errors.provisioning_rollback_failed": (
+        "Не вдалося створити {server_id}, і деякі файли не прибрано: {leftovers}. Їх можна видалити вручну."
+    ),
+    "errors.creation_rollback_failed": (
+        "Не вдалося створити {server_id}, і прибирання не завершено: його конфігурація може лишатися в списку. "
+        "Файли на диску: {leftovers}. Перегляньте подробиці нижче й приберіть залишки вручну."
+    ),
+    "create.title": "Створити сервер",
+    "create.subtitle": "Новий сервер із наявного JAR-файлу (Paper, Fabric, Vanilla…) або завантаженого тут.",
+    "create.server_id.label": "ID сервера",
+    "create.server_id.placeholder": "наприклад, survival",
+    "create.server_id.hint": "Показується в списку серверів. Має бути унікальним.",
+    "create.directory.label": "Тека",
+    "create.directory.placeholder": "Так само, як ID сервера",
+    "create.directory.hint": "Створюється в теці серверів. Типово збігається з ID сервера.",
+    "create.source_jar.label": "JAR сервера",
+    "create.jar.placeholder": "Файл не вибрано",
+    "create.jar.browse": "Огляд…",
+    "create.jar.dialog_title": "Виберіть JAR сервера",
+    "create.jar.dialog_filter": "Java-архіви (*.jar)",
+    "create.source_jar.hint": "Копіюється в теку сервера; оригінальний файл не змінюється.",
+    "create.memory_mb.label": "Пам’ять",
+    "create.memory_mb.hint": "Скільки оперативної пам’яті може використовувати сервер.",
+    "create.memory.suffix": " МБ",
+    "create.cancel": "Скасувати",
+    "create.submit": "Створити сервер",
+    "create.submitting": "Створення…",
+    "create.progress": "Створюємо теку сервера й копіюємо JAR. Після початку цю дію не можна скасувати.",
+    "create.done": "{server_id} створено.",
+    "create.error.server_id_required": "Введіть ID сервера.",
+    "create.error.server_id_invalid": (
+        'Використовуйте літери, цифри, пробіли, крапки або дефіси; без \\ / : * ? " < > | і без пробілів на початку чи в кінці.'
+    ),
+    "create.error.server_id_taken": "Цей ID уже використовує інший сервер.",
+    "create.error.directory_required": "Введіть назву теки.",
+    "create.error.directory_invalid": 'Така назва теки недопустима. Використовуйте просту назву без \\ / : * ? " < > |.',
+    "create.error.directory_taken": "Цю теку вже використовує {server_id}.",
+    "create.error.jar_required": "Виберіть JAR-файл сервера.",
+    "create.error.jar_invalid": "Виберіть файл .jar без спеціальних символів у назві.",
+    "create.error.memory_range": "Виберіть від {minimum} до {maximum} МБ.",
+    "exit.confirm.title": "Зупинити сервер?",
+    "exit.confirm.text": "{server_id} досі працює. Зупинити його й вийти з MCServer?",
+    "exit.stopping": "Зупиняємо {server_id} перед виходом…",
+    "exit.wait_for_operation": "Зачекайте, доки завершиться поточна дія.",
+    "exit.stop_timed_out.title": "Сервер ще зупиняється",
+    "exit.stop_timed_out.text": (
+        "{server_id} не зупинився за {timeout} с. Чекати далі, примусово завершити його (зміни після останнього "
+        "автозбереження можуть втратитися) чи скасувати вихід з MCServer?"
+    ),
+    "exit.keep_waiting": "Чекати далі",
+    "exit.kill": "Завершити й вийти",
+    "exit.cancel": "Скасувати",
+    "session.block_reason": "MCServer зупиняє ваш сервер Minecraft, щоб зберегти світ.",
+    "dashboard.kill": "Завершити",
+    "dashboard.killing": "Завершення…",
+    "dashboard.details": "Подробиці…",
+    "dashboard.hint.starting": "Чекаємо, доки сервер завантажиться. Стан «Працює» з’явиться, коли гравці зможуть зайти.",
+    "dashboard.hint.stop_timed_out": (
+        "{server_id} ще не зупинився. Зачекайте далі або завершіть його примусово (зміни після останнього "
+        "автозбереження можуть втратитися)."
+    ),
+    "dashboard.hint.stopping": "Сервер зберігає світ і вимикається.",
+    "dashboard.failure.start_timeout": (
+        "{server_id} не встиг запуститися, тому MCServer попросив його зупинитися (примусово не завершено). {hint}"
+    ),
+    "dashboard.failure.unexpected_exit": "{server_id} несподівано зупинився (код виходу {exit_code}). {hint}",
+    "dashboard.warning.java_requirement_unknown": (
+        "MCServer не може перевірити, яка Java потрібна Minecraft {version}, тому запустив сервер з Java {java_major}. "
+        "Якщо сервер не запуститься, встановіть новішу Java."
+    ),
+    "dashboard.warning.java_outdated_allowed": (
+        "Запущено з Java {java_major}, хоча потрібна Java {required}; найімовірніше, сервер не запуститься."
+    ),
+    "dashboard.notice.command_failed": "Не вдалося надіслати команду: {reason}",
+    "hint.eula_not_accepted": "EULA Minecraft не прийнято.",
+    "hint.port_in_use": "Порт сервера вже використовує інша програма.",
+    "hint.java_too_old": "Цьому серверу потрібна новіша версія Java.",
+    "hint.out_of_memory": (
+        "Серверу забракло пам’яті або він не зміг її зарезервувати. Зменште обсяг пам’яті або закрийте інші програми."
+    ),
+    "hint.corrupt_jar": "JAR сервера, схоже, пошкоджений або нечитабельний. Замініть його свіжим завантаженням.",
+    "hint.unknown": "Останні рядки консолі — у «Подробицях».",
+    "kill.confirm.title": "Примусово завершити сервер?",
+    "kill.confirm.text": (
+        "Примусове завершення {server_id} зупиняє його миттєво без збереження. Зміни після останнього "
+        "автозбереження можуть втратитися, а чанк, що записується, — пошкодитися. Все одно завершити?"
+    ),
+    "details.title": "Технічні подробиці",
+    "details.copy": "Копіювати",
+    "details.close": "Закрити",
+    "details.exit_code": "Код виходу: {exit_code}",
+    "details.last_lines": "Останні рядки консолі:",
+    "console.input.placeholder": "Введіть команду, наприклад say hello — ↑ ↓ для історії",
+    "console.send": "Надіслати",
+    "errors.eula_not_accepted": "EULA Minecraft для {server_id} не прийнято.",
+    "errors.server_not_running": "{server_id} не працює, тому команду не надіслано.",
+    "errors.invalid_command": "Введіть команду в один рядок.",
+    "errors.command_failed": "Не вдалося надіслати команду {server_id}; можливо, він вимикається.",
+    "errors.java_not_found": "Робочу Java не знайдено, тому сервер не може запуститися.",
+    "errors.java_too_old": "{server_id} потребує Java {required}, а знайдено Java {found}.",
+    "errors.invalid_java": "Вибраний файл не є робочою Java: {executable}",
+    "errors.world_in_use": (
+        "Світ {world} сервера {server_id} використовує інша програма, найімовірніше, сервер, що досі працює. "
+        "Спершу закрийте її."
+    ),
+    "errors.stop_timed_out": (
+        "{server_id} не зупинився за {timeout} с і досі працює. Натисніть «Чекати далі» або завершіть його примусово."
+    ),
+    "errors.process_guard": (
+        "{server_id} не вдалося запустити під захистом процесів MCServer, тому його не запущено зовсім."
+    ),
+    "eula.title": "Прийняти EULA Minecraft?",
+    "eula.text": (
+        "Щоб запустити {server_id}, потрібно прийняти Ліцензійну угоду кінцевого користувача Minecraft (EULA). "
+        "Прочитати її можна на https://aka.ms/MinecraftEULA. Прийняти й запустити сервер?"
+    ),
+    "create.eula.label": "Я прочитав(-ла) і приймаю EULA Minecraft",
+    "create.eula.hint": "Потрібно для роботи сервера Minecraft. Прочитати: https://aka.ms/MinecraftEULA.",
+    "create.error.eula_required": "Прийміть EULA Minecraft, щоб створити сервер.",
+    "java.dialog.title": "Потрібна Java",
+    "java.missing.text": (
+        "Робочу Java не знайдено.{needed} Встановіть середовище Java, наприклад Eclipse Temurin "
+        "(https://adoptium.net), потім натисніть «Перевірити ще раз» або виберіть java.exe самостійно."
+    ),
+    "java.needed": " Цьому серверу потрібна Java {required} або новіша.",
+    "java.too_old.text": (
+        "{server_id} потребує Java {required}, але MCServer знайшов Java {found} ({executable}). Встановіть новішу Java "
+        "(наприклад, з https://adoptium.net), виберіть інший java.exe або запустіть усе одно (найімовірніше, сервер "
+        "не запуститься)."
+    ),
+    "java.found": "Знайдено Java {major}: {executable}",
+    "java.check": "Перевірити ще раз",
+    "java.choose": "Вибрати java.exe…",
+    "java.start_anyway": "Усе одно запустити",
+    "java.cancel": "Скасувати",
+    "java.choose.dialog_title": "Виберіть java.exe",
+    "java.choose.filter": "Java (java.exe java);;Усі файли (*)",
+    "unclean.title": "{server_id} не було зупинено коректно",
+    "unclean.text": (
+        "Коли MCServer востаннє завершився, {server_id} (запущено {started_at}) ще працював, тому його завершено "
+        "без збереження. Зміни після останнього автозбереження (зазвичай до 5 хвилин) могли втратитися, а чанк, "
+        "що записувався, — пошкодитися. Запустіть сервер і перевірте світ перед грою."
+    ),
+    "dashboard.edit": "Змінити…",
+    "dashboard.delete": "Видалити…",
+    "legacy.offer.title": "Імпортувати ваші сервери з MCServer 0.9.1?",
+    "legacy.offer.text": {
+        "one": (
+            "MCServer знайшов {count} сервер з MCServer 0.9.1, якого ще немає в списку. Імпортувати його? "
+            "Його теку не буде переміщено чи змінено."
+        ),
+        "few": (
+            "MCServer знайшов {count} сервери з MCServer 0.9.1, яких ще немає в списку. Імпортувати їх? "
+            "Їхні теки не буде переміщено чи змінено."
+        ),
+        "many": (
+            "MCServer знайшов {count} серверів з MCServer 0.9.1, яких ще немає в списку. Імпортувати їх? "
+            "Їхні теки не буде переміщено чи змінено."
+        ),
+        "other": (
+            "MCServer знайшов серверів з MCServer 0.9.1: {count}. Імпортувати їх? Їхні теки не буде переміщено чи змінено."
+        ),
+    },
+    "legacy.result.title": "Імпорт завершено",
+    "legacy.result.text": "Імпортовано: {imported}. Уже в списку: {skipped}. Не вдалося імпортувати: {rejected}.",
+    "legacy.result.rejected": "{server_id}: {reason}",
+    "legacy.result.nothing": "З MCServer 0.9.1 нічого імпортувати.",
+    "edit.title": "Змінити {server_id}",
+    "edit.display_name.label": "Назва",
+    "edit.display_name.hint": "Показується в списку серверів. ID сервера {server_id} ніколи не змінюється.",
+    "edit.memory.label": "Пам’ять",
+    "edit.jar.label": "JAR сервера",
+    "edit.jar.hint_running": "Зупиніть сервер, щоб вибрати інший JAR.",
+    "edit.jvm.label": "Додаткові аргументи Java",
+    "edit.jvm.hint": "Через пробіл, наприклад -XX:+UseG1GC. Пам’ять задається вище.",
+    "edit.java.label": "Java для цього сервера",
+    "edit.java.auto": "Як у застосунку (автоматично)",
+    "edit.java.choose": "Вибрати…",
+    "edit.java.clear": "Автоматично",
+    "edit.note": "Зміни застосуються під час наступного запуску сервера.",
+    "edit.save": "Зберегти",
+    "edit.cancel": "Скасувати",
+    "edit.saved": "{name} збережено.",
+    "delete.title": "Видалити {name}?",
+    "delete.text": "{name} буде вилучено з MCServer.",
+    "delete.files": "Також перемістити його теку в кошик",
+    "delete.files_hint": "Без цього тека {path} залишиться на місці, і її можна буде імпортувати знову.",
+    "delete.confirm": "Видалити",
+    "delete.cancel": "Скасувати",
+    "delete.done.kept": "{name} вилучено. Теку збережено.",
+    "delete.done.recycle_bin": "{name} вилучено, а його теку переміщено в кошик.",
+    "delete.done.trash": "{name} вилучено, а його теку переміщено в {location}.",
+    "delete.done.missing": "{name} вилучено; його теки вже не було.",
+    "adopt.title": "Імпортувати теку сервера",
+    "adopt.subtitle": "Використайте наявний сервер. Його файли ніколи не переміщуються й не змінюються.",
+    "adopt.folder.label": "Тека",
+    "adopt.folder.placeholder": "Теку не вибрано",
+    "adopt.folder.browse": "Огляд…",
+    "adopt.folder.dialog_title": "Виберіть теку сервера",
+    "adopt.inside": "Ця тека всередині теки серверів, тому використовується на місці.",
+    "adopt.outside": "Цю теку буде скопійовано в теку серверів; оригінал залишиться без змін.",
+    "adopt.jar.label": "JAR сервера",
+    "adopt.no_jars": "У цій теці немає файлу .jar, тому її не можна імпортувати.",
+    "adopt.server_id.label": "ID сервера",
+    "adopt.memory.label": "Пам’ять",
+    "adopt.submit": "Імпортувати",
+    "adopt.submitting": "Імпорт…",
+    "adopt.cancel": "Скасувати",
+    "adopt.done": "{server_id} імпортовано.",
+    "settings.title": "Налаштування",
+    "settings.servers_folder": "Тека серверів",
+    "settings.open_folder": "Відкрити",
+    "settings.java.label": "Java",
+    "settings.java.auto": "Визначати автоматично",
+    "settings.java.choose": "Вибрати java.exe…",
+    "settings.java.found": "{executable} (Java {major})",
+    "settings.java.missing": "Java не знайдено",
+    "settings.stop_timeout.label": "Час на зупинку",
+    "settings.stop_timeout.hint": "Скільки «Зупинити» чекає збереження, перш ніж запропонувати примусове завершення.",
+    "settings.startup_timeout.label": "Час на запуск",
+    "settings.startup_timeout.hint": "Скільки може тривати запуск, перш ніж MCServer коректно зупинить сервер.",
+    "settings.seconds": " с",
+    "settings.import_legacy": "Імпортувати сервери MCServer 0.9.1…",
+    "settings.save": "Зберегти",
+    "settings.cancel": "Скасувати",
+    "settings.saved": "Налаштування збережено.",
+    "settings.language.label": "Мова",
+    "settings.language.auto": "Автоматично (мова Windows)",
+    "settings.language.en": "English",
+    "settings.language.uk": "Українська",
+    "settings.language.hint": "Застосується після перезапуску MCServer.",
+    "errors.server_is_running": "{server_id} працює; спершу зупиніть його.",
+    "errors.files_removal_failed": (
+        "Теку {directory} не вдалося перемістити ні в кошик, ні в теку .trash, тому нічого не видалено. {reason}"
+    ),
+    "errors.invalid_settings": "{reason}",
+    "errors.legacy_unavailable": "Не вдалося прочитати список серверів MCServer 0.9.1.",
+    "tabs.overview": "Огляд",
+    "tabs.properties": "Властивості",
+    "tabs.backups": "Резервні копії",
+    "metrics.title": "Ресурси",
+    "metrics.cpu": "ЦП",
+    "metrics.memory": "Пам’ять",
+    "metrics.uptime": "Час роботи",
+    "metrics.cpu_value": "{percent} %",
+    "metrics.memory_value": "{used} / {allocated} МБ",
+    "metrics.uptime_value": "{hours}:{minutes:02d}:{seconds:02d}",
+    "metrics.idle": "—",
+    "metrics.live": "Наживо · 2 с",
+    "metrics.not_running": "Не працює",
+    "properties.title": "server.properties",
+    "properties.search": "Фільтр властивостей…",
+    "properties.save": "Зберегти",
+    "properties.unsaved": {
+        "one": "{count} незбережена зміна",
+        "few": "{count} незбережені зміни",
+        "many": "{count} незбережених змін",
+        "other": "Незбережених змін: {count}",
+    },
+    "properties.reload": "Перечитати",
+    "properties.missing": (
+        "server.properties створюється під час першого запуску сервера. Значення, які ви збережете зараз, "
+        "діятимуть з першого запуску."
+    ),
+    "properties.saved": "server.properties збережено.",
+    "properties.saved_restart": "server.properties збережено. Перезапустіть сервер, щоб застосувати зміни.",
+    "properties.invalid": "Деякі значення недопустимі; їх позначено нижче, і нічого не збережено.",
+    "properties.invalid_value": "{name}: {reason}",
+    "properties.other": "Інші властивості",
+    "properties.known": "Основні властивості",
+    "properties.default": "типове значення сервера",
+    "backups.title": "Резервні копії",
+    "backups.note.placeholder": "Примітка до нової копії (необов’язково)",
+    "backups.create": "Створити копію",
+    "backups.restore": "Відновити…",
+    "backups.delete": "Видалити…",
+    "backups.empty": "Резервних копій ще немає. Копія зберігає світ і налаштування; журнали й кеш не включаються.",
+    "backups.column.date": "Створено",
+    "backups.column.kind": "Тип",
+    "backups.column.size": "Розмір",
+    "backups.column.note": "Примітка",
+    "backups.kind.manual": "Вручну",
+    "backups.kind.safety": "Перед відновленням",
+    "backups.kind.scheduled": "За розкладом",
+    "backups.schedule.enabled": "Автоматично створювати копії, поки сервер працює",
+    "backups.schedule.every": "кожні",
+    "backups.schedule.hours_suffix": " год",
+    "backups.schedule.keep": "зберігати останні",
+    "backups.schedule.hint": (
+        "Рахуються лише копії за розкладом; старіші переміщуються в кошик. Ручні копії та копії перед "
+        "відновленням ніколи не видаляються автоматично."
+    ),
+    "backups.schedule.saved": "Автоматичні копії для цього сервера ввімкнено.",
+    "backups.schedule.off": "Автоматичні копії для цього сервера вимкнено.",
+    "backups.scheduled_created": (
+        "Створено копію за розкладом {backup_id} сервера {server_id}; старіших копій за розкладом переміщено "
+        "в кошик: {removed}."
+    ),
+    "backups.kind.online": "{kind} (під час роботи)",
+    "backups.size_value": "{megabytes} МБ",
+    "backups.size_kb": "{kilobytes} КБ",
+    "backups.working": "Виконується… Для великих світів це може тривати довго.",
+    "backups.created": "Резервну копію {backup_id} створено.",
+    "backups.restored": "Копію {backup_id} відновлено. Попередній стан збережено як {safety_id}.",
+    "backups.deleted": "Копію {backup_id} переміщено в кошик.",
+    "backups.deleted_trash": "Копію {backup_id} переміщено в {location}.",
+    "backups.restore_running": "Зупиніть сервер, щоб відновити копію.",
+    "backups.restore.title": "Відновити {backup_id}?",
+    "backups.restore.text": (
+        "Світ і налаштування {name} буде замінено цією копією. Спершу MCServer збереже поточний стан як нову "
+        "копію, а замінені файли потраплять у кошик. Продовжити?"
+    ),
+    "backups.restore.confirm_title": "Точно відновити?",
+    "backups.restore.confirm_text": "{name} буде повернуто до стану на {created_at}. Відновити зараз?",
+    "backups.delete.title": "Видалити {backup_id}?",
+    "backups.delete.text": "Файл резервної копії буде переміщено в кошик.",
+    "errors.server_port_in_use": (
+        "Порт {port} уже використовує інша програма, найімовірніше, інший сервер Minecraft. Зупиніть її або "
+        "змініть server-port у «Властивостях»."
+    ),
+    "errors.invalid_properties": "Деякі значення server.properties недопустимі.",
+    "errors.backup_not_possible": "{server_id} запускається або зупиняється. Спробуйте, коли він працюватиме або зупиниться.",
+    "errors.backup_failed": "Операція з резервною копією для {server_id} не вдалася: {reason}",
+    "errors.backup_not_found": "Цієї резервної копії більше немає.",
+    "unclean.open_backups": "Відкрити копії",
+    "create.jar.download": "Завантажити…",
+    "catalog.title": "Завантажити сервер",
+    "catalog.subtitle": (
+        "Лише офіційні файли: Paper від PaperMC, Vanilla від Mojang. Кожен файл перевіряється за опублікованою "
+        "контрольною сумою перед використанням."
+    ),
+    "catalog.type.label": "Тип сервера",
+    "catalog.type.hint": "Paper підтримує плагіни й працює швидше; Vanilla — незмінена гра.",
+    "catalog.type.paper": "Paper",
+    "catalog.type.vanilla": "Vanilla",
+    "catalog.unstable": "Показувати тестові версії",
+    "catalog.version.label": "Версія Minecraft",
+    "catalog.version.unstable": "{version} (тестова версія)",
+    "catalog.loading": "Завантажуємо список версій…",
+    "catalog.resolving": "Перевіряємо завантаження…",
+    "catalog.details": "{file_name}, приблизно {size} МБ.",
+    "catalog.java": "Потрібна Java {java} або новіша.",
+    "catalog.java_unknown": "Для цієї версії не опубліковано, яка Java потрібна.",
+    "catalog.experimental_build": "Найновіша збірка Paper для цієї версії експериментальна.",
+    "catalog.cancelling": "Скасовуємо…",
+    "catalog.download": "Завантажити",
+    "catalog.downloading": "Завантаження…",
+    "catalog.cancel": "Скасувати",
+    "catalog.stop": "Зупинити завантаження",
+    "errors.catalog_unavailable": "Не вдалося завантажити список серверів: {reason}. Перевірте підключення до інтернету.",
+    "errors.download_failed": "Не вдалося завантажити {file_name}: {reason}. Нічого не збережено.",
+    "tabs.worlds": "Світи",
+    "worlds.title": "Світи",
+    "worlds.new": "Новий світ…",
+    "worlds.import_folder": "Імпортувати теку…",
+    "worlds.import_zip": "Імпортувати ZIP…",
+    "worlds.use": "Використати цей світ",
+    "worlds.export": "Експортувати ZIP…",
+    "worlds.delete": "Видалити…",
+    "worlds.column.name": "Світ",
+    "worlds.column.size": "Розмір",
+    "worlds.column.modified": "Остання гра",
+    "worlds.column.dimensions": "Теки",
+    "worlds.active_name": "{name} (поточний)",
+    "worlds.folders": "{folders}",
+    "worlds.current": "Сервер завантажує {name}. Перемикання діятиме з наступного запуску.",
+    "worlds.current_new": "Під час наступного запуску сервер згенерує новий світ {name}.",
+    "worlds.empty": "Світів ще немає. Сервер створить світ під час першого запуску.",
+    "worlds.stop_to_switch": "Зупиніть сервер, щоб перемикати або створювати світи.",
+    "worlds.working": "Виконується… Великі світи обробляються довше.",
+    "worlds.used": "{name} тепер поточний світ. Його буде завантажено під час наступного запуску.",
+    "worlds.created": "Новий світ {name} буде згенеровано під час наступного запуску.",
+    "worlds.imported": "{name} імпортовано. Виберіть «Використати цей світ», щоб грати в ньому.",
+    "worlds.exported": "{name} збережено в {path}.",
+    "worlds.deleted": "{name} переміщено в кошик.",
+    "worlds.deleted_trash": "{name} переміщено в {location}.",
+    "worlds.new.create": "Створити світ",
+    "worlds.import.ok": "Імпортувати",
+    "worlds.new.title": "Новий світ",
+    "worlds.new.name": "Назва нового світу:",
+    "worlds.new.seed": "Сід (залиште порожнім для випадкового світу):",
+    "worlds.import.title": "Імпорт світу",
+    "worlds.import.name": "Назва для імпортованого світу:",
+    "worlds.import_folder.title": "Виберіть теку світу (з level.dat)",
+    "worlds.import_zip.title": "Виберіть ZIP-файл світу",
+    "worlds.export.title": "Експорт світу",
+    "worlds.zip_filter": "ZIP-архіви (*.zip)",
+    "worlds.delete.title": "Видалити {name}?",
+    "worlds.delete.text": "Світ {name} разом із теками Незеру та Енду буде переміщено в кошик.",
+    "errors.world_not_found": "Світу {name} більше немає.",
+    "errors.world_exists": "У цього сервера вже є тека з назвою {name}. Виберіть іншу назву.",
+    "errors.world_is_active": (
+        "{name} — поточний світ. Спершу перемкніться на інший світ або створіть резервну копію, щоб скопіювати "
+        "його під час роботи сервера."
+    ),
+    "errors.invalid_world_name": (
+        "{name} не можна використати як назву світу. Використовуйте літери, цифри, - та _, і не закінчуйте назву "
+        "на _nether чи _the_end."
+    ),
+    "errors.invalid_world_source": "Цей світ не можна імпортувати: {reason}.",
+    "metrics.players": "Гравці",
+    "metrics.players_value": "{count} / {maximum}",
+    "metrics.tps": "TPS",
+    "metrics.tps_value": "{tps}",
+    "metrics.players_names": "{names}",
+    "dashboard.restart": "Перезапустити",
+    "dashboard.restarting": "Перезапуск…",
+    "dashboard.hint.auto_restarting": (
+        "Сервер аварійно завершився. Він запуститься знову автоматично через {delay} с (спроба {attempt} з {limit})."
+    ),
+    "dashboard.hint.auto_restart_gave_up": (
+        "Сервер аварійно завершився {limit} рази за 10 хвилин, тому його не запущено знову. "
+        "Перегляньте подробиці, перш ніж запускати."
+    ),
+    "dashboard.notice.auto_restarted": "Автоматично запущено знову після збою (спроба {attempt} з {limit}).",
+    "dashboard.open_logs": "Журнали",
+    "dashboard.no_logs": "У цього сервера ще немає теки журналів; вона з’явиться після першого запуску.",
+    "dashboard.address": "Адреса в LAN",
+    "dashboard.address_unknown": "Немає підключення до мережі",
+    "dashboard.copy_address": "Копіювати",
+    "dashboard.address_copied": "Скопійовано {address}.",
+    "console.save": "Зберегти…",
+    "console.save_title": "Зберегти журнал консолі",
+    "console.save_filter": "Файли журналу (*.log *.txt)",
+    "console.saved": "Журнал консолі збережено в {path}.",
+    "console.save_failed": "Не вдалося зберегти журнал консолі в {path}.",
+    "console.filter.all": "Усі рядки",
+    "console.filter.warnings": "Попередження й помилки",
+    "settings.auto_restart.label": "Автоматично перезапускати сервер після збою",
+    "settings.auto_restart.hint": (
+        "Не більше 3 разів за 10 хвилин. Сервер, який ви зупинили чи завершили, або який не встиг запуститися, "
+        "ніколи не перезапускається."
+    ),
+}
