@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QSpinBox, QWidget
 
 from mcserver.application.errors import InvalidJavaExecutable
 from mcserver.application.java_setup import JavaSetup
@@ -55,19 +55,22 @@ class SettingsDialog(FormDialog):
         folder_row.addWidget(self.open_folder_button)
         self.add_field(messages.text("settings.servers_folder"), folder_row)
 
-        self.java_label = QLabel()
-        self.java_label.setWordWrap(True)
+        # A read-only field (not a wrapped label): it keeps the row height stable for long paths.
+        self.java_label = QLineEdit()
+        self.java_label.setReadOnly(True)
         self.java_choose = QPushButton(messages.text("settings.java.choose"))
         self.java_choose.setObjectName("secondaryButton")
         self.java_choose.clicked.connect(self.choose_java)
         self.java_auto = QPushButton(messages.text("settings.java.auto"))
         self.java_auto.setObjectName("secondaryButton")
         self.java_auto.clicked.connect(self.use_automatic_java)
-        java_row = QHBoxLayout()
-        java_row.addWidget(self.java_label, 1)
-        java_row.addWidget(self.java_choose)
-        java_row.addWidget(self.java_auto)
-        self.add_field(messages.text("settings.java.label"), java_row)
+        self.add_field(messages.text("settings.java.label"), self.java_label)
+        java_buttons = QHBoxLayout()
+        java_buttons.addWidget(self.java_choose)
+        java_buttons.addWidget(self.java_auto)
+        java_buttons.addStretch(1)
+        self.body.addLayout(java_buttons)
+        self.body.addSpacing(10)
 
         self.stop_spin = self._seconds(STOP_TIMEOUT_RANGE, settings.stop_timeout_seconds)
         self.add_field(
