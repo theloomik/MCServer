@@ -111,7 +111,8 @@ def test_window_shows_title_folder_and_java_status_from_catalog(qtbot: QtBot, tm
     assert window.java_status_label.text() == messages.text("status.java_available")
     layout = window.centralWidget().layout()
     assert layout.itemAt(0).widget() is window.server_list_view
-    assert layout.itemAt(1).widget() is window.dashboard_view
+    assert layout.itemAt(1).widget() is window.page_host
+    assert window.page_host.currentWidget() is window.dashboard_view
 
 
 def test_window_explains_degraded_mode_with_details_on_hover(qtbot: QtBot, tmp_path: Path) -> None:

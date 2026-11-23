@@ -20,6 +20,7 @@ from PySide6.QtGui import (
     QPixmap,
 )
 from PySide6.QtWidgets import (
+    QDialog,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -61,6 +62,7 @@ from mcserver.presentation.errors import UserMessage, describe_error, render_mes
 from mcserver.presentation.i18n import Messages
 from mcserver.presentation.services import PresentationServices
 from mcserver.presentation.views.backups_view import BackupsView, format_created_at
+from mcserver.presentation.views.page_host import PageHost
 from mcserver.presentation.views.server_dashboard_view import ServerDashboardView
 from mcserver.presentation.views.server_list_view import ServerListView
 from mcserver.presentation.views.server_properties_view import ServerPropertiesView
@@ -288,13 +290,22 @@ class MainWindow(QMainWindow):
     def _build_content(self) -> None:
         central = QWidget()
         central.setObjectName("central")
-        self.server_list_view.setFixedWidth(280)
+        # Dialogs open as pages in the content area; the server list stays visible (M4 design).
+        self.page_host = PageHost(self.dashboard_view)
         layout = QHBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self.server_list_view)
-        layout.addWidget(self.dashboard_view, 1)
+        layout.addWidget(self.page_host, 1)
         self.setCentralWidget(central)
+
+    def show_page(self, dialog: QDialog, *, compact: bool = False) -> None:
+        """Open ``dialog`` as a page in the content area (it closes itself when finished)."""
+        self.page_host.open_page(dialog, compact=compact)
+
+    def run_page(self, dialog: QDialog, *, compact: bool = True) -> int:
+        """Open ``dialog`` as a page and wait for its answer; return its result code."""
+        return self.page_host.run_page(dialog, compact=compact)
 
     def _update_server_menu(self) -> None:
         """Mirror the toolbar: a menu action is enabled when its button is usable."""
@@ -340,7 +351,7 @@ class MainWindow(QMainWindow):
     def _connect(self) -> None:
         servers = self.server_list_controller
         servers.state_changed.connect(self._show_list_state)
-        self.server_list_view.server_selected.connect(servers.select)
+        self.server_list_view.server_selected.connect(self._on_server_picked)
         self.server_list_view.refresh_requested.connect(servers.refresh)
         self.refresh_action.triggered.connect(servers.refresh)
         self.server_list_view.create_requested.connect(self.open_create_dialog)
@@ -435,16 +446,21 @@ class MainWindow(QMainWindow):
         self.sample_metrics()
         self.show_address(selected_id)
 
+    def _on_server_picked(self, server_id: object) -> None:
+        """Picking a server closes open pages first; a page that is still working keeps the old selection."""
+        if not self.page_host.dismiss_all():
+            self.server_list_view.show_state(self.server_list_controller.state)
+            return
+        self.server_list_controller.select(server_id if isinstance(server_id, str) else None)
+
     def open_create_dialog(self) -> None:
         """Show the create-server dialog (only one at a time)."""
         if self.create_dialog is not None:
-            self.create_dialog.raise_()
-            self.create_dialog.activateWindow()
-            return
+            return  # already open as a page
         dialog = self._create_dialog_factory(self.creation_controller, self._messages, self)
         dialog.finished.connect(self._on_create_dialog_finished)
         self.create_dialog = dialog
-        dialog.open()
+        self.show_page(dialog)
 
     def _default_create_dialog(
         self, controller: ServerCreationController, messages: Messages, parent: QWidget
@@ -458,7 +474,7 @@ class MainWindow(QMainWindow):
         if controller is None:
             return None
         dialog = DownloadJarDialog(controller, self._messages, parent)
-        dialog.exec()
+        self.run_page(dialog, compact=False)
         path = dialog.path
         dialog.deleteLater()
         return path
@@ -618,7 +634,7 @@ class MainWindow(QMainWindow):
         """Show the technical details of a banner message."""
         dialog = ErrorDetailsDialog(message, self._messages, self)
         dialog.finished.connect(dialog.deleteLater)
-        dialog.open()
+        self.show_page(dialog)
 
     def _on_eula_required(self, server_id: str) -> None:
         provisioning = self._services.provisioning
@@ -698,7 +714,7 @@ class MainWindow(QMainWindow):
         dialog = EditServerDialog(self.management_controller, configuration, self._messages, self, running=running)
         self.edit_dialog = dialog
         dialog.finished.connect(lambda _result: self._forget_dialog("edit_dialog"))
-        dialog.open()
+        self.show_page(dialog)
 
     def request_delete(self) -> None:
         """Delete the selected, stopped server after confirmation."""
@@ -717,7 +733,7 @@ class MainWindow(QMainWindow):
         dialog = AdoptServerDialog(self.management_controller, self._messages, self)
         self.adopt_dialog = dialog
         dialog.finished.connect(lambda _result: self._forget_dialog("adopt_dialog"))
-        dialog.open()
+        self.show_page(dialog)
 
     def open_settings_dialog(self) -> None:
         """Show the application settings."""
@@ -736,7 +752,7 @@ class MainWindow(QMainWindow):
         dialog.accepted.connect(self.check_java)
         self.settings_dialog = dialog
         dialog.finished.connect(lambda _result: self._forget_dialog("settings_dialog"))
-        dialog.open()
+        self.show_page(dialog)
 
     def _forget_dialog(self, name: str) -> None:
         dialog = getattr(self, name)
@@ -800,7 +816,7 @@ class MainWindow(QMainWindow):
 
     def _show_delete_dialog(self, configuration: ServerConfiguration, folder: Path) -> bool | None:
         dialog = DeleteServerDialog(configuration, folder, self._messages, self)
-        accepted = dialog.exec() == DeleteServerDialog.DialogCode.Accepted
+        accepted = self.run_page(dialog) == DeleteServerDialog.DialogCode.Accepted
         remove_files = dialog.remove_files
         dialog.deleteLater()
         return remove_files if accepted else None
@@ -874,7 +890,7 @@ class MainWindow(QMainWindow):
         if java is None:
             return JavaChoice.CANCELLED
         dialog = JavaSetupDialog(problem, java, self._messages, self)
-        dialog.exec()
+        self.run_page(dialog)
         return dialog.choice
 
     def _show_unclean_notice(self, incident: UncleanShutdown) -> None:
@@ -964,6 +980,10 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Stop a running server (after confirmation) before closing; release GUI resources."""
+        if not self.page_host.dismiss_all():
+            event.ignore()
+            self.statusBar().showMessage(self._messages.text("exit.wait_for_operation"), 6000)
+            return
         if (
             self.dashboard_controller.busy
             or self.creation_controller.busy

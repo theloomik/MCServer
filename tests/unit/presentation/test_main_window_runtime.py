@@ -14,7 +14,6 @@ from fakes import (
     services_for,
 )
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
 from pytestqt.qtbot import QtBot
 
 from mcserver.application.errors import EulaNotAccepted, JavaNotFound, JavaVersionTooOld
@@ -269,7 +268,7 @@ def test_exit_after_stop_timeout_can_keep_waiting(qtbot: QtBot, tmp_path: Path) 
     assert setup.runner.waited  # the second wait did not send "stop" again
 
 
-def test_failure_details_open_in_a_dialog(qtbot: QtBot, tmp_path: Path) -> None:
+def test_failure_details_open_as_a_page(qtbot: QtBot, tmp_path: Path) -> None:
     setup = Setup(qtbot, tmp_path)
     setup.start_and_wait_running()
     setup.runner.emit("Error: Invalid or corrupt jarfile server.jar")
@@ -278,7 +277,8 @@ def test_failure_details_open_in_a_dialog(qtbot: QtBot, tmp_path: Path) -> None:
 
     qtbot.mouseClick(setup.dashboard.details_button, Qt.MouseButton.LeftButton)
 
-    dialogs = [widget for widget in QApplication.topLevelWidgets() if isinstance(widget, ErrorDetailsDialog)]
+    # Details open as a page inside the window, not as a separate window (M4 design).
+    dialogs = [page for page in setup.window.page_host.pages if isinstance(page, ErrorDetailsDialog)]
     assert dialogs
     assert "Invalid or corrupt jarfile" in dialogs[-1].details.toPlainText()
     assert "exit code: 1" in dialogs[-1].details.toPlainText()

@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import QDialog, QLabel, QPushButton, QWidget
 
 from mcserver.presentation.dialogs.form import FormDialog
 from mcserver.presentation.views.widgets import button
@@ -70,10 +70,21 @@ def ask(
 ) -> str | None:
     """Show a ``ConfirmDialog`` modally and return the chosen key, or ``None`` when it was closed."""
     dialog = ConfirmDialog(title, text, choices, parent, tone=tone, default=default)
-    dialog.exec()
+    run_dialog(parent, dialog)
     answer = dialog.answer
     dialog.deleteLater()
     return answer
 
 
-__all__ = ["Choice", "ConfirmDialog", "ask"]
+def run_dialog(parent: QWidget | None, dialog: QDialog) -> int:
+    """Run ``dialog`` as a page of the window that owns ``parent`` (``run_page``), else as a modal window."""
+    widget = parent
+    while widget is not None:
+        runner = getattr(widget, "run_page", None)
+        if callable(runner):
+            return int(runner(dialog))
+        widget = widget.parentWidget()
+    return dialog.exec()
+
+
+__all__ = ["Choice", "ConfirmDialog", "ask", "run_dialog"]

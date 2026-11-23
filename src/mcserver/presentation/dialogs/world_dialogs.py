@@ -5,9 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
-from PySide6.QtWidgets import QFileDialog, QInputDialog, QLineEdit, QWidget
+from PySide6.QtWidgets import QFileDialog, QWidget
 
-from mcserver.presentation.dialogs.confirm_dialog import Choice, ask
+from mcserver.presentation.dialogs.confirm_dialog import Choice, ask, run_dialog
+from mcserver.presentation.dialogs.prompt_dialog import PromptDialog, PromptField
 from mcserver.presentation.i18n import Messages
 
 
@@ -39,17 +40,19 @@ class QtWorldDialogs:
         self._messages = messages
 
     def new_world(self) -> tuple[str, str] | None:
-        """Ask for a name, then an optional seed."""
+        """Ask for a name and an optional seed on one page."""
         text = self._messages.text
-        name, accepted = QInputDialog.getText(
-            self._parent, text("worlds.new.title"), text("worlds.new.name"), QLineEdit.EchoMode.Normal
+        dialog = PromptDialog(
+            text("worlds.new.title"),
+            [PromptField("name", text("worlds.new.name")), PromptField("seed", text("worlds.new.seed"), optional=True)],
+            text("worlds.new.create"),
+            text("dialog.cancel"),
+            self._parent,
         )
-        if not accepted or not name.strip():
-            return None
-        seed, accepted = QInputDialog.getText(
-            self._parent, text("worlds.new.title"), text("worlds.new.seed"), QLineEdit.EchoMode.Normal
-        )
-        return (name.strip(), seed.strip()) if accepted else None
+        accepted = run_dialog(self._parent, dialog) == PromptDialog.DialogCode.Accepted
+        values = dict(dialog.values)
+        dialog.deleteLater()
+        return (values["name"], values["seed"]) if accepted else None
 
     def import_source(self, zip_file: bool) -> str | None:
         """Ask for a world folder or a ZIP file."""
@@ -65,10 +68,17 @@ class QtWorldDialogs:
     def world_name(self, suggested: str) -> str | None:
         """Ask for the imported world's name."""
         text = self._messages.text
-        name, accepted = QInputDialog.getText(
-            self._parent, text("worlds.import.title"), text("worlds.import.name"), QLineEdit.EchoMode.Normal, suggested
+        dialog = PromptDialog(
+            text("worlds.import.title"),
+            [PromptField("name", text("worlds.import.name"), suggested)],
+            text("worlds.import.ok"),
+            text("dialog.cancel"),
+            self._parent,
         )
-        return name.strip() if accepted and name.strip() else None
+        accepted = run_dialog(self._parent, dialog) == PromptDialog.DialogCode.Accepted
+        name = dialog.values.get("name", "")
+        dialog.deleteLater()
+        return name if accepted and name else None
 
     def export_path(self, name: str) -> str | None:
         """Ask where to save the archive."""

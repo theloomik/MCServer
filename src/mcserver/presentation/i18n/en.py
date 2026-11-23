@@ -473,6 +473,8 @@ MESSAGES: Catalog = {
     "worlds.exported": "{name} was saved to {path}.",
     "worlds.deleted": "{name} was moved to the Recycle Bin.",
     "worlds.deleted_trash": "{name} was moved to {location}.",
+    "worlds.new.create": "Create world",
+    "worlds.import.ok": "Import",
     "worlds.new.title": "New world",
     "worlds.new.name": "Name of the new world:",
     "worlds.new.seed": "Seed (leave empty for a random world):",

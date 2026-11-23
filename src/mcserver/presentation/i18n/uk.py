@@ -486,6 +486,8 @@ MESSAGES: Catalog = {
     "worlds.exported": "{name} збережено в {path}.",
     "worlds.deleted": "{name} переміщено в кошик.",
     "worlds.deleted_trash": "{name} переміщено в {location}.",
+    "worlds.new.create": "Створити світ",
+    "worlds.import.ok": "Імпортувати",
     "worlds.new.title": "Новий світ",
     "worlds.new.name": "Назва нового світу:",
     "worlds.new.seed": "Сід (залиште порожнім для випадкового світу):",
