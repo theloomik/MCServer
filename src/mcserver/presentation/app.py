@@ -83,7 +83,7 @@ class WindowHost:
         self.window = self._create(messages)
 
     def _create(self, messages: Messages) -> MainWindow:
-        window = MainWindow(self._services, messages)
+        window = MainWindow(self._services, messages, first_run_guide=True)
         window.language_change_requested.connect(self.switch_language)
         return window
 

@@ -78,6 +78,7 @@ class Setup:
         legacy: Legacy | None = None,
         offer_answer: bool = True,
         delete_answer: bool | None = False,
+        first_run_guide: bool = False,
     ) -> None:
         self.repository = InMemoryRepository(*configurations)
         self.factory = FakeRunnerFactory()
@@ -119,6 +120,7 @@ class Setup:
             offer_legacy_import=lambda count: self.offers.append(count) or offer_answer,
             notify_legacy_result=self.results.append,
             notify_unclean=lambda _incident: None,
+            first_run_guide=first_run_guide,
         )
         qtbot.addWidget(self.window)
         self.window.show()

@@ -207,6 +207,10 @@ QLabel#controlHint[tone="warning"] {{ color: {WARNING_TEXT}; }}
 QLabel#panelTitle {{ color: {TEXT}; font-weight: 600; }}
 QLabel#panelCount {{ color: {TEXT_FAINT}; font-size: 12px; }}
 QLabel#monoTitle {{ font-family: {MONO_FAMILY}; font-weight: 600; }}
+QLabel#folderPath {{
+    font-family: {MONO_FAMILY}; font-size: 12px; color: {TEXT};
+    background-color: {SURFACE_CONSOLE}; border: 1px solid {BORDER}; border-radius: 6px; padding: 8px 10px;
+}}
 QLabel#propertyKey {{ font-family: {MONO_FAMILY}; font-size: 12px; color: {TEXT_SECONDARY}; }}
 QLabel#propertyKey[invalid="true"] {{ color: {DANGER_TEXT}; }}
 QLabel#unsavedCount {{ color: {WARNING_TEXT}; font-size: 12px; }}

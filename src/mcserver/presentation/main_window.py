@@ -41,6 +41,7 @@ from mcserver.presentation.adapters.output_bridge import OutputBridge
 from mcserver.presentation.adapters.status_poller import StatusPoller
 from mcserver.presentation.controllers.backups import BackupsController
 from mcserver.presentation.controllers.console import ConsoleController
+from mcserver.presentation.controllers.first_run import Ending, FirstRunController
 from mcserver.presentation.controllers.jar_catalog import JarCatalogController
 from mcserver.presentation.controllers.properties import PropertiesController
 from mcserver.presentation.controllers.server_creation import ServerCreationController
@@ -55,6 +56,7 @@ from mcserver.presentation.dialogs.delete_server_dialog import DeleteServerDialo
 from mcserver.presentation.dialogs.download_jar_dialog import DownloadJarDialog
 from mcserver.presentation.dialogs.edit_server_dialog import EditServerDialog
 from mcserver.presentation.dialogs.error_details_dialog import ErrorDetailsDialog
+from mcserver.presentation.dialogs.first_run import FirstRunDialog
 from mcserver.presentation.dialogs.java_setup_dialog import JavaChoice, JavaSetupDialog, pick_java_with_system_dialog
 from mcserver.presentation.dialogs.settings_dialog import SettingsDialog
 from mcserver.presentation.dialogs.world_dialogs import QtWorldDialogs, WorldDialogs
@@ -158,8 +160,13 @@ class MainWindow(QMainWindow):
         choose_log_path: LogPathChooser | None = None,
         auto_restart_delay_ms: int | None = None,
         world_dialogs: WorldDialogs | None = None,
+        first_run_guide: bool = False,
     ) -> None:
-        """Build the window from already-created services and messages, then load the servers."""
+        """Build the window from already-created services and messages, then load the servers.
+
+        With ``first_run_guide`` (the application passes it) the setup guide opens at startup
+        until it was finished or skipped once, as long as there are no servers yet.
+        """
         super().__init__(parent)
         self._services = services
         self._messages = messages
@@ -179,6 +186,9 @@ class MainWindow(QMainWindow):
         self._choose_log_path = choose_log_path or self._ask_log_path
         self._world_dialogs = world_dialogs or QtWorldDialogs(self, messages)
         self.create_dialog: CreateServerDialog | None = None
+        self._first_run_guide = first_run_guide
+        self.first_run_controller: FirstRunController | None = None
+        self.first_run_dialog: FirstRunDialog | None = None
         self.edit_dialog: EditServerDialog | None = None
         self.adopt_dialog: AdoptServerDialog | None = None
         self.settings_dialog: SettingsDialog | None = None
@@ -261,6 +271,7 @@ class MainWindow(QMainWindow):
         self.refresh_action.setShortcut(QKeySequence(QKeySequence.StandardKey.Refresh))
         self.import_folder_action = file_menu.addAction(self._messages.text("menu.file.import_folder"))
         self.import_legacy_action = file_menu.addAction(self._messages.text("menu.file.import_legacy"))
+        self.first_run_action = file_menu.addAction(self._messages.text("menu.file.first_run"))
         file_menu.addSeparator()
         self.settings_action = file_menu.addAction(self._messages.text("menu.file.settings"))
         file_menu.addSeparator()
@@ -401,11 +412,12 @@ class MainWindow(QMainWindow):
         self.dashboard_view.delete_requested.connect(self.request_delete)
         self.import_folder_action.triggered.connect(self.open_adopt_dialog)
         self.import_legacy_action.triggered.connect(management.import_legacy)
+        self.first_run_action.triggered.connect(self.open_first_run)
         self.settings_action.triggered.connect(self.open_settings_dialog)
         management.changed.connect(self._on_servers_changed)
         management.message.connect(self._show_message_in_status_bar)
         management.failed.connect(self._show_failure)
-        management.legacy_imported.connect(self._notify_legacy_result)
+        management.legacy_imported.connect(self._on_legacy_imported)
 
         properties = self.properties_controller
         if self.properties_view is not None:
@@ -718,7 +730,18 @@ class MainWindow(QMainWindow):
         self.notify(message, "success")
 
     def _show_failure(self, message: UserMessage) -> None:
+        if self._guide_is_importing():
+            return  # the guide shows it on its import page
         self.notify(message, "error")
+
+    def _on_legacy_imported(self, result: LegacyImportResult) -> None:
+        if self._guide_is_importing():
+            return  # the guide shows the result on its import page
+        self._notify_legacy_result(result)
+
+    def _guide_is_importing(self) -> bool:
+        controller = self.first_run_controller
+        return controller is not None and controller.state.importing
 
     # --- M2: edit, delete, import, settings ---------------------------------------------------
 
@@ -840,7 +863,53 @@ class MainWindow(QMainWindow):
 
     def _after_start(self) -> None:
         self.report_unclean_shutdowns()
+        if self._first_run_guide and FirstRunController.should_run(self._services.settings, self._server_count()):
+            self.open_first_run()
+            return
         self.offer_legacy_import()
+
+    # --- first-run guide (M4-GUI-08) ---------------------------------------------------------
+
+    def open_first_run(self) -> None:
+        """Open the setup guide as a page (also from File › Setup guide)."""
+        if self.first_run_dialog is not None:
+            return
+        controller = FirstRunController(
+            self.management_controller,
+            str(self._services.servers_root),
+            self._services.java,
+            self._services.settings,
+            self._server_count,
+            self,
+        )
+        controller.start()
+        dialog = FirstRunDialog(
+            controller, self._messages, pick_java_with_system_dialog(self._messages), self._open_folder, self
+        )
+        controller.finished.connect(self._on_first_run_finished)
+        dialog.finished.connect(self._forget_first_run)
+        self.first_run_controller = controller
+        self.first_run_dialog = dialog
+        self.show_page(dialog)
+
+    def _server_count(self) -> int:
+        return len(self.server_list_controller.state.servers)
+
+    def _on_first_run_finished(self, ending: Ending) -> None:
+        self.check_java()  # the guide may have found or chosen Java
+        self.server_list_controller.refresh()
+        if ending is Ending.CREATE_SERVER:
+            QTimer.singleShot(0, self.open_create_dialog)
+        elif ending is Ending.IMPORT_FOLDER:
+            QTimer.singleShot(0, self.open_adopt_dialog)
+
+    def _forget_first_run(self) -> None:
+        dialog, controller = self.first_run_dialog, self.first_run_controller
+        self.first_run_dialog = self.first_run_controller = None
+        if dialog is not None:
+            dialog.deleteLater()
+        if controller is not None:
+            controller.deleteLater()
 
     def offer_legacy_import(self) -> None:
         """Offer once to import MCServer 0.9.1 servers that are not in the list yet."""

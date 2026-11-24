@@ -37,6 +37,8 @@ class ApplicationSettings:
     legacy_import_offered: bool = False
     auto_restart: bool = False
     """Start a crashed server again (at most 3 times in 10 minutes, M3-BE-05)."""
+    first_run_completed: bool = False
+    """The first-run guide was finished or skipped (M4-GUI-08); it can be opened again from the File menu."""
 
     def __post_init__(self) -> None:
         """Reject values the application cannot use."""
@@ -52,7 +54,7 @@ class ApplicationSettings:
         ):
             if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
                 raise InvalidSettings(f"The {name} must be between {low} and {high} seconds.")
-        for flag in ("legacy_import_offered", "auto_restart"):
+        for flag in ("legacy_import_offered", "auto_restart", "first_run_completed"):
             if not isinstance(getattr(self, flag), bool):
                 raise InvalidSettings(f"{flag} must be true or false.")
 
