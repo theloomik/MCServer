@@ -264,7 +264,7 @@
   "settings.language.auto": "Automatic (Windows language)",
   "settings.language.en": "English",
   "settings.language.uk": "Українська",
-  "settings.language.hint": "Takes effect after restarting MCServer.",
+  "settings.language.hint": "Applies right away.",
   "errors.server_is_running": "{server_id} is running; stop it first.",
   "errors.files_removal_failed": "The folder {directory} could be moved neither to the Recycle Bin nor to the trash folder, so nothing was deleted. {reason}",
   "errors.invalid_settings": "{reason}",
@@ -428,5 +428,6 @@
   "console.filter.all": "All lines",
   "console.filter.warnings": "Warnings and errors",
   "settings.auto_restart.label": "Restart a server automatically after a crash",
-  "settings.auto_restart.hint": "At most 3 times within 10 minutes. A server you stop or kill, or one that does not finish starting, is never restarted."
+  "settings.auto_restart.hint": "At most 3 times within 10 minutes. A server you stop or kill, or one that does not finish starting, is never restarted.",
+  "settings.language.later": "The language changes after open pages and running operations finish, or after restarting MCServer."
 }

@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import QLocale, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -59,7 +59,7 @@ from mcserver.presentation.dialogs.java_setup_dialog import JavaChoice, JavaSetu
 from mcserver.presentation.dialogs.settings_dialog import SettingsDialog
 from mcserver.presentation.dialogs.world_dialogs import QtWorldDialogs, WorldDialogs
 from mcserver.presentation.errors import UserMessage, describe_error, render_message
-from mcserver.presentation.i18n import Messages
+from mcserver.presentation.i18n import Messages, resolve_language
 from mcserver.presentation.services import PresentationServices
 from mcserver.presentation.views.backups_view import BackupsView, format_created_at
 from mcserver.presentation.views.page_host import PageHost
@@ -130,6 +130,9 @@ class MainWindow(QMainWindow):
     times out, the user chooses to keep waiting, kill the server or cancel the
     close; nothing is killed without that choice (ADR 0006).
     """
+
+    language_change_requested = Signal(str)
+    """The user chose another language; ``app.py`` replaces this window with one in that language."""
 
     def __init__(
         self,
@@ -750,9 +753,61 @@ class MainWindow(QMainWindow):
         )
         dialog.import_legacy_requested.connect(self.management_controller.import_legacy)
         dialog.accepted.connect(self.check_java)
+        dialog.accepted.connect(self._after_settings_saved)
         self.settings_dialog = dialog
         dialog.finished.connect(lambda _result: self._forget_dialog("settings_dialog"))
         self.show_page(dialog)
+
+    # --- language change without a restart (M4-GUI-02) ----------------------------------------
+
+    @property
+    def language(self) -> str:
+        """Return the language this window shows."""
+        return self._messages.language
+
+    def is_busy(self) -> bool:
+        """Return whether an operation, a pending automatic restart or an open page would be lost by a rebuild."""
+        return bool(
+            self.dashboard_controller.busy
+            or self.dashboard_controller.has_pending_auto_restart
+            or self.creation_controller.busy
+            or self.management_controller.busy
+            or self.backups_controller.busy
+            or self.worlds_controller.busy
+            or (self.jar_catalog_controller is not None and self.jar_catalog_controller.state.busy)
+            or self.page_host.pages
+        )
+
+    def _after_settings_saved(self) -> None:
+        settings = self._services.settings
+        if settings is None:
+            return
+        language = resolve_language(settings.current.language, QLocale.system().name())
+        if language != self.language:
+            # Let the Settings page close first; then rebuild if nothing would be lost.
+            QTimer.singleShot(0, lambda: self._request_language(language))
+
+    def _request_language(self, language: str) -> None:
+        if self.is_busy():
+            self.statusBar().showMessage(self._messages.text("settings.language.later"), 10000)
+            return
+        self.language_change_requested.emit(language)
+
+    def view_state(self) -> tuple[str | None, str]:
+        """Return the selected server and the shown tab, to restore them in a rebuilt window."""
+        row = self.dashboard_controller.state.row
+        return (row.server_id if row is not None else None, self.dashboard_view.current_tab)
+
+    def restore_view_state(self, state: tuple[str | None, str]) -> None:
+        """Select the server and tab a previous window showed."""
+        server_id, tab = state
+        if server_id is not None:
+            self.server_list_controller.select(server_id)
+        self.dashboard_view.show_tab(tab)
+
+    def release(self) -> None:
+        """Stop this window's timers and subscriptions without touching servers (it is being replaced)."""
+        self._tear_down()
 
     def _forget_dialog(self, name: str) -> None:
         dialog = getattr(self, name)

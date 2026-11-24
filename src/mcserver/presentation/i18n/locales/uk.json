@@ -266,7 +266,7 @@
   "settings.language.auto": "Автоматично (мова Windows)",
   "settings.language.en": "English",
   "settings.language.uk": "Українська",
-  "settings.language.hint": "Застосується після перезапуску MCServer.",
+  "settings.language.hint": "Застосовується одразу.",
   "errors.server_is_running": "{server_id} працює; спершу зупиніть його.",
   "errors.files_removal_failed": "Теку {directory} не вдалося перемістити ні в кошик, ні в теку .trash, тому нічого не видалено. {reason}",
   "errors.invalid_settings": "{reason}",
@@ -432,5 +432,6 @@
   "console.filter.all": "Усі рядки",
   "console.filter.warnings": "Попередження й помилки",
   "settings.auto_restart.label": "Автоматично перезапускати сервер після збою",
-  "settings.auto_restart.hint": "Не більше 3 разів за 10 хвилин. Сервер, який ви зупинили чи завершили, або який не встиг запуститися, ніколи не перезапускається."
+  "settings.auto_restart.hint": "Не більше 3 разів за 10 хвилин. Сервер, який ви зупинили чи завершили, або який не встиг запуститися, ніколи не перезапускається.",
+  "settings.language.later": "Мова зміниться, коли закриються відкриті сторінки й завершаться дії, або після перезапуску MCServer."
 }

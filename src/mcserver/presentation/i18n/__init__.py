@@ -35,7 +35,7 @@ def messages_for(language: str = DEFAULT_LANGUAGE) -> Messages:
     if language == DEFAULT_LANGUAGE or language not in _LANGUAGES:
         return english
     catalog, plural_rule = _LANGUAGES[language]
-    return Messages(catalog, plural_rule=plural_rule, fallback=english)
+    return Messages(catalog, plural_rule=plural_rule, fallback=english, language=language)
 
 
 __all__ = ["DEFAULT_LANGUAGE", "Messages", "available_languages", "messages_for", "resolve_language"]

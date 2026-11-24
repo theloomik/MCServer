@@ -70,9 +70,16 @@ class Messages:
     """
 
     def __init__(
-        self, catalog: Catalog, *, plural_rule: PluralRule = english_plural, fallback: Messages | None = None
+        self,
+        catalog: Catalog,
+        *,
+        plural_rule: PluralRule = english_plural,
+        fallback: Messages | None = None,
+        language: str = "en",
     ) -> None:
         """Use ``catalog`` with its language's ``plural_rule`` and an optional ``fallback``."""
+        self.language = language
+        """The language code of ``catalog`` (``en``, ``uk``)."""
         self._catalog = catalog
         self._plural_rule = plural_rule
         self._fallback = fallback
