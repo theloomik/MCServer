@@ -1,0 +1,126 @@
+name: Crowdin
+
+# Upload: when en.json (or crowdin.yml) changes on dev, the English texts go to Crowdin.
+# Download: every Monday (and on demand) translations come back as a pull request into dev,
+# after tools/crowdin_sync.py merged them with the committed files and checked them.
+# Nothing is ever pushed to dev or main directly. Needs the repository secrets
+# CROWDIN_PROJECT_ID and CROWDIN_PERSONAL_TOKEN (see docs/translations.md).
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - src/mcserver/presentation/i18n/locales/en.json
+      - crowdin.yml
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      task:
+        description: What to do
+        type: choice
+        default: download
+        options:
+          - download
+          - upload-sources
+          - upload-translations
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crowdin
+  cancel-in-progress: false
+
+env:
+  CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
+  CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
+
+jobs:
+  upload:
+    name: Upload English texts
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && startsWith(inputs.task, 'upload'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Require the Crowdin secrets
+        run: |
+          if [ -z "$CROWDIN_PROJECT_ID" ] || [ -z "$CROWDIN_PERSONAL_TOKEN" ]; then
+            echo "::error::Add the repository secrets CROWDIN_PROJECT_ID and CROWDIN_PERSONAL_TOKEN (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check the locale files before uploading
+        run: python tools/crowdin_sync.py check
+      - name: Upload to Crowdin
+        uses: crowdin/github-action@v2
+        with:
+          config: crowdin.yml
+          upload_sources: true
+          upload_translations: ${{ github.event_name == 'workflow_dispatch' && inputs.task == 'upload-translations' }}
+          download_translations: false
+          push_translations: false
+          create_pull_request: false
+
+  download:
+    name: Download translations into a pull request
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.task == 'download')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+      - name: Require the Crowdin secrets
+        run: |
+          if [ -z "$CROWDIN_PROJECT_ID" ] || [ -z "$CROWDIN_PERSONAL_TOKEN" ]; then
+            echo "::error::Add the repository secrets CROWDIN_PROJECT_ID and CROWDIN_PERSONAL_TOKEN (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download from Crowdin
+        uses: crowdin/github-action@v2
+        with:
+          config: crowdin.yml
+          upload_sources: false
+          upload_translations: false
+          download_translations: true
+          push_translations: false
+          create_pull_request: false
+      - name: Give the downloaded files back to the runner user
+        # The Crowdin action runs in a container as root.
+        run: sudo chown -R "$(id -u):$(id -g)" src/mcserver/presentation/i18n/locales
+      - name: Merge with the committed translations and check them
+        run: |
+          python tools/crowdin_sync.py merge --base HEAD
+          python tools/crowdin_sync.py check
+      - name: Open a pull request when something changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- src/mcserver/presentation/i18n/locales; then
+            echo "Translations are up to date."
+            exit 0
+          fi
+          branch="l10n/crowdin-${GITHUB_RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add src/mcserver/presentation/i18n/locales
+          git commit -m "chore(i18n): update translations from Crowdin"
+          git push origin "$branch"
+          gh pr create --base dev --head "$branch" \
+            --title "chore(i18n): update translations from Crowdin" \
+            --body "Translations downloaded from Crowdin and merged with the committed files by tools/crowdin_sync.py (missing or broken texts keep the repository's version; placeholders checked). Pull requests opened by this workflow do not start the Quality workflow by themselves: run it from the Actions tab, or push an empty commit, before merging."
