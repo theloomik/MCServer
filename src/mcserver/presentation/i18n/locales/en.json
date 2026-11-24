@@ -84,9 +84,9 @@
   "console.placeholder": "Server output will appear here.",
   "console.unavailable": "The console is unavailable because Java was not found.",
   "errors.another_server_running": "{server_id} is already running. Stop it before starting another server.",
-  "errors.start_failed": "{server_id} couldn't be started. Hover here for technical details.",
-  "errors.stop_failed": "MCServer couldn't confirm that {server_id} stopped. It may still be running; check Task Manager for java.exe before starting it again. Hover here for technical details.",
-  "errors.unexpected": "Something went wrong. Hover here for technical details.",
+  "errors.start_failed": "{server_id} couldn't be started. Details has the technical information.",
+  "errors.stop_failed": "MCServer couldn't confirm that {server_id} stopped. It may still be running; check Task Manager for java.exe before starting it again. Details has the technical information.",
+  "errors.unexpected": "Something went wrong. Details has the technical information.",
   "errors.server_id_taken": "A server with the ID {server_id} already exists. Choose another ID.",
   "errors.directory_in_use": "The folder {directory} is already used by {server_id}. Choose another folder.",
   "errors.directory_exists": "A folder named {directory} already exists in the servers folder. Its files were not changed; choose another folder name.",
@@ -442,5 +442,11 @@
   "progress.stage.extracting": "Extracting the backup…",
   "progress.stage.importing": "Copying the world…",
   "progress.stage.exporting": "Writing the ZIP file…",
-  "progress.stage.downloading": "Downloading…"
+  "progress.stage.downloading": "Downloading…",
+  "notifications.details": "Details",
+  "notifications.dismiss": "Dismiss",
+  "notifications.dismiss_all": "Dismiss all",
+  "notifications.more_one": "{count} more notification",
+  "notifications.more_other": "{count} more notifications",
+  "notifications.repeated": "{text} (×{count})"
 }

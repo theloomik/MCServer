@@ -84,9 +84,9 @@
   "console.placeholder": "Тут з’явиться вивід сервера.",
   "console.unavailable": "Консоль недоступна, бо Java не знайдено.",
   "errors.another_server_running": "{server_id} уже працює. Зупиніть його, перш ніж запускати інший сервер.",
-  "errors.start_failed": "Не вдалося запустити {server_id}. Наведіть сюди курсор, щоб побачити технічні подробиці.",
-  "errors.stop_failed": "MCServer не може підтвердити, що {server_id} зупинився. Можливо, він досі працює; перевірте java.exe у Диспетчері завдань, перш ніж запускати знову. Наведіть сюди курсор, щоб побачити подробиці.",
-  "errors.unexpected": "Щось пішло не так. Наведіть сюди курсор, щоб побачити технічні подробиці.",
+  "errors.start_failed": "Не вдалося запустити {server_id}. Технічна інформація — у «Подробицях».",
+  "errors.stop_failed": "MCServer не може підтвердити, що {server_id} зупинився. Можливо, він досі працює; перевірте java.exe у Диспетчері завдань, перш ніж запускати знову. Технічна інформація — у «Подробицях».",
+  "errors.unexpected": "Щось пішло не так. Технічна інформація — у «Подробицях».",
   "errors.server_id_taken": "Сервер з ID {server_id} уже існує. Виберіть інший ID.",
   "errors.directory_in_use": "Теку {directory} уже використовує {server_id}. Виберіть іншу теку.",
   "errors.directory_exists": "Тека з назвою {directory} уже є в теці серверів. Її файли не змінено; виберіть іншу назву теки.",
@@ -446,5 +446,13 @@
   "progress.stage.extracting": "Розпакування резервної копії…",
   "progress.stage.importing": "Копіювання світу…",
   "progress.stage.exporting": "Запис ZIP-файлу…",
-  "progress.stage.downloading": "Завантаження…"
+  "progress.stage.downloading": "Завантаження…",
+  "notifications.details": "Подробиці",
+  "notifications.dismiss": "Закрити",
+  "notifications.dismiss_all": "Закрити всі",
+  "notifications.more_one": "Ще {count} сповіщення",
+  "notifications.more_few": "Ще {count} сповіщення",
+  "notifications.more_many": "Ще {count} сповіщень",
+  "notifications.more_other": "Ще {count} сповіщення",
+  "notifications.repeated": "{text} (×{count})"
 }

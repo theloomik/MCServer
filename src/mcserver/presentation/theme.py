@@ -234,6 +234,16 @@ QFrame#banner[tone="info"] {{ background-color: {INFO_SUBTLE}; border-color: #23
 QFrame#banner[tone="error"] QPushButton {{ color: {DANGER_TEXT}; }}
 QFrame#banner[tone="notice"] QPushButton {{ color: {WARNING_TEXT}; }}
 QFrame#banner[tone="success"] QPushButton {{ color: {ACCENT_HOVER}; }}
+QFrame#toast, QFrame#toastMoreRow {{
+    background-color: {SURFACE_RAISED}; border: 1px solid {BORDER_STRONG}; border-radius: 8px;
+}}
+QFrame#toast {{ border-left: 3px solid {INFO}; }}
+QFrame#toast[tone="error"] {{ border-left-color: {DANGER}; }}
+QFrame#toast[tone="notice"] {{ border-left-color: {WARNING}; }}
+QFrame#toast[tone="success"] {{ border-left-color: {ACCENT}; }}
+QFrame#toast QLabel, QFrame#toastMoreRow QLabel {{ background: transparent; border: none; color: {TEXT}; }}
+QLabel#toastMore {{ color: {TEXT_SECONDARY}; }}
+QFrame#toast[tone="error"] QPushButton#linkButton {{ color: {DANGER_TEXT}; }}
 QFrame#banner[tone="info"] QPushButton {{ color: {INFO}; }}
 
 /* Console */

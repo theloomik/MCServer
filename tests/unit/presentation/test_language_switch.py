@@ -37,7 +37,7 @@ def test_a_busy_window_postpones_the_change(qtbot: QtBot, tmp_path: Path) -> Non
     save_language(setup, "uk")
     qtbot.wait(50)
     assert requested == []
-    assert window.statusBar().currentMessage() == messages_for("en").text("settings.language.later")
+    assert messages_for("en").text("settings.language.later") in window.notification_texts()
 
 
 def test_window_host_rebuilds_in_the_new_language_and_keeps_the_view(qtbot: QtBot, tmp_path: Path) -> None:

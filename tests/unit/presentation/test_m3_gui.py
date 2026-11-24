@@ -422,7 +422,7 @@ class _DueSchedules:
         return self.result
 
 
-def test_scheduled_run_reports_in_the_status_bar(qtbot: QtBot, tmp_path: Path) -> None:
+def test_scheduled_run_reports_in_the_notifications(qtbot: QtBot, tmp_path: Path) -> None:
     setup = Setup(qtbot, tmp_path)
     setup.select("survival")
     controller = setup.window.backups_controller
@@ -431,7 +431,7 @@ def test_scheduled_run_reports_in_the_status_bar(qtbot: QtBot, tmp_path: Path) -
     assert controller.run_scheduled() is True
     qtbot.waitUntil(lambda: not controller.busy)
     expected = MESSAGES.text("backups.scheduled_created", server_id="survival", backup_id=backup.backup_id, removed=1)
-    assert setup.window.statusBar().currentMessage() == expected
+    assert expected in setup.window.notification_texts()
 
 
 # --- worlds (M3-GUI-07) ---------------------------------------------------------------------------

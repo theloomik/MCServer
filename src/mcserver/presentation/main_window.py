@@ -60,12 +60,14 @@ from mcserver.presentation.dialogs.settings_dialog import SettingsDialog
 from mcserver.presentation.dialogs.world_dialogs import QtWorldDialogs, WorldDialogs
 from mcserver.presentation.errors import UserMessage, describe_error, render_message
 from mcserver.presentation.i18n import Messages, resolve_language
+from mcserver.presentation.notifications import NotificationCenter
 from mcserver.presentation.services import PresentationServices
 from mcserver.presentation.views.backups_view import BackupsView, format_created_at
 from mcserver.presentation.views.page_host import PageHost
 from mcserver.presentation.views.server_dashboard_view import ServerDashboardView
 from mcserver.presentation.views.server_list_view import ServerListView
 from mcserver.presentation.views.server_properties_view import ServerPropertiesView
+from mcserver.presentation.views.toasts import ToastStack
 from mcserver.presentation.views.worlds_view import WorldsView
 from mcserver.presentation.workers import BackgroundRunner
 
@@ -301,6 +303,14 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.server_list_view)
         layout.addWidget(self.page_host, 1)
         self.setCentralWidget(central)
+        # Notifications float at the bottom right, over pages too (M4-GUI-04).
+        self.notifications = NotificationCenter(self)
+        self.toast_stack = ToastStack(self._messages, central)
+        self.notifications.changed.connect(self.toast_stack.show_state)
+        self.toast_stack.dismiss_requested.connect(self.notifications.dismiss)
+        self.toast_stack.dismiss_all_requested.connect(self.notifications.dismiss_all)
+        self.toast_stack.details_requested.connect(self.show_details)
+        self.toast_stack.hover_changed.connect(self.notifications.hold)
 
     def show_page(self, dialog: QDialog, *, compact: bool = False) -> None:
         """Open ``dialog`` as a page in the content area (it closes itself when finished)."""
@@ -394,7 +404,7 @@ class MainWindow(QMainWindow):
         self.settings_action.triggered.connect(self.open_settings_dialog)
         management.changed.connect(self._on_servers_changed)
         management.message.connect(self._show_message_in_status_bar)
-        management.failed.connect(self._show_message_in_status_bar)
+        management.failed.connect(self._show_failure)
         management.legacy_imported.connect(self._notify_legacy_result)
 
         properties = self.properties_controller
@@ -426,7 +436,7 @@ class MainWindow(QMainWindow):
             self.backups_view.restore_requested.connect(self.request_restore)
             self.backups_view.delete_requested.connect(self.request_delete_backup)
             self.backups_view.schedule_changed.connect(backups.save_schedule)
-        backups.scheduled_finished.connect(self._show_message_in_status_bar)
+        backups.scheduled_finished.connect(self.notify)
 
         console = self.console_controller
         console.lines_appended.connect(self.dashboard_view.console.append_lines)
@@ -495,11 +505,11 @@ class MainWindow(QMainWindow):
         self.server_list_controller.refresh()
         self.server_list_controller.select(server_id)
         self.dashboard_controller.report_created(server_id)
-        self.statusBar().showMessage(self._messages.text("create.done", server_id=server_id), 6000)
+        self.notify(UserMessage("create.done", {"server_id": server_id}), "success")
 
     def _open_server_folder(self, path: Path) -> None:
         if not self._open_folder(path):
-            self.statusBar().showMessage(self._messages.text("dashboard.open_folder_failed", path=str(path)), 6000)
+            self.notify(UserMessage("dashboard.open_folder_failed", {"path": str(path)}), "error")
 
     def _on_operation_finished(self) -> None:
         if self._exit_after_stop and self.dashboard_controller.active_server_id is None:
@@ -538,11 +548,11 @@ class MainWindow(QMainWindow):
         clipboard = QGuiApplication.clipboard()
         if clipboard is not None:
             clipboard.setText(text)
-            self.statusBar().showMessage(self._messages.text("dashboard.address_copied", address=text), 4000)
+            self.notify(UserMessage("dashboard.address_copied", {"address": text}), "success")
 
     def _open_logs_folder(self, path: Path) -> None:
         if not path.is_dir():
-            self.statusBar().showMessage(self._messages.text("dashboard.no_logs"), 6000)
+            self.notify(UserMessage("dashboard.no_logs"), "notice")
             return
         self._open_server_folder(path)
 
@@ -602,9 +612,9 @@ class MainWindow(QMainWindow):
             Path(path).write_text(self.dashboard_view.console.log_text(), encoding="utf-8")
         except OSError as error:
             _logger.warning("Could not save the console log to %s: %s", path, error)
-            self.statusBar().showMessage(self._messages.text("console.save_failed", path=path), 8000)
+            self.notify(UserMessage("console.save_failed", {"path": path}), "error")
             return
-        self.statusBar().showMessage(self._messages.text("console.saved", path=path), 6000)
+        self.notify(UserMessage("console.saved", {"path": path}), "success")
 
     def request_restore(self, backup: BackupInfo) -> None:
         """Restore ``backup`` after a double confirmation."""
@@ -693,11 +703,22 @@ class MainWindow(QMainWindow):
     def _set_java_dot(self, ready: bool) -> None:
         self.java_dot.setPixmap(_dot(theme.ACCENT if ready else theme.DANGER))
 
+    def notify(self, message: UserMessage, tone: str = "info") -> None:
+        """Queue a notification (M4-GUI-04): success, info, notice (warning) or error."""
+        self.notifications.notify(message, tone)
+
+    def notification_texts(self) -> list[str]:
+        """Return the texts of every listed notification, shown and waiting."""
+        return [render_message(self._messages, item.message) for item in self.notifications.all]
+
     def _show_error_in_status_bar(self, error: BaseException) -> None:
-        self.statusBar().showMessage(render_message(self._messages, describe_error(error)), 8000)
+        self.notify(describe_error(error), "error")
 
     def _show_message_in_status_bar(self, message: UserMessage) -> None:
-        self.statusBar().showMessage(render_message(self._messages, message), 8000)
+        self.notify(message, "success")
+
+    def _show_failure(self, message: UserMessage) -> None:
+        self.notify(message, "error")
 
     # --- M2: edit, delete, import, settings ---------------------------------------------------
 
@@ -791,7 +812,7 @@ class MainWindow(QMainWindow):
 
     def _request_language(self, language: str) -> None:
         if self.is_busy():
-            self.statusBar().showMessage(self._messages.text("settings.language.later"), 10000)
+            self.notify(UserMessage("settings.language.later"), "notice")
             return
         self.language_change_requested.emit(language)
 
@@ -1039,7 +1060,7 @@ class MainWindow(QMainWindow):
         """Stop a running server (after confirmation) before closing; release GUI resources."""
         if not self.page_host.dismiss_all():
             event.ignore()
-            self.statusBar().showMessage(self._messages.text("exit.wait_for_operation"), 6000)
+            self.notify(UserMessage("exit.wait_for_operation"), "notice")
             return
         if (
             self.dashboard_controller.busy
@@ -1050,14 +1071,14 @@ class MainWindow(QMainWindow):
             or (self.jar_catalog_controller is not None and self.jar_catalog_controller.state.busy)
         ):
             event.ignore()
-            self.statusBar().showMessage(self._messages.text("exit.wait_for_operation"), 6000)
+            self.notify(UserMessage("exit.wait_for_operation"), "notice")
             return
         active = self.dashboard_controller.active_server_id
         if active is not None:
             event.ignore()
             if self._confirm_exit(active) and self.dashboard_controller.stop_active(active):
                 self._exit_after_stop = True
-                self.statusBar().showMessage(self._messages.text("exit.stopping", server_id=active))
+                self.notify(UserMessage("exit.stopping", {"server_id": active}), "info")
             return
         self._tear_down()
         super().closeEvent(event)

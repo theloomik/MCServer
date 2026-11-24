@@ -47,7 +47,7 @@ class BackupsController(QObject):
 
     state_changed = Signal(object)  # BackupsState
     progress = Signal(object)  # Progress
-    scheduled_finished = Signal(object)  # UserMessage, for the status bar
+    scheduled_finished = Signal(object, str)  # UserMessage and tone, for the notifications
 
     def __init__(
         self,
@@ -211,12 +211,12 @@ class BackupsController(QObject):
             },
         )
         self._finish(message if result.backup.server_id == self._state.server_id else None, "success")
-        self.scheduled_finished.emit(message)
+        self.scheduled_finished.emit(message, "success")
 
     def _scheduled_failed(self, error: BaseException) -> None:
         message = describe_error(error)
         self._finish(message, error_tone(error))
-        self.scheduled_finished.emit(message)
+        self.scheduled_finished.emit(message, error_tone(error))
 
     def _load_schedule(self, server_id: str | None) -> BackupSchedule | None:
         if self._schedules is None or server_id is None:
