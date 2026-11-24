@@ -101,6 +101,14 @@ class FormDialog(QDialog):
         """Add a labelled field; return its hint label (so callers can change it) or ``None``."""
         caption = QLabel(label)
         caption.setObjectName("formLabel")
+        field = editor if isinstance(editor, QWidget) else _first_input(editor)
+        if field is not None:
+            # Screen readers announce the field with its label; Alt+mnemonic in the label focuses it.
+            caption.setBuddy(field)
+            if not field.accessibleName():
+                field.setAccessibleName(label.replace("&", ""))
+            if hint:
+                field.setAccessibleDescription(hint)
         self.body.addWidget(caption)
         if isinstance(editor, QLayout):
             self.body.addLayout(editor)
@@ -139,6 +147,19 @@ class FormDialog(QDialog):
         """Show ``text`` above the buttons, or hide the error line for ``None``."""
         self.error_label.setText(text or "")
         self.error_label.setVisible(bool(text))
+
+
+def _first_input(layout: QLayout) -> QWidget | None:
+    """Return the first focusable widget in ``layout`` (the field a row of widgets is about)."""
+    for index in range(layout.count()):
+        item = layout.itemAt(index)
+        widget = item.widget() if item is not None else None
+        if widget is not None and widget.focusPolicy() != Qt.FocusPolicy.NoFocus:
+            return widget
+        child = item.layout() if item is not None else None
+        if child is not None and (found := _first_input(child)) is not None:
+            return found
+    return None
 
 
 def primary_button(text: str, icon_name: str | None = None) -> QPushButton:

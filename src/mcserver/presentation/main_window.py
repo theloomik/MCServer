@@ -8,7 +8,8 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
-from PySide6.QtCore import QLocale, QTimer, QUrl, Signal
+import shiboken6
+from PySide6.QtCore import QLocale, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -26,6 +27,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QPushButton,
+    QSizePolicy,
     QWidget,
 )
 
@@ -274,9 +276,12 @@ class MainWindow(QMainWindow):
         self.first_run_action = file_menu.addAction(self._messages.text("menu.file.first_run"))
         file_menu.addSeparator()
         self.settings_action = file_menu.addAction(self._messages.text("menu.file.settings"))
+        self.settings_action.setShortcut(QKeySequence("Ctrl+,"))
         file_menu.addSeparator()
         self.exit_action = file_menu.addAction(self._messages.text("menu.file.exit"))
         self.exit_action.triggered.connect(self.close)
+
+        self._build_view_menu()
 
         # Server menu: the selected server's actions, enabled exactly like their buttons (M4 design).
         server_menu = self.menuBar().addMenu(self._messages.text("menu.server"))
@@ -302,6 +307,39 @@ class MainWindow(QMainWindow):
                 action.triggered.connect(source.click)
                 self.server_actions[key] = (action, source)
         self._update_server_menu()
+
+    def _build_view_menu(self) -> None:
+        """Keyboard ways to every area (M4-GUI-07): tabs, the server list and the console command."""
+        view_menu = self.menuBar().addMenu(self._messages.text("menu.view"))
+        self.tab_actions: dict[str, QAction] = {}
+        for number, key in enumerate(self.dashboard_view.tab_keys, start=1):
+            action = view_menu.addAction(self._messages.text(f"tabs.{key}"))
+            if number <= 9:
+                action.setShortcut(QKeySequence(f"Ctrl+{number}"))
+            action.triggered.connect(lambda _checked=False, tab=key: self.dashboard_view.show_tab(tab))
+            self.tab_actions[key] = action
+        view_menu.addSeparator()
+        self.focus_list_action = view_menu.addAction(self._messages.text("menu.view.server_list"))
+        self.focus_list_action.setShortcut(QKeySequence("Ctrl+L"))
+        self.focus_list_action.triggered.connect(self.focus_server_list)
+        self.focus_console_action = view_menu.addAction(self._messages.text("menu.view.console"))
+        self.focus_console_action.setShortcut(QKeySequence("Ctrl+K"))
+        self.focus_console_action.triggered.connect(self.focus_console)
+
+    def focus_server_list(self) -> None:
+        """Move the keyboard focus to the server list."""
+        self.server_list_view.list_widget.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
+    def focus_console(self) -> None:
+        """Show the Overview tab and put the focus in the console command line."""
+        if self.page_host.pages:
+            return  # a page is open; its own fields keep the focus
+        self.dashboard_view.show_tab("overview")
+        console_input = self.dashboard_view.console.input
+        if console_input.isEnabled():
+            console_input.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        else:
+            self.dashboard_view.console.text.setFocus(Qt.FocusReason.ShortcutFocusReason)
 
     def _build_content(self) -> None:
         central = QWidget()
@@ -331,10 +369,17 @@ class MainWindow(QMainWindow):
         """Open ``dialog`` as a page and wait for its answer; return its result code."""
         return self.page_host.run_page(dialog, compact=compact)
 
+    def _on_dashboard_state(self, _state: object) -> None:
+        # A bound method (not a lambda) is disconnected when this window is deleted.
+        self._track_active_server()
+        self._update_server_menu()
+
     def _update_server_menu(self) -> None:
         """Mirror the toolbar: a menu action is enabled when its button is usable."""
         has_server = self.dashboard_controller.state.row is not None
         for action, source in self.server_actions.values():
+            if not (shiboken6.isValid(action) and shiboken6.isValid(source)):
+                return  # the window is being deleted; a late result must not touch its menu
             action.setEnabled(has_server and source.isEnabled() and not source.isHidden())
 
     def _build_status_bar(self) -> None:
@@ -346,6 +391,9 @@ class MainWindow(QMainWindow):
             self._messages.text("status.servers_folder", path=str(self._services.servers_root))
         )
         self.servers_folder_label.setObjectName("serversFolder")
+        # A long path is cut off rather than widening the window; the tooltip has all of it.
+        self.servers_folder_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.servers_folder_label.setToolTip(str(self._services.servers_root))
         if self._services.can_run_servers and not self._services.java_problem:
             java_text = self._messages.text("status.java_available")
         else:
@@ -390,8 +438,7 @@ class MainWindow(QMainWindow):
 
         dashboard = self.dashboard_controller
         dashboard.state_changed.connect(self.dashboard_view.show_state)
-        dashboard.state_changed.connect(lambda _state: self._track_active_server())
-        dashboard.state_changed.connect(lambda _state: self._update_server_menu())
+        dashboard.state_changed.connect(self._on_dashboard_state)
         dashboard.operation_finished.connect(self._on_operation_finished)
         dashboard.eula_required.connect(self._on_eula_required)
         dashboard.java_problem.connect(self._on_java_problem)

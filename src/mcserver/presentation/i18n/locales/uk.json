@@ -486,5 +486,14 @@
   "first_run.create.new": "Створити сервер…",
   "first_run.create.adopt": "Імпортувати теку сервера…",
   "first_run.create.hint": "Цей майстер можна відкрити знову: Файл › Майстер налаштування.",
-  "first_run.import.servers": "{servers}"
+  "first_run.import.servers": "{servers}",
+  "a11y.server_list": "Сервери",
+  "a11y.console_output": "Вивід консолі сервера",
+  "a11y.console_command": "Команда консолі",
+  "a11y.console_filter": "Які рядки консолі показувати",
+  "a11y.backups_table": "Резервні копії",
+  "a11y.worlds_table": "Світи",
+  "menu.view": "&Вигляд",
+  "menu.view.server_list": "Перейти до &списку серверів",
+  "menu.view.console": "Перейти до &команди консолі"
 }

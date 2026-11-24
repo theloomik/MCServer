@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QFrame,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 
 from mcserver.application.backup_schedule import INTERVAL_HOURS_RANGE, KEEP_RANGE, BackupSchedule
@@ -24,7 +26,7 @@ from mcserver.presentation.controllers.backups import BackupsState
 from mcserver.presentation.errors import render_message
 from mcserver.presentation.i18n import Messages
 from mcserver.presentation.views.progress_panel import ProgressPanel
-from mcserver.presentation.views.widgets import Banner, button, icon_label, panel_bar
+from mcserver.presentation.views.widgets import Banner, WrapRow, button, icon_label, panel_bar
 
 COLUMNS = ("date", "kind", "size", "note")
 
@@ -60,6 +62,7 @@ class BackupsView(QFrame):
         self.note_edit = QLineEdit()
         self.note_edit.setPlaceholderText(messages.text("backups.note.placeholder"))
         self.note_edit.setMaxLength(200)
+        self.note_edit.setAccessibleName(messages.text("backups.note.placeholder"))
         self.note_edit.returnPressed.connect(self._on_create)
         self.create_button = button(messages.text("backups.create"), "primary", "archive")
         self.create_button.clicked.connect(self._on_create)
@@ -80,19 +83,28 @@ class BackupsView(QFrame):
         every.setObjectName("fieldLabel")
         keep = QLabel(messages.text("backups.schedule.keep"))
         keep.setObjectName("fieldLabel")
+        every.setBuddy(self.interval_spin)
+        keep.setBuddy(self.keep_spin)
         self.schedule_check.toggled.connect(self._on_schedule_edited)
         self.interval_spin.valueChanged.connect(self._on_schedule_edited)
         self.keep_spin.valueChanged.connect(self._on_schedule_edited)
         self.schedule_host, schedule_row = panel_bar("band")
         schedule_row.setContentsMargins(16, 8, 12, 8)
-        schedule_row.addWidget(icon_label("clock"))
-        schedule_row.addWidget(self.schedule_check)
-        schedule_row.addStretch(1)
-        schedule_row.addWidget(every)
-        schedule_row.addWidget(self.interval_spin)
-        schedule_row.addSpacing(8)
-        schedule_row.addWidget(keep)
-        schedule_row.addWidget(self.keep_spin)
+        switch = QWidget()
+        switch_row = QHBoxLayout(switch)
+        switch_row.setContentsMargins(0, 0, 0, 0)
+        switch_row.addWidget(icon_label("clock"))
+        switch_row.addWidget(self.schedule_check)
+        values = QWidget()
+        values_row = QHBoxLayout(values)
+        values_row.setContentsMargins(0, 0, 0, 0)
+        values_row.addWidget(every)
+        values_row.addWidget(self.interval_spin)
+        values_row.addSpacing(8)
+        values_row.addWidget(keep)
+        values_row.addWidget(self.keep_spin)
+        self.schedule_row = WrapRow(switch, values)
+        schedule_row.addWidget(self.schedule_row)
         self.schedule_hint = QLabel(messages.text("backups.schedule.hint"))
         self.schedule_hint.setObjectName("controlHint")
         self.schedule_hint.setWordWrap(True)
@@ -109,6 +121,7 @@ class BackupsView(QFrame):
         notices.addWidget(self.message_banner)
 
         self.table = QTableWidget(0, len(COLUMNS))
+        self.table.setAccessibleName(messages.text("a11y.backups_table"))
         self.table.setHorizontalHeaderLabels([messages.text(f"backups.column.{name}").upper() for name in COLUMNS])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)

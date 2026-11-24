@@ -168,6 +168,10 @@ class CreateServerDialog(QDialog):
             error.hide()
             self.field_hints[field] = hint
             self.field_errors[field] = error
+            target = self.jar_edit if isinstance(editor, QHBoxLayout) else editor
+            label.setBuddy(target)  # read with its label; the hint is the description
+            target.setAccessibleName(label.text())
+            target.setAccessibleDescription(hint.text())
             grid.addWidget(label, row_index, 0)
             if isinstance(editor, QHBoxLayout):
                 grid.addLayout(editor, row_index + 1, 0)

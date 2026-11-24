@@ -19,6 +19,7 @@ class ErrorDetailsDialog(FormDialog):
         self.details = QPlainTextEdit(message.details)
         self.details.setObjectName("console")
         self.details.setReadOnly(True)
+        self.details.setAccessibleName(messages.text("details.title"))
         self.details.setMinimumHeight(260)
         self.body.addWidget(self.details, 1)
         self.copy_button = secondary_button(messages.text("details.copy"), "copy")

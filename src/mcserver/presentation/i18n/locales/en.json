@@ -478,5 +478,14 @@
   "first_run.create.new": "Create a server…",
   "first_run.create.adopt": "Import a server folder…",
   "first_run.create.hint": "This guide can be opened again from File › Setup guide.",
-  "first_run.import.servers": "{servers}"
+  "first_run.import.servers": "{servers}",
+  "a11y.server_list": "Servers",
+  "a11y.console_output": "Server console output",
+  "a11y.console_command": "Console command",
+  "a11y.console_filter": "Console lines to show",
+  "a11y.backups_table": "Backups",
+  "a11y.worlds_table": "Worlds",
+  "menu.view": "&View",
+  "menu.view.server_list": "Go to server &list",
+  "menu.view.console": "Go to console &command"
 }

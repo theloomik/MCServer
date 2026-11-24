@@ -76,6 +76,7 @@ class WorldsView(QFrame):
         notices.addWidget(self.loading_bar)
 
         self.table = QTableWidget(0, len(COLUMNS))
+        self.table.setAccessibleName(messages.text("a11y.worlds_table"))
         self.table.setHorizontalHeaderLabels([messages.text(f"worlds.column.{name}").upper() for name in COLUMNS])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
