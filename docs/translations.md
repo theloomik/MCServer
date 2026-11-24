@@ -72,6 +72,8 @@ The workflow never pushes to `dev` or `main`. Pull requests opened with the work
 2. Run *upload-translations* once, so Crowdin starts with the Ukrainian texts that already exist and the first download does not undo them.
 3. Afterwards, uploads happen on every change to `en.json`, and downloads arrive weekly as pull requests.
 
+This workflow is the **only** sync. Keep Crowdin's own GitHub integration (Crowdin › project › Integrations › GitHub) stopped or removed for this project. Otherwise both would upload English and open translation pull requests, and Crowdin's would bypass the merge and checks above.
+
 ### Troubleshooting
 
 | Message | Fix |
