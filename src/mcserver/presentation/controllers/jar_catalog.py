@@ -3,19 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from threading import Event
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, Signal
 
+from mcserver.application.progress import CancelToken, OperationCancelled
 from mcserver.application.server_catalog import (
     CatalogVersion,
-    DownloadCancelled,
     ServerDownload,
     ServerJarCatalog,
     ServerType,
 )
 from mcserver.presentation.errors import UserMessage, describe_error
-from mcserver.presentation.workers import BackgroundRunner
+from mcserver.presentation.workers import BackgroundRunner, ProgressRelay
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,7 +50,7 @@ class JarCatalogController(QObject):
     """Load versions, resolve the selected one and download it; one request at a time per kind."""
 
     state_changed = Signal(object)  # CatalogState
-    progress = Signal(int, int)
+    progress = Signal(object)  # Progress
     downloaded = Signal(str)  # local path
 
     def __init__(self, catalog: ServerJarCatalog, background: BackgroundRunner, parent: QObject | None = None) -> None:
@@ -61,9 +60,9 @@ class JarCatalogController(QObject):
         self._background = background
         self._state = CatalogState()
         self._generation = 0
-        self._cancel = Event()
-        self._relay = _ProgressRelay(self)
-        self._relay.progress.connect(self.progress, Qt.ConnectionType.QueuedConnection)
+        self._cancel = CancelToken()
+        self._relay = ProgressRelay(self)
+        self._relay.connect_to(self.progress)
 
     @property
     def state(self) -> CatalogState:
@@ -115,11 +114,11 @@ class JarCatalogController(QObject):
         download = self._state.download
         if download is None or not self._state.can_download:
             return
-        self._cancel.clear()
+        self._cancel = CancelToken()
         self._publish(replace(self._state, downloading=True, error=None, path=None))
         catalog, relay, cancel = self._catalog, self._relay, self._cancel
         self._background.run(
-            lambda: catalog.download(download, relay.report, cancel.is_set),
+            lambda: catalog.download(download, relay.report, cancel),
             self._downloaded,
             self._download_failed,
         )
@@ -127,7 +126,7 @@ class JarCatalogController(QObject):
     def cancel(self) -> None:
         """Ask the running download to stop; the partial file is removed."""
         if self._state.downloading:
-            self._cancel.set()
+            self._cancel.cancel()
             self._publish(replace(self._state, cancelling=True))
 
     def _loaded(self, generation: int, versions: tuple[CatalogVersion, ...]) -> None:
@@ -147,19 +146,12 @@ class JarCatalogController(QObject):
         self.downloaded.emit(path)
 
     def _download_failed(self, error: BaseException) -> None:
-        message = None if isinstance(error, DownloadCancelled) else describe_error(error)
+        message = None if isinstance(error, OperationCancelled) else describe_error(error)
         self._publish(replace(self._state, downloading=False, cancelling=False, error=message))
 
     def _publish(self, state: CatalogState) -> None:
         self._state = state
         self.state_changed.emit(state)
-
-
-class _ProgressRelay(QObject):
-    progress = Signal(int, int)
-
-    def report(self, done: int, total: int) -> None:
-        self.progress.emit(done, total)
 
 
 __all__ = ["CatalogState", "JarCatalogController"]

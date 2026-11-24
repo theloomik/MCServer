@@ -5,14 +5,15 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, Signal
 
+from mcserver.application.progress import CancelToken
 from mcserver.application.server_adoption import FolderContents
 from mcserver.application.server_management import DeletedServer, LegacyImportResult
 from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.presentation.errors import UserMessage, describe_error
 from mcserver.presentation.services import PresentationServices
-from mcserver.presentation.workers import BackgroundRunner
+from mcserver.presentation.workers import BackgroundRunner, ProgressRelay
 
 _logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class ManagementController(QObject):
     message = Signal(object)  # UserMessage for the status bar
     failed = Signal(object)  # UserMessage
     busy_changed = Signal(bool)
-    copy_progress = Signal(int, int)  # bytes copied, total bytes
+    copy_progress = Signal(object)  # Progress
     legacy_imported = Signal(object)  # LegacyImportResult
 
     def __init__(self, services: PresentationServices, runner: BackgroundRunner, parent: QObject | None = None) -> None:
@@ -40,8 +41,9 @@ class ManagementController(QObject):
         self._runner = runner
         self._busy = False
         # Progress is reported from the copy thread; deliver it on the GUI thread.
-        self._progress_relay = _ProgressRelay(self)
-        self._progress_relay.progress.connect(self.copy_progress, Qt.ConnectionType.QueuedConnection)
+        self._progress_relay = ProgressRelay(self)
+        self._progress_relay.connect_to(self.copy_progress)
+        self._cancel: CancelToken | None = None
 
     @property
     def busy(self) -> bool:
@@ -126,11 +128,19 @@ class ManagementController(QObject):
         adoption = self._services.adoption
         if adoption is None:
             return
-        relay = self._progress_relay
+        if self._busy:
+            return
+        relay, cancel = self._progress_relay, CancelToken()
+        self._cancel = cancel
 
         def work() -> ServerConfiguration:
             return adoption.adopt(
-                folder, server_id=server_id, jar_file=jar_file, memory_mb=memory_mb, progress=relay.report
+                folder,
+                server_id=server_id,
+                jar_file=jar_file,
+                memory_mb=memory_mb,
+                progress=relay.report,
+                cancel=cancel,
             )
 
         def done(created: ServerConfiguration) -> None:
@@ -138,6 +148,11 @@ class ManagementController(QObject):
             self.changed.emit(created.server_id)
 
         self._run(work, done)
+
+    def cancel_adopt(self) -> None:
+        """Ask the running copy to stop; the partly copied folder is removed."""
+        if self._cancel is not None and self._busy:
+            self._cancel.cancel()
 
     # --- legacy import (M2-GUI-02) ----------------------------------------------------------------
 
@@ -210,16 +225,9 @@ class ManagementController(QObject):
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
+        if not busy:
+            self._cancel = None
         self.busy_changed.emit(busy)
-
-
-class _ProgressRelay(QObject):
-    """Carries copy progress from a worker thread to the GUI thread."""
-
-    progress = Signal(int, int)
-
-    def report(self, done: int, total: int) -> None:
-        self.progress.emit(done, total)
 
 
 __all__ = ["ManagementController"]

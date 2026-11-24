@@ -433,5 +433,18 @@
   "console.filter.warnings": "Попередження й помилки",
   "settings.auto_restart.label": "Автоматично перезапускати сервер після збою",
   "settings.auto_restart.hint": "Не більше 3 разів за 10 хвилин. Сервер, який ви зупинили чи завершили, або який не встиг запуститися, ніколи не перезапускається.",
-  "settings.language.later": "Мова зміниться, коли закриються відкриті сторінки й завершаться дії, або після перезапуску MCServer."
+  "settings.language.later": "Мова зміниться, коли закриються відкриті сторінки й завершаться дії, або після перезапуску MCServer.",
+  "progress.working": "Виконується…",
+  "progress.cancel": "Скасувати",
+  "progress.cancelling": "Скасування… Видаляємо вже записане.",
+  "progress.cancelled": "Скасовано. Від незавершеної операції нічого не залишено.",
+  "progress.percent": "{percent}%",
+  "progress.stage.copying": "Копіювання файлів…",
+  "progress.stage.saving_world": "Сервер зберігає світ…",
+  "progress.stage.archiving": "Запис архіву резервної копії…",
+  "progress.stage.safety_backup": "Спершу створюємо страхувальну копію…",
+  "progress.stage.extracting": "Розпакування резервної копії…",
+  "progress.stage.importing": "Копіювання світу…",
+  "progress.stage.exporting": "Запис ZIP-файлу…",
+  "progress.stage.downloading": "Завантаження…"
 }

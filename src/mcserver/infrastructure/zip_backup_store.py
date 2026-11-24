@@ -123,6 +123,9 @@ class ZipBackupStore:
         except (OSError, zipfile.BadZipFile) as error:
             partial.unlink(missing_ok=True)
             raise BackupFailed(server_id, f"the archive could not be written: {error}") from error
+        except BaseException:
+            partial.unlink(missing_ok=True)  # cancelled: no half-written archive is kept
+            raise
         info = BackupInfo(
             backup_id, server_id, created_at.isoformat(timespec="seconds"), archive.stat().st_size, kind, note, online
         )
@@ -147,6 +150,9 @@ class ZipBackupStore:
         except (OSError, zipfile.BadZipFile, ValueError, zlib.error) as error:
             shutil.rmtree(staging, ignore_errors=True)  # only the copy extracted by this call
             raise BackupFailed(server_id, f"the backup could not be read: {error}") from error
+        except BaseException:
+            shutil.rmtree(staging, ignore_errors=True)  # cancelled before the swap: the server folder is untouched
+            raise
         old = self._root / f"{_OLD_PREFIX}{directory}-{stamp}"
         try:
             if target.exists():

@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol
 
+from mcserver.application.progress import CancelToken, OperationCancelled, ProgressReporter, Stage, stage_callback
+
 DownloadProgress = Callable[[int, int], None]
 """Called with (bytes downloaded, total bytes)."""
 Cancelled = Callable[[], bool]
@@ -70,7 +72,7 @@ class DownloadFailed(CatalogError):
         self.reason = reason
 
 
-class DownloadCancelled(CatalogError):
+class DownloadCancelled(CatalogError, OperationCancelled):
     """The user cancelled the download; nothing was kept."""
 
 
@@ -114,10 +116,11 @@ class ServerJarCatalog:
         return self._source(server_type).resolve(version)
 
     def download(
-        self, download: ServerDownload, progress: DownloadProgress | None = None, cancelled: Cancelled | None = None
+        self, download: ServerDownload, progress: ProgressReporter | None = None, cancel: CancelToken | None = None
     ) -> str:
         """Download and verify ``download``; return the local file to create a server from."""
-        return self._store.fetch(download, progress, cancelled)
+        cancelled = (lambda: cancel.cancelled) if cancel is not None else None
+        return self._store.fetch(download, stage_callback(Stage.DOWNLOADING, progress, None), cancelled)
 
     def _source(self, server_type: ServerType) -> CatalogSource:
         try:

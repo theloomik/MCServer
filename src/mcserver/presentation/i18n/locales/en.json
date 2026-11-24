@@ -429,5 +429,18 @@
   "console.filter.warnings": "Warnings and errors",
   "settings.auto_restart.label": "Restart a server automatically after a crash",
   "settings.auto_restart.hint": "At most 3 times within 10 minutes. A server you stop or kill, or one that does not finish starting, is never restarted.",
-  "settings.language.later": "The language changes after open pages and running operations finish, or after restarting MCServer."
+  "settings.language.later": "The language changes after open pages and running operations finish, or after restarting MCServer.",
+  "progress.working": "Working…",
+  "progress.cancel": "Cancel",
+  "progress.cancelling": "Cancelling… Removing what was written so far.",
+  "progress.cancelled": "Cancelled. Nothing was kept from the unfinished operation.",
+  "progress.percent": "{percent}%",
+  "progress.stage.copying": "Copying files…",
+  "progress.stage.saving_world": "Asking the server to save the world…",
+  "progress.stage.archiving": "Writing the backup archive…",
+  "progress.stage.safety_backup": "Making a safety backup first…",
+  "progress.stage.extracting": "Extracting the backup…",
+  "progress.stage.importing": "Copying the world…",
+  "progress.stage.exporting": "Writing the ZIP file…",
+  "progress.stage.downloading": "Downloading…"
 }

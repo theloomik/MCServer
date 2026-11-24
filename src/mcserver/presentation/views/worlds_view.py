@@ -20,6 +20,7 @@ from mcserver.application.worlds import WorldInfo
 from mcserver.presentation.controllers.worlds import WorldsState
 from mcserver.presentation.errors import render_message
 from mcserver.presentation.i18n import Messages
+from mcserver.presentation.views.progress_panel import ProgressPanel
 from mcserver.presentation.views.widgets import Banner, button, icon_label, panel_bar
 
 COLUMNS = ("name", "size", "modified", "dimensions")
@@ -34,6 +35,7 @@ class WorldsView(QFrame):
     import_zip_requested = Signal()
     export_requested = Signal(str)
     delete_requested = Signal(str)
+    cancel_requested = Signal()
 
     def __init__(self, messages: Messages) -> None:
         """Build the empty view."""
@@ -59,15 +61,19 @@ class WorldsView(QFrame):
 
         self.message_banner = Banner()
         self.message = self.message_banner.text
-        self.progress = QProgressBar()
-        self.progress.setTextVisible(False)
-        self.progress.setFixedHeight(4)
-        self.progress.hide()
+        self.progress = ProgressPanel(messages)
+        self.progress.cancel_requested.connect(self.cancel_requested)
+        self.loading_bar = QProgressBar()
+        self.loading_bar.setTextVisible(False)
+        self.loading_bar.setFixedHeight(4)
+        self.loading_bar.setRange(0, 0)
+        self.loading_bar.hide()
         notices = QVBoxLayout()
         notices.setContentsMargins(16, 12, 16, 4)
         notices.setSpacing(8)
         notices.addWidget(self.message_banner)
         notices.addWidget(self.progress)
+        notices.addWidget(self.loading_bar)
 
         self.table = QTableWidget(0, len(COLUMNS))
         self.table.setHorizontalHeaderLabels([messages.text(f"worlds.column.{name}").upper() for name in COLUMNS])
@@ -135,9 +141,13 @@ class WorldsView(QFrame):
             key = "worlds.current" if state.level_exists else "worlds.current_new"
             self.current_label.setText(self._messages.text(key, name=state.level_name))
         self.current_label.setVisible(bool(state.level_name))
-        self.progress.setVisible(state.busy or state.loading)
-        if state.busy or state.loading:
-            self.progress.setRange(0, 0)
+        if state.busy:
+            self.progress.start(cancellable=state.cancellable)
+            if state.cancelling:
+                self.progress.show_cancelling()
+        else:
+            self.progress.finish()
+        self.loading_bar.setVisible(state.loading and not state.busy)
         if state.message is None:
             self.message_banner.clear()
         else:
@@ -148,11 +158,9 @@ class WorldsView(QFrame):
             import_button.setEnabled(state.can_change_files)
         self._update_buttons()
 
-    def show_progress(self, done: int, total: int) -> None:
-        """Show the progress of the running copy or archive."""
-        if total > 0:
-            self.progress.setRange(0, 1000)
-            self.progress.setValue(min(1000, done * 1000 // total))
+    def show_progress(self, progress: object) -> None:
+        """Show one ``Progress`` report of the running operation."""
+        self.progress.show_progress(progress)
 
     def _fill(self, worlds: tuple[WorldInfo, ...], selected: str | None) -> None:
         self._worlds = worlds

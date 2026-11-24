@@ -407,6 +407,7 @@ class MainWindow(QMainWindow):
         if self.worlds_view is not None:
             worlds.state_changed.connect(self.worlds_view.show_state)
             worlds.progress.connect(self.worlds_view.show_progress)
+            self.worlds_view.cancel_requested.connect(worlds.cancel)
             self.worlds_view.use_requested.connect(worlds.use_world)
             self.worlds_view.new_requested.connect(self.request_new_world)
             self.worlds_view.import_folder_requested.connect(lambda: self.request_import_world(zip_file=False))
@@ -420,6 +421,7 @@ class MainWindow(QMainWindow):
         if self.backups_view is not None:
             backups.state_changed.connect(self.backups_view.show_state)
             backups.progress.connect(self.backups_view.show_progress)
+            self.backups_view.cancel_requested.connect(backups.cancel)
             self.backups_view.create_requested.connect(backups.create)
             self.backups_view.restore_requested.connect(self.request_restore)
             self.backups_view.delete_requested.connect(self.request_delete_backup)

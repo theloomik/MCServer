@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from mcserver.application.errors import InvalidSourceJar, ServerConfigurationAlreadyExists, ServerProvisioningError
+from mcserver.application.progress import CancelToken, ProgressReporter, Stage, stage_callback
 from mcserver.application.server_management import ServerManagement
 from mcserver.domain.server_configuration import ServerConfiguration
 
@@ -71,7 +72,8 @@ class ServerAdoption:
         jar_file: str,
         memory_mb: int,
         display_name: str = "",
-        progress: CopyProgress | None = None,
+        progress: ProgressReporter | None = None,
+        cancel: CancelToken | None = None,
     ) -> ServerConfiguration:
         """Make ``folder`` a managed server and return its stored configuration."""
         contents = self._filesystem.inspect_folder(folder)
@@ -86,7 +88,15 @@ class ServerAdoption:
             ServerConfiguration(server_id, server_id, jar_file, memory_mb, display_name=display_name)
             if any(existing.server_id == server_id for existing in self._management.list_servers()):
                 raise ServerConfigurationAlreadyExists(server_id)
-            self._filesystem.copy_folder(folder, server_id, progress)
+            try:
+                self._filesystem.copy_folder(folder, server_id, stage_callback(Stage.COPYING, progress, cancel))
+            except BaseException:
+                # Cancelled or failed half way: remove what this copy created, keep the original error.
+                try:
+                    self._filesystem.remove_copied_folder(server_id)
+                except ServerProvisioningError:
+                    pass
+                raise
             try:
                 created = self._management.create_server(
                     server_id=server_id, directory=server_id, jar_file=jar_file, memory_mb=memory_mb

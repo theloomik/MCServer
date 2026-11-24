@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, Signal
 
 from mcserver.application.backup_schedule import BackupSchedule, ScheduledBackupResult, ScheduledBackups
 from mcserver.application.backups import BackupInfo, BackupService
 from mcserver.application.ports import RemovedServerFiles
-from mcserver.presentation.errors import UserMessage, describe_error
-from mcserver.presentation.workers import BackgroundRunner
+from mcserver.application.progress import CancelToken
+from mcserver.presentation.errors import UserMessage, describe_error, error_tone
+from mcserver.presentation.workers import BackgroundRunner, ProgressRelay
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +23,9 @@ class BackupsState:
     server_active: bool = False
     """The selected server is starting, running or stopping (restore is refused then)."""
     busy: bool = False
+    cancellable: bool = False
+    """The running operation can be cancelled (create and restore; not delete)."""
+    cancelling: bool = False
     schedule: BackupSchedule | None = None
     """The selected server's backup schedule (``None`` when schedules are not available)."""
     message: UserMessage | None = None
@@ -42,7 +46,7 @@ class BackupsController(QObject):
     """Run backup operations in the background; one at a time."""
 
     state_changed = Signal(object)  # BackupsState
-    progress = Signal(int, int)  # bytes done, total bytes
+    progress = Signal(object)  # Progress
     scheduled_finished = Signal(object)  # UserMessage, for the status bar
 
     def __init__(
@@ -58,8 +62,9 @@ class BackupsController(QObject):
         self._schedules = schedules if service is not None else None
         self._background = background
         self._state = BackupsState()
-        self._relay = _ProgressRelay(self)
-        self._relay.progress.connect(self.progress, Qt.ConnectionType.QueuedConnection)
+        self._relay = ProgressRelay(self)
+        self._relay.connect_to(self.progress)
+        self._cancel: CancelToken | None = None
 
     @property
     def available(self) -> bool:
@@ -116,10 +121,9 @@ class BackupsController(QObject):
         service, server_id = self._service, self._state.server_id
         if service is None or server_id is None or self._state.busy:
             return
-        relay = self._relay
-        self._start()
+        relay, cancel = self._relay, self._start(cancellable=True)
         self._background.run(
-            lambda: service.create(server_id, note.strip(), relay.report),
+            lambda: service.create(server_id, note.strip(), relay.report, cancel=cancel),
             lambda info: self._finish(UserMessage("backups.created", {"backup_id": info.backup_id}), "success"),
             self._fail,
         )
@@ -129,10 +133,9 @@ class BackupsController(QObject):
         service = self._service
         if service is None or not self._state.can_restore:
             return
-        relay = self._relay
-        self._start()
+        relay, cancel = self._relay, self._start(cancellable=True)
         self._background.run(
-            lambda: service.restore(backup.server_id, backup.backup_id, relay.report),
+            lambda: service.restore(backup.server_id, backup.backup_id, relay.report, cancel),
             lambda safety: self._finish(
                 UserMessage("backups.restored", {"backup_id": backup.backup_id, "safety_id": safety.backup_id}),
                 "success",
@@ -158,6 +161,13 @@ class BackupsController(QObject):
 
         self._background.run(lambda: service.delete(backup.server_id, backup.backup_id), done, self._fail)
 
+    def cancel(self) -> None:
+        """Ask the running create or restore to stop; what it wrote so far is removed."""
+        if self._cancel is None or not self._state.busy or not self._state.cancellable:
+            return
+        self._cancel.cancel()
+        self._publish(replace(self._state, cancelling=True))
+
     def save_schedule(self, schedule: BackupSchedule) -> None:
         """Store the selected server's schedule."""
         schedules, server_id = self._schedules, self._state.server_id
@@ -182,9 +192,10 @@ class BackupsController(QObject):
             return False
         if due is None:
             return False
-        relay = self._relay
-        self._start()
-        self._background.run(lambda: schedules.run_due(relay.report), self._scheduled_done, self._scheduled_failed)
+        relay, cancel = self._relay, self._start(cancellable=True)
+        self._background.run(
+            lambda: schedules.run_due(relay.report, cancel), self._scheduled_done, self._scheduled_failed
+        )
         return True
 
     def _scheduled_done(self, result: ScheduledBackupResult | None) -> None:
@@ -204,7 +215,7 @@ class BackupsController(QObject):
 
     def _scheduled_failed(self, error: BaseException) -> None:
         message = describe_error(error)
-        self._finish(message, "error")
+        self._finish(message, error_tone(error))
         self.scheduled_finished.emit(message)
 
     def _load_schedule(self, server_id: str | None) -> BackupSchedule | None:
@@ -223,29 +234,40 @@ class BackupsController(QObject):
         except Exception:
             return ()
 
-    def _start(self) -> None:
-        self._publish(replace(self._state, busy=True, message=UserMessage("backups.working"), tone="notice"))
+    def _start(self, cancellable: bool = False) -> CancelToken:
+        self._cancel = CancelToken()
+        self._publish(
+            replace(
+                self._state,
+                busy=True,
+                cancellable=cancellable,
+                cancelling=False,
+                message=UserMessage("backups.working"),
+                tone="notice",
+            )
+        )
+        return self._cancel
 
     def _finish(self, message: UserMessage | None, tone: str) -> None:
+        self._cancel = None
         self._publish(
-            replace(self._state, busy=False, backups=self._list(self._state.server_id), message=message, tone=tone)
+            replace(
+                self._state,
+                busy=False,
+                cancellable=False,
+                cancelling=False,
+                backups=self._list(self._state.server_id),
+                message=message,
+                tone=tone,
+            )
         )
 
     def _fail(self, error: BaseException) -> None:
-        self._finish(describe_error(error), "error")
+        self._finish(describe_error(error), error_tone(error))
 
     def _publish(self, state: BackupsState) -> None:
         self._state = state
         self.state_changed.emit(state)
-
-
-class _ProgressRelay(QObject):
-    """Carries progress from a worker thread to the GUI thread."""
-
-    progress = Signal(int, int)
-
-    def report(self, done: int, total: int) -> None:
-        self.progress.emit(done, total)
 
 
 __all__ = ["BackupsController", "BackupsState"]

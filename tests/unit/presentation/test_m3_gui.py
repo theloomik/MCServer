@@ -418,7 +418,7 @@ class _DueSchedules:
     def due_server(self) -> str | None:
         return "survival"
 
-    def run_due(self, progress=None):  # type: ignore[no-untyped-def]
+    def run_due(self, progress=None, cancel=None):  # type: ignore[no-untyped-def]
         return self.result
 
 

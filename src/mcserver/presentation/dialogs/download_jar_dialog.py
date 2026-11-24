@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QProgressBar,
     QWidget,
 )
 
@@ -20,6 +19,7 @@ from mcserver.presentation.controllers.jar_catalog import CatalogState, JarCatal
 from mcserver.presentation.dialogs.form import FormDialog, primary_button, secondary_button
 from mcserver.presentation.errors import render_message
 from mcserver.presentation.i18n import Messages
+from mcserver.presentation.views.progress_panel import ProgressPanel
 
 
 class DownloadJarDialog(FormDialog):
@@ -53,10 +53,7 @@ class DownloadJarDialog(FormDialog):
         self.details.setObjectName("fieldHint")
         self.details.setWordWrap(True)
         self.body.addWidget(self.details)
-        self.progress = QProgressBar()
-        self.progress.setTextVisible(False)
-        self.progress.setFixedHeight(4)
-        self.progress.hide()
+        self.progress = ProgressPanel(messages, cancellable=False)  # the footer button cancels
         self.body.addWidget(self.progress)
 
         self.cancel_button = secondary_button(messages.text("catalog.cancel"))
@@ -106,9 +103,15 @@ class DownloadJarDialog(FormDialog):
                 return
         self.details.setText(self._details(state))
         downloading = state.downloading
-        self.progress.setVisible(downloading or state.loading or state.resolving)
-        if not downloading:
-            self.progress.setRange(0, 0)
+        if downloading:
+            self.progress.start("progress.stage.downloading")
+            if state.cancelling:
+                self.progress.show_cancelling()
+        elif state.loading or state.resolving:
+            self.progress.finish()
+            self.progress.start("catalog.resolving" if state.resolving else "catalog.loading")
+        else:
+            self.progress.finish()
         for widget in (self.type_combo, self.unstable_check, self.version_list):
             widget.setEnabled(not downloading)
         self.download_button.setEnabled(state.can_download)
@@ -135,10 +138,8 @@ class DownloadJarDialog(FormDialog):
             lines.append(text("catalog.cancelling"))
         return "\n".join(lines)
 
-    def _on_progress(self, done: int, total: int) -> None:
-        if total > 0:
-            self.progress.setRange(0, 1000)
-            self.progress.setValue(min(1000, done * 1000 // total))
+    def _on_progress(self, progress: object) -> None:
+        self.progress.show_progress(progress)
 
     def _on_downloaded(self, path: str) -> None:
         self.path = path

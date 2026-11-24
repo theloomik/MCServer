@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
-    QProgressBar,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -24,6 +23,7 @@ from mcserver.application.backups import BackupInfo
 from mcserver.presentation.controllers.backups import BackupsState
 from mcserver.presentation.errors import render_message
 from mcserver.presentation.i18n import Messages
+from mcserver.presentation.views.progress_panel import ProgressPanel
 from mcserver.presentation.views.widgets import Banner, button, icon_label, panel_bar
 
 COLUMNS = ("date", "kind", "size", "note")
@@ -47,6 +47,7 @@ class BackupsView(QFrame):
     restore_requested = Signal(object)  # BackupInfo
     delete_requested = Signal(object)  # BackupInfo
     schedule_changed = Signal(object)  # BackupSchedule
+    cancel_requested = Signal()
 
     def __init__(self, messages: Messages) -> None:
         """Build the empty view."""
@@ -98,10 +99,8 @@ class BackupsView(QFrame):
 
         self.message_banner = Banner()
         self.message = self.message_banner.text
-        self.progress = QProgressBar()
-        self.progress.setTextVisible(False)
-        self.progress.setFixedHeight(4)
-        self.progress.hide()
+        self.progress = ProgressPanel(messages)
+        self.progress.cancel_requested.connect(self.cancel_requested)
         notices = QVBoxLayout()
         notices.setContentsMargins(16, 10, 16, 6)
         notices.setSpacing(8)
@@ -170,9 +169,12 @@ class BackupsView(QFrame):
         has_backups = bool(state.backups)
         self.table.setVisible(has_backups)
         self.empty_label.setVisible(not has_backups)
-        self.progress.setVisible(state.busy)
         if state.busy:
-            self.progress.setRange(0, 0)  # busy indicator until the first progress report
+            self.progress.start(cancellable=state.cancellable)
+            if state.cancelling:
+                self.progress.show_cancelling()
+        else:
+            self.progress.finish()
         if state.message is None:
             self.message_banner.clear()
         else:
@@ -206,13 +208,9 @@ class BackupsView(QFrame):
             BackupSchedule(self.schedule_check.isChecked(), self.interval_spin.value(), self.keep_spin.value())
         )
 
-    def show_progress(self, done: int, total: int) -> None:
-        """Show the progress of the running operation."""
-        if total <= 0:
-            return
-        # QProgressBar holds ints; scale bytes to permille.
-        self.progress.setRange(0, 1000)
-        self.progress.setValue(min(1000, done * 1000 // total))
+    def show_progress(self, progress: object) -> None:
+        """Show one ``Progress`` report of the running operation."""
+        self.progress.show_progress(progress)
 
     def _fill(self, backups: tuple[BackupInfo, ...], selected_id: str | None) -> None:
         self._backups = backups
