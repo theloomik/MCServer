@@ -54,8 +54,10 @@ class ServerPropertiesView(QFrame):
         self.unsaved_label.setObjectName("unsavedCount")
         self.filter_edit = QLineEdit()
         self.filter_edit.setPlaceholderText(messages.text("properties.search"))
-        self.filter_edit.setFixedWidth(220)
-        self.filter_edit.addAction(icons.icon("search", theme.TEXT_FAINT), QLineEdit.ActionPosition.LeadingPosition)
+        self.filter_edit.setAccessibleName(messages.text("properties.search"))
+        self.filter_edit.setMinimumWidth(120)  # shrinks in a narrow window instead of widening it
+        self.filter_edit.setMaximumWidth(220)
+        self.filter_edit.addAction(icons.icon("search", theme.TEXT_MUTED), QLineEdit.ActionPosition.LeadingPosition)
         self.filter_edit.textChanged.connect(self._apply_filter)
         self.reload_button = button(messages.text("properties.reload"), "ghost", "restart")
         self.reload_button.clicked.connect(self.reload_requested)
@@ -176,6 +178,10 @@ class ServerPropertiesView(QFrame):
         label.setProperty("invalid", bool(problem))
         editor = self._editor(key, value, present=key in self._present)
         editor.setProperty("invalid", bool(problem))
+        label.setBuddy(editor)
+        editor.setAccessibleName(key)  # property names are the same in every language
+        if problem:
+            editor.setAccessibleDescription(self._messages.text("properties.invalid_value", name=key, reason=problem))
         self._watch(editor)
         error = QLabel(self._messages.text("properties.invalid_value", name=key, reason=problem) if problem else "")
         error.setObjectName("fieldError")

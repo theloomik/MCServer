@@ -211,7 +211,7 @@ def test_successful_creation_selects_new_stopped_server_with_confirmation(qtbot:
     assert dashboard.status_pill.property("status") == "stopped"
     assert dashboard.banner.isVisible() and dashboard.banner.property("tone") == "success"
     assert dashboard.banner.text() == MESSAGES.text("dashboard.success.created", server_id="survival")
-    assert window.statusBar().currentMessage() == MESSAGES.text("create.done", server_id="survival")
+    assert MESSAGES.text("create.done", server_id="survival") in window.notification_texts()
     assert setup.filesystem.tree["survival"] == {"eula.txt": "eula=true", "paper-1.21.4.jar": SOURCE}
 
 
@@ -246,6 +246,6 @@ def test_window_refuses_to_close_while_creating(qtbot: QtBot, tmp_path: Path) ->
     setup.window.close()
 
     assert setup.window.isVisible()
-    assert setup.window.statusBar().currentMessage() == MESSAGES.text("exit.wait_for_operation")
+    assert MESSAGES.text("exit.wait_for_operation") in setup.window.notification_texts()
     setup.filesystem.install_gate.set()
     qtbot.waitUntil(lambda: setup.window.create_dialog is None)

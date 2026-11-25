@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QResizeEvent
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -139,6 +140,41 @@ class Banner(QFrame):
         """Hide the banner and its text."""
         self.text.hide()
         self.hide()
+
+
+class WrapRow(QWidget):
+    """Two groups on one line when they fit, the second below the first otherwise (narrow or scaled windows)."""
+
+    def __init__(self, first: QWidget, second: QWidget, spacing: int = 12, *, fill: bool = False) -> None:
+        """Lay out ``first`` and ``second``: apart (or, with ``fill``, sharing the width), or one below the other."""
+        super().__init__()
+        self.first = first
+        self.second = second
+        self.row = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
+        self.row.setContentsMargins(0, 0, 0, 0)
+        self.row.setSpacing(spacing)
+        self.row.addWidget(first, 1 if fill else 0)
+        if not fill:
+            self.row.addStretch(1)
+        self.row.addWidget(second, 1 if fill else 0)
+
+    @property
+    def wrapped(self) -> bool:
+        """Return whether the second group is below the first."""
+        return self.row.direction() is QBoxLayout.Direction.TopToBottom
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 (Qt override)
+        """Need only the wider group, so the window can be narrow."""
+        first, second = self.first.minimumSizeHint(), self.second.minimumSizeHint()
+        return QSize(max(first.width(), second.width()), first.height() + second.height() + self.row.spacing())
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt override)
+        """Put both groups on one line only when they fit."""
+        needed = self.first.sizeHint().width() + self.second.sizeHint().width() + self.row.spacing()
+        wrap = event.size().width() < needed
+        if wrap != self.wrapped:
+            self.row.setDirection(QBoxLayout.Direction.TopToBottom if wrap else QBoxLayout.Direction.LeftToRight)
+        super().resizeEvent(event)
 
 
 class MetricRow(QWidget):

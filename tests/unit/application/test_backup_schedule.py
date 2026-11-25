@@ -61,7 +61,14 @@ class Backups:
         self.items.append(info)
         return info
 
-    def create(self, server_id: str, note: str = "", progress: object = None, kind: BackupKind = BackupKind.MANUAL):
+    def create(
+        self,
+        server_id: str,
+        note: str = "",
+        progress: object = None,
+        kind: BackupKind = BackupKind.MANUAL,
+        cancel: object = None,
+    ):
         if self.fail:
             raise BackupFailed(server_id, "the server did not confirm that the world was saved")
         self.created.append(kind)

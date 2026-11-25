@@ -203,7 +203,7 @@ def test_console_filter_history_and_save(qtbot: QtBot, tmp_path: Path) -> None:
     qtbot.mouseClick(console.save_button, Qt.MouseButton.LeftButton)
     saved = setup.saved_to.read_text(encoding="utf-8")
     assert "hello world" in saved and "Can't keep up!" in saved
-    assert MESSAGES.text("console.saved", path=str(setup.saved_to)) == setup.window.statusBar().currentMessage()
+    assert MESSAGES.text("console.saved", path=str(setup.saved_to)) in setup.window.notification_texts()
     setup.stop_for_teardown()
 
 
@@ -219,7 +219,7 @@ def test_address_row_logs_button_and_copy(qtbot: QtBot, tmp_path: Path) -> None:
 
     qtbot.mouseClick(setup.dashboard.open_logs_button, Qt.MouseButton.LeftButton)
     assert setup.opened == []  # no logs folder yet
-    assert setup.window.statusBar().currentMessage() == MESSAGES.text("dashboard.no_logs")
+    assert MESSAGES.text("dashboard.no_logs") in setup.window.notification_texts()
     (tmp_path / "survival" / "logs").mkdir()
     qtbot.mouseClick(setup.dashboard.open_logs_button, Qt.MouseButton.LeftButton)
     assert setup.opened == [tmp_path / "survival" / "logs"]

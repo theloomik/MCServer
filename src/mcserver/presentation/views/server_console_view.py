@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPlainTextEdit,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
 )
@@ -87,12 +88,18 @@ class ServerConsoleView(QFrame):
         title.setObjectName("consoleTitle")
         self.count_label = QLabel()
         self.count_label.setObjectName("panelCount")
+        # The count may be cut off in a narrow window; the toolbar's buttons may not.
+        self.count_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.clear_button = button(messages.text("console.clear"), "ghost", "close", "clearConsole")
         self.clear_button.clicked.connect(self.clear_requested)
         self.save_button = button(messages.text("console.save"), "ghost", "save", "clearConsole")
         self.save_button.clicked.connect(self.save_requested)
         self.filter_combo = QComboBox()
-        self.filter_combo.setFixedWidth(170)
+        self.filter_combo.setMinimumWidth(120)
+        self.filter_combo.setMaximumWidth(170)
+        self.filter_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.filter_combo.setMinimumContentsLength(10)
+        self.filter_combo.setAccessibleName(messages.text("a11y.console_filter"))
         for name in FILTERS:
             self.filter_combo.addItem(messages.text(f"console.filter.{name}"), name)
         self.filter_combo.currentIndexChanged.connect(self._refilter)
@@ -106,6 +113,7 @@ class ServerConsoleView(QFrame):
 
         self.text = QPlainTextEdit()
         self.text.setObjectName("console")
+        self.text.setAccessibleName(messages.text("a11y.console_output"))
         self.text.setReadOnly(True)
         self.text.setMaximumBlockCount(MAX_CONSOLE_LINES)
         self.text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
@@ -137,6 +145,8 @@ class ServerConsoleView(QFrame):
         self.prompt.setObjectName("consolePrompt")
         self.input = CommandInput()
         self.input.setObjectName("consoleInput")
+        self.input.setAccessibleName(messages.text("a11y.console_command"))
+        self.prompt.setBuddy(self.input)
         self.input.returnPressed.connect(self._submit)
         self.send_button = button(messages.text("console.send"), "secondary", None, "consoleSend")
         self.send_button.clicked.connect(self._submit)

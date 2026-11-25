@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -28,7 +30,16 @@ from mcserver.presentation.errors import UserMessage, render_message
 from mcserver.presentation.i18n import Messages
 from mcserver.presentation.views.server_console_view import ServerConsoleView
 from mcserver.presentation.views.status_text import STATUS_KEYS
-from mcserver.presentation.views.widgets import Banner, MetricRow, button, caption, card, icon_button, repolish
+from mcserver.presentation.views.widgets import (
+    Banner,
+    MetricRow,
+    WrapRow,
+    button,
+    caption,
+    card,
+    icon_button,
+    repolish,
+)
 
 INFO_FIELDS = ("directory", "location", "jar_file", "memory")
 """Rows of the server card; each has the label key ``server_details.field.<name>``."""
@@ -39,6 +50,56 @@ _NO_TOOLTIP = ""
 METRIC_TILES = ("cpu", "memory", "uptime", "players", "tps")
 """Resource rows; each has the label key ``metrics.<name>``."""
 _BAR_METRICS = frozenset({"cpu", "memory"})
+
+
+class _Overview(QWidget):
+    """Console beside the inspector; below it when the window is narrow (125 %/150 % scaling, M4-GUI-07)."""
+
+    STACKED_INSPECTOR_HEIGHT = 240
+    STACKED_INSPECTOR_MINIMUM = 100
+    """Below the console the inspector scrolls; in a short window it keeps at least this much."""
+
+    def __init__(self, console: QWidget, inspector: QScrollArea) -> None:
+        super().__init__()
+        self.console = console
+        self.inspector = inspector
+        self.layout_ = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
+        self.layout_.setContentsMargins(0, 0, 0, 0)
+        self.layout_.setSpacing(16)
+        self.layout_.addWidget(console, 1)
+        self.layout_.addWidget(inspector)
+        self._side_by_side(True)
+
+    @property
+    def stacked(self) -> bool:
+        """Return whether the inspector is below the console."""
+        return self.layout_.direction() is QBoxLayout.Direction.TopToBottom
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 (Qt override)
+        """Need only what the stacked layout needs, so the window can be narrow."""
+        console = self.console.minimumSizeHint()
+        return QSize(console.width(), console.height() + self.STACKED_INSPECTOR_MINIMUM + self.layout_.spacing())
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt override)
+        """Put the inspector beside the console only when both fit."""
+        wide = event.size().width() >= self.console.minimumSizeHint().width() + INSPECTOR_WIDTH + 16
+        if wide == self.stacked:
+            self._side_by_side(wide)
+        super().resizeEvent(event)
+
+    def _side_by_side(self, wide: bool) -> None:
+        inspector = self.inspector
+        if wide:
+            self.layout_.setDirection(QBoxLayout.Direction.LeftToRight)
+            inspector.setMinimumHeight(0)
+            inspector.setMaximumHeight(16777215)
+            inspector.setFixedWidth(INSPECTOR_WIDTH)
+        else:
+            self.layout_.setDirection(QBoxLayout.Direction.TopToBottom)
+            inspector.setMinimumWidth(0)
+            inspector.setMaximumWidth(16777215)
+            inspector.setMinimumHeight(self.STACKED_INSPECTOR_MINIMUM)
+            inspector.setMaximumHeight(self.STACKED_INSPECTOR_HEIGHT)
 
 
 class ServerDashboardView(QWidget):
@@ -153,13 +214,9 @@ class ServerDashboardView(QWidget):
         self.tabs.setObjectName("dashboardTabs")
         self.tabs.setDocumentMode(True)
         self._tab_keys: list[str] = []
-        overview = QWidget()
-        overview_layout = QHBoxLayout(overview)
-        overview_layout.setContentsMargins(0, 0, 0, 0)
-        overview_layout.setSpacing(16)
-        overview_layout.addWidget(self.console, 1)
-        overview_layout.addWidget(self._build_inspector())
-        self.add_tab("overview", overview)
+        self.inspector = self._build_inspector()
+        self.overview = _Overview(self.console, self.inspector)
+        self.add_tab("overview", self.overview)
         layout.addWidget(self.tabs, 1)
         return page
 
@@ -203,7 +260,7 @@ class ServerDashboardView(QWidget):
         header.addLayout(controls)
         return header
 
-    def _build_inspector(self) -> QWidget:
+    def _build_inspector(self) -> QScrollArea:
         column = QWidget()
         layout = QVBoxLayout(column)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -278,6 +335,7 @@ class ServerDashboardView(QWidget):
         self.address_value.setObjectName("fieldValue")
         self.address_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.address_value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.address_value.setWordWrap(True)  # "no network" texts are long in some languages
         self.copy_address_button = icon_button("copy", self._messages.text("dashboard.copy_address"))
         self.copy_address_button.clicked.connect(self._on_copy_address)
         address_value_row = QHBoxLayout()
@@ -298,12 +356,16 @@ class ServerDashboardView(QWidget):
         self.edit_button.clicked.connect(self.edit_requested)
         self.delete_button = button(text("dashboard.delete"), "ghost", "trash")
         self.delete_button.clicked.connect(self.delete_requested)
-        for pair_buttons in ((self.open_folder_button, self.open_logs_button), (self.edit_button, self.delete_button)):
-            button_row = QHBoxLayout()
-            button_row.setSpacing(8)
-            for widget in pair_buttons:
-                button_row.addWidget(widget, 1)
-            layout.addLayout(button_row)
+        # Side by side when both labels fit the inspector, otherwise one below the other (longer languages, scaling).
+        self.button_rows = [
+            WrapRow(first, second, 8, fill=True)
+            for first, second in (
+                (self.open_folder_button, self.open_logs_button),
+                (self.edit_button, self.delete_button),
+            )
+        ]
+        for button_row in self.button_rows:
+            layout.addWidget(button_row)
         note = QLabel(text("server_details.next_launch_note"))
         note.setObjectName("controlHint")
         note.setWordWrap(True)
@@ -325,6 +387,11 @@ class ServerDashboardView(QWidget):
         """Switch to the tab ``key`` if it exists."""
         if key in self._tab_keys:
             self.tabs.setCurrentIndex(self._tab_keys.index(key))
+
+    @property
+    def tab_keys(self) -> tuple[str, ...]:
+        """Return the tab keys in display order."""
+        return tuple(self._tab_keys)
 
     @property
     def current_tab(self) -> str:

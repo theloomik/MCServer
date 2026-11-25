@@ -69,6 +69,44 @@ def build_services(root: Path, java_resolver: JavaRuntimeProvider | None = None)
     return services
 
 
+class WindowHost:
+    """Own the main window; on a language change, replace it with one in the new language.
+
+    Services (and running servers) are untouched: the new window reads the same
+    coordinator, output buffer and stores, so the console history, status and
+    selection come back; the old window only releases its timers and subscriptions.
+    """
+
+    def __init__(self, services: PresentationServices, messages: Messages) -> None:
+        """Create the first window."""
+        self._services = services
+        self.window = self._create(messages)
+
+    def _create(self, messages: Messages) -> MainWindow:
+        window = MainWindow(self._services, messages, first_run_guide=True)
+        window.language_change_requested.connect(self.switch_language)
+        return window
+
+    def switch_language(self, language: str) -> MainWindow:
+        """Show the window again in ``language`` with the same geometry, server and tab; return the new window."""
+        old = self.window
+        state = old.view_state()
+        maximized = old.isMaximized()
+        geometry = old.geometry()
+        new = self._create(messages_for(language))
+        new.setGeometry(geometry)
+        new.restore_view_state(state)
+        if maximized:
+            new.showMaximized()
+        elif old.isVisible():
+            new.show()
+        self.window = new
+        old.release()
+        old.hide()
+        old.deleteLater()
+        return new
+
+
 def run(app: QApplication, services: PresentationServices, messages: Messages) -> int:
     """Show the main window, run the event loop, then release backend resources once."""
     crash_handler = CrashHandler(services.coordinator, app.exit, CRASH_STOP_TIMEOUT_SECONDS)
@@ -80,13 +118,13 @@ def run(app: QApplication, services: PresentationServices, messages: Messages) -
 
     sys.excepthook = on_unhandled
     try:
-        window = MainWindow(services, messages)
+        host = WindowHost(services, messages)
         if services.coordinator is not None:
             session_end = SessionEndHandler(
-                services.coordinator, messages.text("session.block_reason"), lambda: int(window.winId())
+                services.coordinator, messages.text("session.block_reason"), lambda: int(host.window.winId())
             )
             app.commitDataRequest.connect(session_end)
-        window.show()
+        host.window.show()
         return app.exec()
     finally:
         sys.excepthook = previous_hook

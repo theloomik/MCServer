@@ -9,7 +9,8 @@ from datetime import datetime, timedelta, timezone
 from threading import Lock
 from typing import Protocol
 
-from mcserver.application.backups import BackupInfo, BackupKind, BackupProgress, BackupService
+from mcserver.application.backups import BackupInfo, BackupKind, BackupService
+from mcserver.application.progress import CancelToken, ProgressReporter
 from mcserver.domain.lifecycle import ServerState
 
 _logger = logging.getLogger(__name__)
@@ -140,14 +141,16 @@ class ScheduledBackups:
             return None
         return server_id
 
-    def run_due(self, progress: BackupProgress | None = None) -> ScheduledBackupResult | None:
+    def run_due(
+        self, progress: ProgressReporter | None = None, cancel: CancelToken | None = None
+    ) -> ScheduledBackupResult | None:
         """Make the due scheduled backup, if any, and remove scheduled backups beyond ``keep``."""
         server_id = self.due_server()
         if server_id is None:
             return None
         schedule = self._schedules.load_schedule(server_id)
         try:
-            backup = self._backups.create(server_id, "", progress, BackupKind.SCHEDULED)
+            backup = self._backups.create(server_id, "", progress, BackupKind.SCHEDULED, cancel)
         except Exception:
             with self._lock:
                 self._failed_at[server_id] = self._clock()

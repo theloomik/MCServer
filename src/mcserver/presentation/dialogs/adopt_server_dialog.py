@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLineEdit,
-    QProgressBar,
     QPushButton,
     QSpinBox,
     QWidget,
@@ -22,6 +21,7 @@ from mcserver.presentation.controllers.server_management import ManagementContro
 from mcserver.presentation.dialogs.form import FormDialog, primary_button, secondary_button
 from mcserver.presentation.errors import UserMessage, render_message
 from mcserver.presentation.i18n import Messages
+from mcserver.presentation.views.progress_panel import ProgressPanel
 
 FolderPicker = Callable[[QWidget], str | None]
 DEFAULT_MEMORY_MB = 4096
@@ -37,7 +37,7 @@ def pick_folder_with_system_dialog(messages: Messages) -> FolderPicker:
 
 
 class AdoptServerDialog(FormDialog):
-    """Pick a folder, its JAR, an ID and memory; copying shows progress and cannot be cancelled."""
+    """Pick a folder, its JAR, an ID and memory; copying shows progress and can be cancelled."""
 
     def __init__(
         self,
@@ -76,11 +76,7 @@ class AdoptServerDialog(FormDialog):
         self.memory_spin.setSuffix(messages.text("create.memory.suffix"))
         self.memory_spin.setValue(DEFAULT_MEMORY_MB)
         self.add_field(messages.text("adopt.memory.label"), self.memory_spin)
-        self.progress = QProgressBar()
-        self.progress.setObjectName("creationProgress")
-        self.progress.setTextVisible(False)
-        self.progress.setFixedHeight(4)
-        self.progress.hide()
+        self.progress = ProgressPanel(messages, cancellable=False)  # the footer button cancels
         self.body.addWidget(self.progress)
         self.cancel_button = secondary_button(messages.text("adopt.cancel"))
         self.cancel_button.clicked.connect(self.reject)
@@ -150,13 +146,17 @@ class AdoptServerDialog(FormDialog):
         busy = self._controller.busy
         self.import_button.setEnabled(self._can_submit())
         self.import_button.setText(self._messages.text("adopt.submitting" if busy else "adopt.submit"))
-        for widget in (self.browse_button, self.jar_combo, self.id_edit, self.memory_spin, self.cancel_button):
+        for widget in (self.browse_button, self.jar_combo, self.id_edit, self.memory_spin):
             widget.setEnabled(not busy)
-        self.progress.setVisible(busy)
+        self.cancel_button.setText(self._messages.text("progress.cancel" if busy else "adopt.cancel"))
+        self.cancel_button.setEnabled(True)
+        if busy:
+            self.progress.start("progress.stage.copying")
+        else:
+            self.progress.finish()
 
-    def _on_progress(self, done: int, total: int) -> None:
-        self.progress.setRange(0, 1000)
-        self.progress.setValue(int(done * 1000 / total) if total else 1000)
+    def _on_progress(self, progress: object) -> None:
+        self.progress.show_progress(progress)
 
     def _on_changed(self, server_id: object) -> None:
         if isinstance(server_id, str) and self.isVisible() and self._contents is not None:
@@ -168,9 +168,13 @@ class AdoptServerDialog(FormDialog):
             self.show_error(render_message(self._messages, message))
 
     def reject(self) -> None:
-        """Closing is refused while a copy runs."""
-        if not self._controller.busy:
-            super().reject()
+        """While a copy runs, cancel it (the partial copy is removed) instead of closing."""
+        if self._controller.busy:
+            self._controller.cancel_adopt()
+            self.progress.show_cancelling()
+            self.cancel_button.setEnabled(False)
+            return
+        super().reject()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Keep the dialog open while copying."""

@@ -9,14 +9,15 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QFrame,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
-    QProgressBar,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 
 from mcserver.application.backup_schedule import INTERVAL_HOURS_RANGE, KEEP_RANGE, BackupSchedule
@@ -24,7 +25,8 @@ from mcserver.application.backups import BackupInfo
 from mcserver.presentation.controllers.backups import BackupsState
 from mcserver.presentation.errors import render_message
 from mcserver.presentation.i18n import Messages
-from mcserver.presentation.views.widgets import Banner, button, icon_label, panel_bar
+from mcserver.presentation.views.progress_panel import ProgressPanel
+from mcserver.presentation.views.widgets import Banner, WrapRow, button, icon_label, panel_bar
 
 COLUMNS = ("date", "kind", "size", "note")
 
@@ -47,6 +49,7 @@ class BackupsView(QFrame):
     restore_requested = Signal(object)  # BackupInfo
     delete_requested = Signal(object)  # BackupInfo
     schedule_changed = Signal(object)  # BackupSchedule
+    cancel_requested = Signal()
 
     def __init__(self, messages: Messages) -> None:
         """Build the empty view."""
@@ -59,6 +62,7 @@ class BackupsView(QFrame):
         self.note_edit = QLineEdit()
         self.note_edit.setPlaceholderText(messages.text("backups.note.placeholder"))
         self.note_edit.setMaxLength(200)
+        self.note_edit.setAccessibleName(messages.text("backups.note.placeholder"))
         self.note_edit.returnPressed.connect(self._on_create)
         self.create_button = button(messages.text("backups.create"), "primary", "archive")
         self.create_button.clicked.connect(self._on_create)
@@ -79,29 +83,36 @@ class BackupsView(QFrame):
         every.setObjectName("fieldLabel")
         keep = QLabel(messages.text("backups.schedule.keep"))
         keep.setObjectName("fieldLabel")
+        every.setBuddy(self.interval_spin)
+        keep.setBuddy(self.keep_spin)
         self.schedule_check.toggled.connect(self._on_schedule_edited)
         self.interval_spin.valueChanged.connect(self._on_schedule_edited)
         self.keep_spin.valueChanged.connect(self._on_schedule_edited)
         self.schedule_host, schedule_row = panel_bar("band")
         schedule_row.setContentsMargins(16, 8, 12, 8)
-        schedule_row.addWidget(icon_label("clock"))
-        schedule_row.addWidget(self.schedule_check)
-        schedule_row.addStretch(1)
-        schedule_row.addWidget(every)
-        schedule_row.addWidget(self.interval_spin)
-        schedule_row.addSpacing(8)
-        schedule_row.addWidget(keep)
-        schedule_row.addWidget(self.keep_spin)
+        switch = QWidget()
+        switch_row = QHBoxLayout(switch)
+        switch_row.setContentsMargins(0, 0, 0, 0)
+        switch_row.addWidget(icon_label("clock"))
+        switch_row.addWidget(self.schedule_check)
+        values = QWidget()
+        values_row = QHBoxLayout(values)
+        values_row.setContentsMargins(0, 0, 0, 0)
+        values_row.addWidget(every)
+        values_row.addWidget(self.interval_spin)
+        values_row.addSpacing(8)
+        values_row.addWidget(keep)
+        values_row.addWidget(self.keep_spin)
+        self.schedule_row = WrapRow(switch, values)
+        schedule_row.addWidget(self.schedule_row)
         self.schedule_hint = QLabel(messages.text("backups.schedule.hint"))
         self.schedule_hint.setObjectName("controlHint")
         self.schedule_hint.setWordWrap(True)
 
         self.message_banner = Banner()
         self.message = self.message_banner.text
-        self.progress = QProgressBar()
-        self.progress.setTextVisible(False)
-        self.progress.setFixedHeight(4)
-        self.progress.hide()
+        self.progress = ProgressPanel(messages)
+        self.progress.cancel_requested.connect(self.cancel_requested)
         notices = QVBoxLayout()
         notices.setContentsMargins(16, 10, 16, 6)
         notices.setSpacing(8)
@@ -110,6 +121,7 @@ class BackupsView(QFrame):
         notices.addWidget(self.message_banner)
 
         self.table = QTableWidget(0, len(COLUMNS))
+        self.table.setAccessibleName(messages.text("a11y.backups_table"))
         self.table.setHorizontalHeaderLabels([messages.text(f"backups.column.{name}").upper() for name in COLUMNS])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -170,9 +182,12 @@ class BackupsView(QFrame):
         has_backups = bool(state.backups)
         self.table.setVisible(has_backups)
         self.empty_label.setVisible(not has_backups)
-        self.progress.setVisible(state.busy)
         if state.busy:
-            self.progress.setRange(0, 0)  # busy indicator until the first progress report
+            self.progress.start(cancellable=state.cancellable)
+            if state.cancelling:
+                self.progress.show_cancelling()
+        else:
+            self.progress.finish()
         if state.message is None:
             self.message_banner.clear()
         else:
@@ -206,13 +221,9 @@ class BackupsView(QFrame):
             BackupSchedule(self.schedule_check.isChecked(), self.interval_spin.value(), self.keep_spin.value())
         )
 
-    def show_progress(self, done: int, total: int) -> None:
-        """Show the progress of the running operation."""
-        if total <= 0:
-            return
-        # QProgressBar holds ints; scale bytes to permille.
-        self.progress.setRange(0, 1000)
-        self.progress.setValue(min(1000, done * 1000 // total))
+    def show_progress(self, progress: object) -> None:
+        """Show one ``Progress`` report of the running operation."""
+        self.progress.show_progress(progress)
 
     def _fill(self, backups: tuple[BackupInfo, ...], selected_id: str | None) -> None:
         self._backups = backups

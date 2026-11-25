@@ -129,6 +129,7 @@ class ServerListView(QWidget):
 
         self.list_widget = QListWidget()
         self.list_widget.setObjectName("serverList")
+        self.list_widget.setAccessibleName(messages.text("a11y.server_list"))
         self.list_widget.setItemDelegate(_ServerItemDelegate(self.list_widget))
         self.list_widget.setUniformItemSizes(True)
         self.list_widget.setMouseTracking(True)

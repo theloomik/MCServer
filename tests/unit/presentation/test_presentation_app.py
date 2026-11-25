@@ -188,7 +188,7 @@ def test_run_closes_services_even_if_window_creation_fails(
     closes: list[str] = []
     services = fake_services(tmp_path, java=False, closes=closes)
 
-    def broken_window(*_args: object) -> None:
+    def broken_window(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("widget construction failed")
 
     monkeypatch.setattr("mcserver.presentation.app.MainWindow", broken_window)

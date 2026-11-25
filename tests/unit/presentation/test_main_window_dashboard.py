@@ -68,7 +68,7 @@ def test_closing_during_an_operation_asks_to_wait(qtbot: QtBot, tmp_path: Path) 
     setup.window.close()
 
     assert setup.window.isVisible()
-    assert setup.window.statusBar().currentMessage() == MESSAGES.text("exit.wait_for_operation")
+    assert MESSAGES.text("exit.wait_for_operation") in setup.window.notification_texts()
     assert setup.confirm_calls == []
     gate.set()
     wait_until_running(qtbot, setup)
@@ -188,7 +188,7 @@ def test_java_missing_disables_controls_and_explains(qtbot: QtBot, tmp_path: Pat
     assert dashboard.console.pages.currentWidget() is dashboard.console.unavailable_label
 
 
-def test_open_folder_failure_is_reported_in_status_bar(qtbot: QtBot, tmp_path: Path) -> None:
+def test_open_folder_failure_is_reported_as_a_notification(qtbot: QtBot, tmp_path: Path) -> None:
     setup = Setup(qtbot, tmp_path)
     setup.select(0)
 
@@ -196,7 +196,7 @@ def test_open_folder_failure_is_reported_in_status_bar(qtbot: QtBot, tmp_path: P
 
     assert setup.opened == [tmp_path / "survival"]
     expected = MESSAGES.text("dashboard.open_folder_failed", path=str(tmp_path / "survival"))
-    assert setup.window.statusBar().currentMessage() == expected
+    assert expected in setup.window.notification_texts()
 
 
 def test_closing_with_running_server_asks_then_stops_and_closes(qtbot: QtBot, tmp_path: Path) -> None:

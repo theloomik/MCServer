@@ -8,6 +8,7 @@ from typing import Protocol
 
 from mcserver.application.errors import ServerIsRunning
 from mcserver.application.ports import RemovedServerFiles, ServerConfigurationRepository
+from mcserver.application.progress import CancelToken, ProgressReporter, Stage, stage_callback
 from mcserver.application.server_properties import ServerPropertiesService
 from mcserver.domain.server_configuration import is_safe_name
 
@@ -170,21 +171,36 @@ class WorldService:
         changes = {"level-name": name, "level-seed": seed.strip()}
         self._properties.save(server_id, changes)
 
-    def import_world(self, server_id: str, source: str, name: str, progress: WorldProgress | None = None) -> None:
+    def import_world(
+        self,
+        server_id: str,
+        source: str,
+        name: str,
+        progress: ProgressReporter | None = None,
+        cancel: CancelToken | None = None,
+    ) -> None:
         """Copy a world from a folder or ``.zip`` file into ``server_id`` as ``name`` (not made current)."""
         self._require_new_name(server_id, name)
         directory = self._repository.get(server_id).directory
         try:
-            self._store.import_world(directory, source, name, progress)
+            self._store.import_world(directory, source, name, stage_callback(Stage.IMPORTING, progress, cancel))
         except ValueError as error:
             raise InvalidWorldSource(server_id, source, str(error)) from error
 
-    def export_world(self, server_id: str, name: str, target: str, progress: WorldProgress | None = None) -> None:
+    def export_world(
+        self,
+        server_id: str,
+        name: str,
+        target: str,
+        progress: ProgressReporter | None = None,
+        cancel: CancelToken | None = None,
+    ) -> None:
         """Write world ``name`` (with its dimension folders) into the ZIP file ``target``."""
         world = self._world(server_id, name)
         if world.name == self._level_name(server_id) and self._active_server() == server_id:
             raise WorldIsActive(server_id, name)
-        self._store.export_world(self._repository.get(server_id).directory, world.folders, target, progress)
+        directory = self._repository.get(server_id).directory
+        self._store.export_world(directory, world.folders, target, stage_callback(Stage.EXPORTING, progress, cancel))
 
     def delete_world(self, server_id: str, name: str) -> tuple[RemovedServerFiles, ...]:
         """Move world ``name`` to the Recycle Bin; the current world is refused."""

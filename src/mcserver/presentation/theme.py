@@ -16,8 +16,10 @@ BORDER = "#26262b"
 BORDER_STRONG = "#36363d"
 TEXT = "#f4f4f5"
 TEXT_SECONDARY = "#a1a1aa"
-TEXT_MUTED = "#71717a"
+TEXT_MUTED = "#8c8c95"
+"""Hints and captions: at least 4.5:1 on every surface (WCAG AA, M4-GUI-07)."""
 TEXT_FAINT = "#52525b"
+"""Disabled controls, borders and scrollbars only; never text a user must read."""
 TEXT_ON_ACCENT = "#04130d"
 ACCENT = "#10b981"
 ACCENT_HOVER = "#34d399"
@@ -30,8 +32,10 @@ WARNING_TEXT = "#fbbf24"
 WARNING_SUBTLE = "#2a1f0b"
 INFO = "#60a5fa"
 INFO_SUBTLE = "#0f1d2e"
+FOCUS = "#93c5fd"
+"""Keyboard focus ring; light blue reads on every surface and is not a status colour."""
 CONSOLE_TEXT = "#e4e4e7"
-CONSOLE_TIMESTAMP = "#52525b"
+CONSOLE_TIMESTAMP = "#84848d"
 CONSOLE_COMMAND = "#34d399"
 
 # Aliases used by earlier code.
@@ -52,8 +56,8 @@ STATUS_COLORS = {
     "starting": WARNING,
     "stopping": WARNING,
     "killing": DANGER,
-    "stopped": TEXT_FAINT,
-    "unknown": TEXT_FAINT,
+    "stopped": TEXT_MUTED,
+    "unknown": TEXT_MUTED,
 }
 TONE_COLORS = {
     "error": (DANGER_SUBTLE, DANGER, DANGER_TEXT),
@@ -205,8 +209,12 @@ QLabel#metricValue {{ color: {TEXT}; font-size: 12px; font-weight: 600; }}
 QLabel#controlHint {{ color: {TEXT_MUTED}; font-size: 12px; }}
 QLabel#controlHint[tone="warning"] {{ color: {WARNING_TEXT}; }}
 QLabel#panelTitle {{ color: {TEXT}; font-weight: 600; }}
-QLabel#panelCount {{ color: {TEXT_FAINT}; font-size: 12px; }}
+QLabel#panelCount {{ color: {TEXT_MUTED}; font-size: 12px; }}
 QLabel#monoTitle {{ font-family: {MONO_FAMILY}; font-weight: 600; }}
+QLabel#folderPath {{
+    font-family: {MONO_FAMILY}; font-size: 12px; color: {TEXT};
+    background-color: {SURFACE_CONSOLE}; border: 1px solid {BORDER}; border-radius: 6px; padding: 8px 10px;
+}}
 QLabel#propertyKey {{ font-family: {MONO_FAMILY}; font-size: 12px; color: {TEXT_SECONDARY}; }}
 QLabel#propertyKey[invalid="true"] {{ color: {DANGER_TEXT}; }}
 QLabel#unsavedCount {{ color: {WARNING_TEXT}; font-size: 12px; }}
@@ -234,6 +242,16 @@ QFrame#banner[tone="info"] {{ background-color: {INFO_SUBTLE}; border-color: #23
 QFrame#banner[tone="error"] QPushButton {{ color: {DANGER_TEXT}; }}
 QFrame#banner[tone="notice"] QPushButton {{ color: {WARNING_TEXT}; }}
 QFrame#banner[tone="success"] QPushButton {{ color: {ACCENT_HOVER}; }}
+QFrame#toast, QFrame#toastMoreRow {{
+    background-color: {SURFACE_RAISED}; border: 1px solid {BORDER_STRONG}; border-radius: 8px;
+}}
+QFrame#toast {{ border-left: 3px solid {INFO}; }}
+QFrame#toast[tone="error"] {{ border-left-color: {DANGER}; }}
+QFrame#toast[tone="notice"] {{ border-left-color: {WARNING}; }}
+QFrame#toast[tone="success"] {{ border-left-color: {ACCENT}; }}
+QFrame#toast QLabel, QFrame#toastMoreRow QLabel {{ background: transparent; border: none; color: {TEXT}; }}
+QLabel#toastMore {{ color: {TEXT_SECONDARY}; }}
+QFrame#toast[tone="error"] QPushButton#linkButton {{ color: {DANGER_TEXT}; }}
 QFrame#banner[tone="info"] QPushButton {{ color: {INFO}; }}
 
 /* Console */
@@ -250,7 +268,7 @@ QLabel#consoleUnavailable {{ color: {TEXT_MUTED}; padding: 16px; background-colo
 /* Welcome */
 QLabel#welcomeTitle {{ color: {TEXT}; font-size: 22px; font-weight: 600; }}
 QLabel#welcomeText {{ color: {TEXT_SECONDARY}; font-size: 13px; }}
-QLabel#welcomeLegacy {{ color: {TEXT_FAINT}; font-size: 12px; }}
+QLabel#welcomeLegacy {{ color: {TEXT_MUTED}; font-size: 12px; }}
 
 /* Tabs */
 QTabWidget#dashboardTabs::pane {{ border: none; border-top: 1px solid {BORDER}; top: -1px; }}
@@ -282,4 +300,18 @@ QListWidget#versionList {{
 QListWidget#versionList::item {{ padding: 5px 8px; border-radius: 6px; }}
 QListWidget#versionList::item:hover {{ background-color: {BORDER}; }}
 QListWidget#versionList::item:selected {{ background-color: {ACCENT_SUBTLE}; color: {TEXT}; }}
+
+/* Keyboard focus (M4-GUI-07): every control shows where the focus is, in a colour no state uses. */
+{_PRIMARY}, {_SECONDARY}, {_DANGER}, QPushButton {{ outline: none; }}
+{_each(_PRIMARY, ":focus")} {{ border: 1px solid {FOCUS}; }}
+{_each(_SECONDARY, ":focus")}, {_each(_DANGER, ":focus")}, {_each(_GHOST, ":focus")} {{ border-color: {FOCUS}; }}
+QPushButton#iconButton:focus, QPushButton#refreshServers:focus, QPushButton#addServerButton:focus {{
+    background-color: {SURFACE_HOVER};
+}}
+QPushButton#linkButton:focus, QPushButton#detailsButton:focus {{ text-decoration: underline; }}
+QComboBox:focus, QPlainTextEdit:focus, QTableWidget:focus, QListWidget:focus {{ border: 1px solid {FOCUS}; }}
+QListWidget#serverList:focus {{ border: none; }}
+QCheckBox:focus {{ color: {FOCUS}; }}
+QCheckBox::indicator:focus {{ border-color: {FOCUS}; }}
+QTabBar::tab:focus {{ color: {FOCUS}; }}
 """

@@ -34,6 +34,7 @@ from mcserver.application.errors import (
     ServerStopTimedOut,
     ServerWorldInUse,
 )
+from mcserver.application.progress import OperationCancelled
 from mcserver.application.server_catalog import CatalogUnavailable, DownloadFailed
 from mcserver.application.server_coordinator import FailureKind, ServerFailure
 from mcserver.application.settings import InvalidSettings
@@ -76,6 +77,8 @@ def render_message(messages: Messages, message: UserMessage) -> str:
 def describe_error(error: BaseException) -> UserMessage:
     """Map an exception to a message; unknown errors get a generic message with details."""
     details = technical_details(error)
+    if isinstance(error, OperationCancelled):
+        return UserMessage("progress.cancelled")
     if isinstance(error, ActiveServerAlreadyExists):
         return UserMessage("errors.another_server_running", {"server_id": error.active_server_id}, details)
     runtime = _describe_runtime_error(error, details)
@@ -85,6 +88,11 @@ def describe_error(error: BaseException) -> UserMessage:
     if creation is not None:
         return creation
     return UserMessage("errors.unexpected", {}, details)
+
+
+def error_tone(error: BaseException) -> str:
+    """Return the banner tone for ``error``: a cancelled operation is a notice, not an error."""
+    return "notice" if isinstance(error, OperationCancelled) else "error"
 
 
 def _describe_runtime_error(error: BaseException, details: str) -> UserMessage | None:

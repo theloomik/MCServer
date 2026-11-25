@@ -78,6 +78,7 @@ class Setup:
         legacy: Legacy | None = None,
         offer_answer: bool = True,
         delete_answer: bool | None = False,
+        first_run_guide: bool = False,
     ) -> None:
         self.repository = InMemoryRepository(*configurations)
         self.factory = FakeRunnerFactory()
@@ -119,6 +120,7 @@ class Setup:
             offer_legacy_import=lambda count: self.offers.append(count) or offer_answer,
             notify_legacy_result=self.results.append,
             notify_unclean=lambda _incident: None,
+            first_run_guide=first_run_guide,
         )
         qtbot.addWidget(self.window)
         self.window.show()
@@ -169,7 +171,7 @@ def test_edit_dialog_saves_the_new_settings(qtbot: QtBot, tmp_path: Path) -> Non
     stored = setup.repository.items["survival"]
     assert (stored.display_name, stored.memory_mb, stored.jvm_arguments) == ("Survival Island", 6144, ("-XX:+UseG1GC",))
     qtbot.waitUntil(lambda: "Survival Island" in setup.window.server_list_view.list_widget.item(0).text())
-    assert setup.window.statusBar().currentMessage() == MESSAGES.text("edit.saved", name="Survival Island")
+    assert MESSAGES.text("edit.saved", name="Survival Island") in setup.window.notification_texts()
 
 
 def test_edit_dialog_shows_domain_errors_and_keeps_the_record(qtbot: QtBot, tmp_path: Path) -> None:
@@ -210,7 +212,7 @@ def test_delete_with_files_uses_the_recycle_bin_and_refreshes(qtbot: QtBot, tmp_
     qtbot.waitUntil(lambda: setup.window.server_list_view.server_ids() == [])
     assert setup.delete_questions == ["survival"]
     assert setup.remover.removed == ["survival"]
-    assert setup.window.statusBar().currentMessage() == MESSAGES.text("delete.done.recycle_bin", name="survival")
+    assert MESSAGES.text("delete.done.recycle_bin", name="survival") in setup.window.notification_texts()
 
 
 def test_cancelled_delete_changes_nothing(qtbot: QtBot, tmp_path: Path) -> None:
