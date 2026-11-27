@@ -165,7 +165,7 @@ class ServerDashboardView(QWidget):
         self.welcome_text = QLabel(self._messages.text("welcome.text"))
         self.welcome_text.setObjectName("welcomeText")
         self.welcome_text.setWordWrap(True)
-        self.welcome_text.setFixedWidth(440)
+        self.welcome_text.setMaximumWidth(460)
         for label in (title, self.welcome_text):
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.welcome_new_button = button(self._messages.text("server_list.create"), "primary", "plus")
@@ -184,7 +184,12 @@ class ServerDashboardView(QWidget):
         layout.addStretch(1)
         layout.addWidget(tile, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(title)
-        layout.addWidget(self.welcome_text, 0, Qt.AlignmentFlag.AlignHCenter)
+        # Centred by stretches (an alignment flag would stop the wrapped text from getting its height).
+        text_row = QHBoxLayout()
+        text_row.addStretch(1)
+        text_row.addWidget(self.welcome_text, 4)
+        text_row.addStretch(1)
+        layout.addLayout(text_row)
         layout.addSpacing(4)
         layout.addLayout(actions)
         layout.addSpacing(6)

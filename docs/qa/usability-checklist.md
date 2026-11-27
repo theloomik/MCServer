@@ -34,12 +34,12 @@ Unplug or ignore the mouse for this section.
 | K3 | **Ctrl+1 … Ctrl+4** | Overview, Properties, Worlds, Backups open in that order |
 | K4 | **Ctrl+K** | Overview opens and the console command line has the focus (or the console text when the server is stopped) |
 | K5 | Tab through the whole window | Every button, field, list and table is reached; the focused control always shows a light-blue border or highlight |
-| K6 | **Ctrl+N** | Create server page opens with the focus in **Server ID** |
+| K6 | **Ctrl+N** | The Create server dialog opens with the focus in **Name**; the memory slider moves with the arrow keys |
 | K7 | Fill the Create form with the keyboard only (Tab, Space for the EULA box, Enter) | The server is created; a success notification appears |
-| K8 | **Esc** on any page (Settings, Edit, Delete, Details…) | The page closes and the focus returns to where it was before |
-| K9 | **Alt** + the underlined letter in the menu bar (File, View, Server) | The menu opens; every item can be chosen with arrows and Enter |
+| K8 | **Esc** in any dialog (Create, Edit, Delete, Details…) and on the Settings page | It closes and the focus returns to where it was before; while a dialog is open the window behind it cannot be used |
+| K9 | Server actions beside the tabs (Open folder, Logs, Edit, Delete) with Tab and Enter | Each is reached and named by Narrator; Delete asks first |
 | K10 | **Ctrl+,** | Settings open |
-| K11 | Start, stop and restart a server from the **Server** menu with the keyboard | Works; no step needs the mouse |
+| K11 | Start (**Ctrl+R**), stop and restart a server with the keyboard | Works; no step needs the mouse |
 | K12 | A long operation (backup) with the keyboard | Tab reaches **Cancel** in the progress row; Space cancels |
 | K13 | Notifications | When a toast appears, it does not take the focus. Its close button and **Details** can be reached with Tab |
 
@@ -65,7 +65,7 @@ asks to.
 | --- | --- | --- |
 | S1 | 125 % on a 1366 × 768 screen, maximised | Everything visible without horizontal scrolling; header buttons not cut off |
 | S2 | 150 % on a 1920 × 1080 screen | Same as S1 |
-| S3 | Make the window as narrow as Windows allows at 150 % | The resources/server cards move below the console; the backup schedule wraps onto two lines; nothing overlaps |
+| S3 | Make the window as narrow as Windows allows at 150 % | The four stat tiles form a 2 × 2 grid; the backup schedule wraps onto two lines; nothing overlaps |
 | S4 | Icons and the status dots at 125 % and 150 % | Sharp, not blurry, not cut off |
 | S5 | Pages (Create, Settings, setup guide) at 150 % | The page scrolls when it is taller than the window; buttons stay reachable |
 
@@ -75,7 +75,7 @@ Settings › Language › Українська (the window switches without a re
 
 | # | Check | Expected |
 | --- | --- | --- |
-| U1 | Every tab of the dashboard at 100 %, 125 %, 150 % | No text cut off in buttons, tabs, captions; the inspector does not clip on the right |
+| U1 | Every tab of the dashboard at 100 %, 125 %, 150 % | No text cut off in buttons, tabs, captions or stat tiles |
 | U2 | Setup guide, Create, Settings, Adopt, Download, Delete pages | Labels and hints wrap instead of being cut off |
 | U3 | Plurals: 1, 2, 5, 11, 21 backups or servers where counts appear | The right form (сервер / сервери / серверів) |
 | U4 | Notifications with long texts | Wrapped inside the toast, close button still visible |
@@ -94,3 +94,10 @@ Settings › Language › Українська (the window switches without a re
 | Build / commit | Date | Tester | Keyboard | Narrator | Scaling | Ukrainian | Contrast | Notes / issues |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 |  |  |  | ☐ | ☐ | ☐ | ☐ | ☐ |  |
+
+## Mouse wheel (UX overhaul)
+
+| # | Check | Expected |
+| --- | --- | --- |
+| W1 | Scroll Settings and server Properties with the wheel while the pointer passes over number fields and drop-downs | The page scrolls; no value changes |
+| W2 | Click into a number field, then turn the wheel | Now the value changes (on purpose) |

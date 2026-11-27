@@ -56,7 +56,8 @@ class _Card(QFrame):
         dialog.setParent(self.scroller, Qt.WindowType.Widget)
         dialog.setMinimumWidth(0)
         dialog.setMaximumWidth(16777215)
-        policy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        # Preferred, not Minimum: the natural height (measured narrow) must not become the floor.
+        policy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         policy.setHeightForWidth(True)
         dialog.setSizePolicy(policy)
         self.scroller.setWidget(dialog)
