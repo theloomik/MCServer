@@ -62,7 +62,7 @@ def test_every_page_has_named_reachable_controls(qtbot: QtBot, tmp_path: Path, p
 
     _pages(window)[page]()
 
-    current = window.page_host.current_page
+    current = window.content_host.current_page if page == "settings" else window.page_host.current_page
     assert current is not None
     assert unnamed_controls(current) == []
     assert unreachable_controls(current) == []
@@ -227,15 +227,16 @@ def test_the_window_fits_a_small_screen_at_150_percent(
         assert minimum.width() <= 910 and minimum.height() <= 535, (tab, minimum)
 
 
-def test_narrow_windows_stack_the_inspector_and_wrap_the_schedule(qtbot: QtBot, tmp_path: Path) -> None:
+def test_narrow_windows_wrap_the_tiles_and_the_schedule(qtbot: QtBot, tmp_path: Path) -> None:
     setup = test_m3_gui.Setup(qtbot, tmp_path)
     setup.select("survival")
     window = setup.window
+    window.show()
+    tiles = window.dashboard_view.metrics_card
     window.resize(1400, 800)
-    qtbot.waitUntil(lambda: not window.dashboard_view.overview.stacked)
+    qtbot.waitUntil(lambda: tiles.columns == 4)
     window.resize(900, 600)
-    qtbot.waitUntil(lambda: window.dashboard_view.overview.stacked)
-    assert window.dashboard_view.inspector.height() <= window.dashboard_view.overview.STACKED_INSPECTOR_HEIGHT
+    qtbot.waitUntil(lambda: tiles.columns == 2)
 
     backups = window.backups_view
     assert backups is not None
@@ -254,8 +255,7 @@ def test_ukrainian_names_exist_for_every_accessibility_key() -> None:
         "a11y.console_output",
         "a11y.console_command",
         "a11y.console_filter",
-        "menu.view",
-        "menu.view.server_list",
-        "menu.view.console",
+        "memory.label",
+        "settings.section.appearance",
     ):
         assert ukrainian.text(key) not in (key, english.text(key))

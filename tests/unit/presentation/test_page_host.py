@@ -1,4 +1,4 @@
-"""Dialogs open as pages in the main window's content area; the sidebar stays visible (M4 design)."""
+"""Dialogs open modally over the dimmed window; Settings opens as a page in the content area (UX overhaul)."""
 
 from __future__ import annotations
 
@@ -12,20 +12,40 @@ from mcserver.presentation.dialogs.confirm_dialog import Choice, ConfirmDialog, 
 from mcserver.presentation.dialogs.prompt_dialog import PromptDialog, PromptField
 
 
-def test_create_dialog_opens_in_the_content_area_with_the_sidebar_visible(qtbot: QtBot, tmp_path: Path) -> None:
+def test_create_dialog_opens_modally_over_the_dimmed_window(qtbot: QtBot, tmp_path: Path) -> None:
     setup = Setup(qtbot, tmp_path)
     window = setup.window
+    window.show()
     window.open_create_dialog()
     dialog = window.create_dialog
     assert dialog is not None
     assert window.page_host.current_page is dialog
-    assert not dialog.isWindow()  # embedded, not a separate window
-    assert window.server_list_view.isVisible() and dialog.isVisible()
-    assert not window.dashboard_view.isVisible()
-
+    assert not dialog.isWindow()  # inside the window, not a separate one
+    assert window.page_host.isVisible() and dialog.isVisible()
+    assert window.server_list_view.isVisible() and not window.server_list_view.isEnabled()  # behind the dimming
+    assert not window.new_server_action.isEnabled()  # shortcuts pause while a dialog is open
+    card = dialog.parentWidget()
+    while card is not None and card.objectName() != "modalCard":
+        card = card.parentWidget()
+    assert card is not None and card.width() < window.width()  # sized to the dialog, not the window
+    assert card.findChild(type(dialog.footer), "dialogFooter") is dialog.footer  # buttons outside the scrolling part
     dialog.reject()
-    assert window.page_host.current_page is None
-    assert window.page_host.currentWidget() is window.dashboard_view
+    assert window.page_host.current_page is None and window.page_host.isHidden()
+    assert window.server_list_view.isEnabled() and window.new_server_action.isEnabled()
+
+
+def test_settings_open_as_a_page_with_the_server_list_visible(qtbot: QtBot, tmp_path: Path) -> None:
+    from test_m2_gui import Setup as M2Setup
+
+    setup = M2Setup(qtbot, tmp_path)
+    window = setup.window
+    window.open_settings_dialog()
+    page = window.settings_dialog
+    assert page is not None and window.content_host.current_page is page
+    assert window.server_list_view.isVisible() and window.server_list_view.isEnabled()
+    assert not window.dashboard_view.isVisible()
+    page.reject()
+    assert window.content_host.currentWidget() is window.dashboard_view
 
 
 def test_pages_stack_and_return_to_the_page_below(qtbot: QtBot, tmp_path: Path) -> None:

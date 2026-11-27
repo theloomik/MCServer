@@ -5,13 +5,14 @@ from __future__ import annotations
 import shlex
 from collections.abc import Callable
 
-from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QPushButton, QSpinBox, QWidget
+from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QPushButton, QWidget
 
-from mcserver.domain.server_configuration import MAX_MEMORY_MB, MIN_MEMORY_MB, ServerConfiguration
+from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.presentation.controllers.server_management import ManagementController
 from mcserver.presentation.dialogs.form import FormDialog, primary_button, secondary_button
 from mcserver.presentation.errors import render_message
 from mcserver.presentation.i18n import Messages
+from mcserver.presentation.views.memory_slider import MemorySlider
 
 JavaPicker = Callable[[QWidget], str | None]
 MEMORY_STEP_MB = 512
@@ -51,6 +52,7 @@ class EditServerDialog(FormDialog):
         *,
         running: bool = False,
         pick_java: JavaPicker | None = None,
+        system_memory_mb: int | None = None,
     ) -> None:
         """Build the form from ``configuration``; ``running`` locks the JAR choice."""
         super().__init__(messages.text("edit.title", server_id=configuration.server_id), parent=parent)
@@ -66,21 +68,21 @@ class EditServerDialog(FormDialog):
             self.name_edit,
             messages.text("edit.display_name.hint", server_id=configuration.server_id),
         )
-        self.memory_spin = QSpinBox()
-        self.memory_spin.setRange(MIN_MEMORY_MB, MAX_MEMORY_MB)
-        self.memory_spin.setSingleStep(MEMORY_STEP_MB)
-        self.memory_spin.setSuffix(messages.text("create.memory.suffix"))
-        self.memory_spin.setValue(configuration.memory_mb)
-        self.add_field(messages.text("edit.memory.label"), self.memory_spin)
+        self.memory_slider = MemorySlider(messages, system_memory_mb, configuration.memory_mb)
+        self.add_field(messages.text("edit.memory.label"), self.memory_slider)
+        advanced = self.add_advanced(messages.text("create.advanced"))
         self.jar_combo = QComboBox()
         self.jar_combo.addItems(controller.jar_files(configuration))
         self.jar_combo.setCurrentText(configuration.jar_file)
         self.jar_combo.setEnabled(not running)
         self.add_field(
-            messages.text("edit.jar.label"), self.jar_combo, messages.text("edit.jar.hint_running") if running else ""
+            messages.text("edit.jar.label"),
+            self.jar_combo,
+            messages.text("edit.jar.hint_running") if running else "",
+            into=advanced,
         )
         self.jvm_edit = QLineEdit(join_arguments(configuration.jvm_arguments))
-        self.add_field(messages.text("edit.jvm.label"), self.jvm_edit, messages.text("edit.jvm.hint"))
+        self.add_field(messages.text("edit.jvm.label"), self.jvm_edit, messages.text("edit.jvm.hint"), into=advanced)
         self.java_edit = QLineEdit(configuration.java_path or "")
         self.java_edit.setPlaceholderText(messages.text("edit.java.auto"))
         self.java_edit.setReadOnly(True)
@@ -94,8 +96,10 @@ class EditServerDialog(FormDialog):
         java_row.addWidget(self.java_edit, 1)
         java_row.addWidget(self.java_choose)
         java_row.addWidget(self.java_clear)
-        self.add_field(messages.text("edit.java.label"), java_row)
-        self.add_note(messages.text("edit.note"))
+        self.add_field(messages.text("edit.java.label"), java_row, into=advanced)
+        note = self.add_note(messages.text("edit.note"))
+        self.body.removeWidget(note)
+        advanced.addWidget(note)
         self.cancel_button = secondary_button(messages.text("edit.cancel"))
         self.cancel_button.clicked.connect(self.reject)
         self.save_button = primary_button(messages.text("edit.save"))
@@ -112,7 +116,7 @@ class EditServerDialog(FormDialog):
         error = self._controller.save_edit(
             self._configuration.server_id,
             display_name=self.name_edit.text().strip(),
-            memory_mb=self.memory_spin.value(),
+            memory_mb=self.memory_slider.value_mb(),
             jar_file=self.jar_combo.currentText(),
             jvm_arguments=arguments,
             java_path=self.java_edit.text().strip() or None,

@@ -110,7 +110,6 @@ class Setup:
             MESSAGES,
             confirm_exit=lambda _server_id: True,
             notify_unclean=lambda _incident: None,
-            offer_legacy_import=lambda _count: False,
             confirm_restore=confirm_restore,
             confirm_delete_backup=confirm_delete,
             world_dialogs=self.world_answers,
@@ -370,7 +369,10 @@ def test_resource_tiles_show_the_selected_running_server_only(qtbot: QtBot, tmp_
     setup.metrics.snapshot = ServerMetricsSnapshot("survival", ServerState.RUNNING, 12.4, 1536.2, 2048, 3725)
     setup.window.sample_metrics()
     assert values["cpu"].text() == "12 %"
-    assert values["memory"].text() == "1536 / 2048 MB"
+    assert values["memory"].text() == MESSAGES.text("metrics.memory_gb", used="1.5")
+    assert setup.window.dashboard_view.tiles["memory"].detail.text() == MESSAGES.text(
+        "metrics.memory_of", allocated="2"
+    )
     assert values["uptime"].text() == "1:02:05"
 
     setup.select("creative")

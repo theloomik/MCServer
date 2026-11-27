@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from mcserver.presentation import icons, theme
 from mcserver.presentation.controllers.server_list import ServerListState, ServerRow
 from mcserver.presentation.i18n import Messages
+from mcserver.presentation.views.memory_slider import format_gb
 from mcserver.presentation.views.status_text import STATUS_KEYS
 from mcserver.presentation.views.widgets import button, icon_button
 
@@ -214,7 +215,7 @@ class ServerListView(QWidget):
 
     def _subtitle(self, row: ServerRow) -> str:
         status = self._messages.text(STATUS_KEYS[row.status])
-        memory = self._messages.text("server_details.memory_value", memory_mb=row.configuration.memory_mb)
+        memory = self._messages.text("memory.gb", value=format_gb(row.configuration.memory_mb))
         return self._messages.text("server_list.subtitle", status=status, memory=memory)
 
     def _on_current_item_changed(self, current: QListWidgetItem | None, _previous: QListWidgetItem | None) -> None:

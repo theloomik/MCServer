@@ -81,7 +81,7 @@ def test_dashboard_shows_server_card_and_enabled_start(qtbot: QtBot, tmp_path: P
 
     dashboard = setup.dashboard
     assert dashboard.title_label.text() == "survival"
-    memory = MESSAGES.text("server_details.memory_value", memory_mb=4096)
+    memory = MESSAGES.text("memory.gb", value="4")
     assert dashboard.subtitle_label.text() == MESSAGES.text(
         "dashboard.subtitle_folder", jar_file="paper.jar", memory=memory, folder="survival"
     )

@@ -1,4 +1,4 @@
-"""The first-run guide as a page: Java → servers folder → 0.9.1 import → first server (M4-GUI-08)."""
+"""The first-run guide as a page: Java → servers folder → first server (M4-GUI-08)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QCloseEvent
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QPushButton, QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QStackedWidget, QVBoxLayout, QWidget
 
 from mcserver.presentation.controllers.first_run import Ending, FirstRunController, FirstRunState, Step
 from mcserver.presentation.dialogs.form import FormDialog, primary_button, secondary_button
@@ -93,26 +92,6 @@ class FirstRunDialog(FormDialog):
         folder.addWidget(self.folder_error)
         folder.addStretch(1)
 
-        # MCServer 0.9.1 import
-        import_page, legacy = _page()
-        self.import_intro = _text()
-        self.import_list = _text("folderPath")
-        self.import_button = button(text("first_run.import.run"), "primary", "import")
-        self.import_button.clicked.connect(controller.import_legacy)
-        self.import_progress = QProgressBar()
-        self.import_progress.setTextVisible(False)
-        self.import_progress.setFixedHeight(4)
-        self.import_progress.setRange(0, 0)
-        self.import_banner = Banner()
-        self.import_hint = _text()
-        self.import_hint.setText(text("first_run.import.hint"))
-        for widget in (self.import_intro, self.import_list):
-            legacy.addWidget(widget)
-        legacy.addWidget(self.import_button, 0, Qt.AlignmentFlag.AlignLeft)
-        for extra in (self.import_progress, self.import_banner, self.import_hint):
-            legacy.addWidget(extra)
-        legacy.addStretch(1)
-
         # First server
         create_page, create = _page()
         self.create_intro = _text()
@@ -131,9 +110,9 @@ class FirstRunDialog(FormDialog):
         create.addWidget(self.create_hint)
         create.addStretch(1)
 
-        self._page_for = {Step.JAVA: java_page, Step.FOLDER: folder_page, Step.IMPORT: import_page}
+        self._page_for = {Step.JAVA: java_page, Step.FOLDER: folder_page}
         self._page_for[Step.CREATE] = create_page
-        for page in (java_page, folder_page, import_page, create_page):
+        for page in (java_page, folder_page, create_page):
             self.pages.addWidget(page)
 
         self.skip_button = secondary_button(text("first_run.skip"))
@@ -164,7 +143,6 @@ class FirstRunDialog(FormDialog):
         self.pages.setCurrentWidget(self._page_for[step])
         self._show_java(state)
         self.folder_path.setText(state.servers_root)
-        self._show_import(state)
         has_servers = self._controller.has_servers
         self.create_intro.setText(text("first_run.create.has_servers" if has_servers else "first_run.create.intro"))
         movable = state.can_move
@@ -194,31 +172,6 @@ class FirstRunDialog(FormDialog):
         self.java_check_button.setEnabled(available)
         self.java_choose_button.setEnabled(available)
 
-    def _show_import(self, state: FirstRunState) -> None:
-        count = len(state.pending_legacy)
-        self.import_intro.setText(self._messages.plural("first_run.import.intro", count))
-        self.import_list.setText(
-            self._messages.text("first_run.import.servers", servers=", ".join(state.pending_legacy))
-        )
-        done = state.import_result is not None
-        self.import_button.setEnabled(not state.importing and not done)
-        self.import_progress.setVisible(state.importing)
-        if state.import_error is not None:
-            self.import_banner.show_message(render_message(self._messages, state.import_error), "error")
-        elif state.import_result is not None:
-            result = state.import_result
-            self.import_banner.show_message(
-                self._messages.text(
-                    "legacy.result.text",
-                    imported=result.imported_count,
-                    skipped=result.skipped_count,
-                    rejected=result.rejected_count,
-                ),
-                "success" if not result.rejected else "notice",
-            )
-        else:
-            self.import_banner.clear()
-
     def _choose_java(self) -> None:
         path = self._pick_java(self)
         if path:
@@ -235,19 +188,11 @@ class FirstRunDialog(FormDialog):
         self.accept()
 
     def reject(self) -> None:
-        """Escape or closing the page skips the guide (it never closes half way through an import)."""
+        """Escape or closing the dialog skips the guide."""
         if self._controller.state.finished is not None:
             super().reject()
             return
-        if self._controller.state.can_move:
-            self._controller.skip()
-
-    def closeEvent(self, event: QCloseEvent) -> None:
-        """Closing skips the guide, except while importing."""
-        if self._controller.state.importing:
-            event.ignore()
-            return
-        super().closeEvent(event)
+        self._controller.skip()
 
 
 __all__ = ["FirstRunDialog"]

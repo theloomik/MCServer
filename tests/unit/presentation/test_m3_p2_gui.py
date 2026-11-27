@@ -67,7 +67,6 @@ class Setup:
             confirm_exit=lambda _server_id: True,
             open_folder=lambda path: self.opened.append(path) or True,
             notify_unclean=lambda _incident: None,
-            offer_legacy_import=lambda _count: False,
             choose_log_path=lambda _server_id: str(self.saved_to),
             auto_restart_delay_ms=20,
         )
@@ -232,7 +231,7 @@ def test_address_without_network(qtbot: QtBot, tmp_path: Path) -> None:
     setup = Setup(qtbot, tmp_path, lan=None)
     setup.select("survival")
     assert setup.dashboard.address_value.text() == MESSAGES.text("dashboard.address_unknown")
-    assert not setup.dashboard.copy_address_button.isEnabled()
+    assert setup.dashboard.copy_address_button.isHidden()
 
 
 def test_players_and_tps_tiles(qtbot: QtBot, tmp_path: Path) -> None:
@@ -246,7 +245,7 @@ def test_players_and_tps_tiles(qtbot: QtBot, tmp_path: Path) -> None:
     setup.window.sample_metrics()
     assert values["players"].text() == "1 / 12"
     assert values["players"].toolTip() == "Steve"
-    assert values["tps"].text() == "19.5"
+    assert values["tps"].text() == MESSAGES.text("metrics.tps_line", tps="19.5")
 
     setup.metrics.snapshot = None
     setup.window.sample_metrics()

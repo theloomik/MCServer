@@ -11,18 +11,21 @@ from test_m3_gui import MESSAGES, Setup
 from mcserver.presentation import icons
 
 
-def test_server_menu_follows_the_toolbar(qtbot: QtBot, tmp_path: Path) -> None:
+def test_server_actions_sit_beside_the_tabs_with_readable_names(qtbot: QtBot, tmp_path: Path) -> None:
     setup = Setup(qtbot, tmp_path)
-    actions = setup.window.server_actions
-    assert not actions["start"][0].isEnabled()  # nothing selected yet
     setup.select("survival")
-    assert actions["start"][0].isEnabled() and not actions["stop"][0].isEnabled()
-    assert not actions["kill"][0].isEnabled()  # Kill is only offered while stopping
-    assert actions["open_folder"][0].isEnabled() and actions["delete"][0].isEnabled()
-    assert [action.text() for action, _button in actions.values()][:2] == [
-        MESSAGES.text("menu.server.start"),
-        MESSAGES.text("menu.server.stop"),
-    ]
+    view = setup.window.dashboard_view
+    assert view.tabs.cornerWidget() is not None
+    for button, key in (
+        (view.open_folder_button, "dashboard.open_folder"),
+        (view.open_logs_button, "dashboard.open_logs"),
+        (view.edit_button, "dashboard.edit"),
+        (view.delete_button, "dashboard.delete"),
+    ):
+        assert button.accessibleName() == MESSAGES.text(key)
+        assert view.tabs.cornerWidget().isAncestorOf(button)
+    assert view.start_button.isEnabled() and not view.stop_button.isEnabled()
+    assert view.kill_button.isHidden()  # Kill is only offered while stopping
 
 
 def test_refused_property_save_keeps_the_typed_values(qtbot: QtBot, tmp_path: Path) -> None:

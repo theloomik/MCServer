@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFrame,
+    QHBoxLayout,
     QLineEdit,
     QListWidget,
     QPlainTextEdit,
@@ -26,8 +27,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from mcserver.presentation.views.modal_host import take_footer
+
 PAGE_WIDTH = 640
 COMPACT_WIDTH = 520
+WIDE_MAX_WIDTH = 800
+"""A full page (Settings) grows with the window up to this width."""
 
 
 _FIELDS = (QLineEdit, QAbstractSpinBox, QComboBox, QCheckBox, QListWidget, QPlainTextEdit)
@@ -55,7 +60,7 @@ class PageHost(QStackedWidget):
         """Return the page on top, if any."""
         return self._pages[-1][0] if self._pages else None
 
-    def open_page(self, dialog: QDialog, *, compact: bool = False) -> None:
+    def open_page(self, dialog: QDialog, *, compact: bool = False, wide: bool = False) -> None:
         """Embed ``dialog`` above the current content and show it; it is removed when it finishes."""
         frame = QFrame()
         frame.setObjectName("pageFrame")
@@ -69,18 +74,37 @@ class PageHost(QStackedWidget):
         # A fixed width lets wrapped text compute its height; the page is never squeezed vertically (it scrolls).
         dialog.setMinimumWidth(0)
         dialog.setMaximumWidth(16777215)
-        dialog.setFixedWidth(COMPACT_WIDTH if compact else PAGE_WIDTH)
-        policy = QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
+        if wide:
+            dialog.setMaximumWidth(WIDE_MAX_WIDTH)
+            horizontal = QSizePolicy.Policy.Expanding
+        else:
+            dialog.setFixedWidth(COMPACT_WIDTH if compact else PAGE_WIDTH)
+            horizontal = QSizePolicy.Policy.Fixed
+        policy = QSizePolicy(horizontal, QSizePolicy.Policy.Minimum)
         policy.setHeightForWidth(True)  # wrapped text gets the height it needs at this width
         dialog.setSizePolicy(policy)
         if compact:
             holder_layout.addStretch(1)
-        holder_layout.addWidget(dialog, 0, Qt.AlignmentFlag.AlignHCenter)
+        if wide:
+            # Grows with the window up to WIDE_MAX_WIDTH, centred by the stretches either side.
+            row = QHBoxLayout()
+            row.addStretch(0)
+            row.addWidget(dialog, 1)
+            row.addStretch(0)
+            holder_layout.addLayout(row)
+        else:
+            holder_layout.addWidget(dialog, 0, Qt.AlignmentFlag.AlignHCenter)
         holder_layout.addStretch(1)
         scroll.setWidget(holder)
         frame_layout = QVBoxLayout(frame)
         frame_layout.setContentsMargins(0, 0, 0, 0)
-        frame_layout.addWidget(scroll)
+        frame_layout.setSpacing(0)
+        frame_layout.addWidget(scroll, 1)
+        footer = take_footer(dialog) if wide else None
+        if footer is not None:
+            # A long page (Settings) keeps Save and Cancel in view at the bottom of the content area.
+            footer.setObjectName("pageFooter")
+            frame_layout.addWidget(footer)
         self._pages.append((dialog, frame))
         self.addWidget(frame)
         self.setCurrentWidget(frame)

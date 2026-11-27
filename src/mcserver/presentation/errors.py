@@ -15,7 +15,6 @@ from mcserver.application.errors import (
     InvalidSourceJar,
     JavaNotFound,
     JavaVersionTooOld,
-    LegacyConfigurationUnavailable,
     ProcessGuardUnavailable,
     ProvisioningRollbackFailed,
     ServerCommandFailed,
@@ -174,8 +173,6 @@ def _describe_runtime_error(error: BaseException, details: str) -> UserMessage |
         )
     if isinstance(error, ServerConfigurationNotFound):
         return UserMessage("errors.server_not_found", {"server_id": error.server_id}, details)
-    if isinstance(error, LegacyConfigurationUnavailable):
-        return UserMessage("errors.legacy_unavailable", {}, details)
     return None
 
 

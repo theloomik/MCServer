@@ -39,7 +39,6 @@ EXPECTED: dict[str, str] = {
     "mcserver.application.errors.InvalidSourceJar": "errors.invalid_source_jar",
     "mcserver.application.errors.JavaNotFound": "errors.java_not_found",
     "mcserver.application.errors.JavaVersionTooOld": "errors.java_too_old",
-    "mcserver.application.errors.LegacyConfigurationUnavailable": "errors.legacy_unavailable",
     "mcserver.application.errors.ProvisioningRollbackFailed": "errors.provisioning_rollback_failed",
     "mcserver.application.errors.ServerCommandFailed": "errors.command_failed",
     "mcserver.application.errors.ServerConfigurationAlreadyExists": "errors.server_id_taken",
@@ -90,6 +89,8 @@ INTERNAL: dict[str, str] = {
     "mcserver.application.errors.ProcessGuardUnavailable": "raised inside the runner; reaches the GUI only as the "
     "cause of ServerStartFailed (errors.process_guard)",
     "mcserver.application.errors.LegacyServerEntryInvalid": "caught by the 0.9.1 import and listed in its result",
+    "mcserver.application.errors.LegacyConfigurationUnavailable": "only raised by the 0.9.1 import, which the "
+    "interface no longer offers",
     "mcserver.domain.errors.InvalidStateTransition": "a programming-error guard; the generic message with details "
     "is the right answer",
     "mcserver.infrastructure.process_runner.InvalidProcessConfiguration": "wrapped in ServerStartFailed by the "

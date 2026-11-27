@@ -55,7 +55,7 @@ def test_window_host_rebuilds_in_the_new_language_and_keeps_the_view(qtbot: QtBo
 
     assert host.window is new and new is not old
     assert new.language == "uk" and new.windowTitle() == messages_for("uk").text("app.title")
-    assert new.menuBar().actions()[0].text() == messages_for("uk").text("menu.file")
+    assert new.dashboard_view.start_button.text() == messages_for("uk").text("dashboard.start")
     row = new.dashboard_controller.state.row
     assert row is not None and row.server_id == "survival"
     assert new.dashboard_view.current_tab == "backups"

@@ -1,16 +1,18 @@
-"""Editor for ``server.properties`` (M4 design): toolbar, two-column typed editors, unsaved-changes count."""
+"""Editor for ``server.properties`` (UX overhaul): grouped rows with readable names, typed editors, search."""
 
 from __future__ import annotations
+
+from collections.abc import Mapping
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QScrollArea,
     QSpinBox,
     QVBoxLayout,
@@ -25,8 +27,42 @@ from mcserver.presentation.i18n import Messages
 from mcserver.presentation.views.widgets import Banner, button, caption, icon_label, panel_bar, repolish
 
 Editor = QCheckBox | QComboBox | QSpinBox | QLineEdit
-COLUMNS = 2
-_KEY_WIDTH = 180
+EDITOR_WIDTH = 220
+CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "common",
+        (
+            "motd",
+            "gamemode",
+            "difficulty",
+            "max-players",
+            "pvp",
+            "hardcore",
+            "white-list",
+            "enforce-whitelist",
+            "online-mode",
+        ),
+    ),
+    (
+        "world",
+        (
+            "level-name",
+            "level-seed",
+            "view-distance",
+            "simulation-distance",
+            "spawn-protection",
+            "max-world-size",
+            "allow-nether",
+            "spawn-monsters",
+            "allow-flight",
+            "force-gamemode",
+            "enable-command-block",
+            "player-idle-timeout",
+        ),
+    ),
+    ("network", ("server-port", "server-ip", "enable-query", "query.port", "enable-rcon", "rcon.port")),
+)
+"""Known properties by group, most used first; anything else goes to the collapsed "Other" group."""
 
 
 class ServerPropertiesView(QFrame):
@@ -44,6 +80,9 @@ class ServerPropertiesView(QFrame):
         self._initial: dict[str, str] = {}
         self._rows: dict[str, tuple[QLabel, QWidget, QLabel]] = {}
         self._cells: dict[str, QWidget] = {}
+        self._labels: dict[str, str] = {}
+        self._groups: list[tuple[QWidget, QFrame, list[str]]] = []
+        self.other_button: QPushButton | None = None
         self._present: set[str] = set()
         self._server_id: str | None = None
 
@@ -74,8 +113,8 @@ class ServerPropertiesView(QFrame):
         self.message = self.message_banner.text
         self.content = QWidget()
         self.content_layout = QVBoxLayout(self.content)
-        self.content_layout.setContentsMargins(20, 16, 20, 16)
-        self.content_layout.setSpacing(12)
+        self.content_layout.setContentsMargins(20, 12, 20, 20)
+        self.content_layout.setSpacing(8)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -144,62 +183,99 @@ class ServerPropertiesView(QFrame):
         self._editors.clear()
         self._rows.clear()
         self._cells.clear()
+        self._labels.clear()
+        self._groups.clear()
+        self.other_button = None
 
     def _rebuild(self, state: PropertiesState) -> None:
         self._clear()
         values = dict(state.values)
         self._present = set(values)
-        known = [key for key in KNOWN_PROPERTIES if key in values or not state.exists]
+        grouped = {key for _name, keys in CATEGORIES for key in keys}
+        groups: list[tuple[str, list[str]]] = [
+            (name, [key for key in keys if key in values or (not state.exists and key in KNOWN_PROPERTIES)])
+            for name, keys in CATEGORIES
+        ]
+        extra_known = [key for key in KNOWN_PROPERTIES if key not in grouped and (key in values or not state.exists)]
+        if extra_known:
+            groups[0][1].extend(extra_known)
         others = [key for key in values if key not in KNOWN_PROPERTIES]
-        for caption_key, keys in (("properties.known", known), ("properties.other", others)):
-            if not keys:
-                continue
-            self.content_layout.addWidget(caption(self._messages.text(caption_key)))
-            section = QWidget()
-            grid = QGridLayout(section)
-            grid.setContentsMargins(0, 0, 0, 6)
-            grid.setHorizontalSpacing(28)
-            grid.setVerticalSpacing(10)
-            for index, key in enumerate(keys):
-                cell = self._cell(key, values.get(key, ""), state.problems.get(key))
-                grid.addWidget(cell, index // COLUMNS, index % COLUMNS)
-            for column in range(COLUMNS):
-                grid.setColumnStretch(column, 1)
-            self.content_layout.addWidget(section)
+        groups.append(("other", others))
+        for name, keys in groups:
+            if keys:
+                self._group(name, keys, values, state.problems)
         self.content_layout.addStretch(1)
         self._initial = self.values()
         self._apply_filter(self.filter_edit.text())
 
-    def _cell(self, key: str, value: str, problem: str | None) -> QWidget:
-        cell = QWidget()
-        label = QLabel(key)
-        label.setObjectName("propertyKey")
-        label.setFixedWidth(_KEY_WIDTH)
+    def _group(self, name: str, keys: list[str], values: dict[str, str], problems: Mapping[str, str]) -> None:
+        """Add a titled group of rows; "other" starts collapsed (its keys are rare and technical)."""
+        heading = QWidget()
+        heading_row = QHBoxLayout(heading)
+        heading_row.setContentsMargins(0, 10, 0, 2)
+        title = caption(self._messages.text(f"properties.group.{name}"))
+        heading_row.addWidget(title, 1)
+        frame = QFrame()
+        frame.setObjectName("settingsGroup")
+        rows = QVBoxLayout(frame)
+        rows.setContentsMargins(0, 0, 0, 0)
+        rows.setSpacing(0)
+        for key in keys:
+            rows.addWidget(self._cell(key, values.get(key, ""), problems.get(key), first=rows.count() == 0))
+        if name == "other":
+            toggle = QPushButton(self._messages.plural("properties.other_count", len(keys)))
+            toggle.setObjectName("disclosureButton")
+            toggle.setCheckable(True)
+            toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+            toggle.toggled.connect(lambda _shown: self._apply_filter(self.filter_edit.text()))
+            toggle.toggled.connect(lambda shown: toggle.setIcon(icons.icon("chevron-up" if shown else "chevron-down")))
+            toggle.setIcon(icons.icon("chevron-down"))
+            heading_row.addWidget(toggle)
+            self.other_button = toggle
+        self.content_layout.addWidget(heading)
+        self.content_layout.addWidget(frame)
+        self._groups.append((heading, frame, keys))
+
+    def _cell(self, key: str, value: str, problem: str | None, *, first: bool = False) -> QWidget:
+        """One property: its readable name and technical key on the left, the editor on the right."""
+        cell = QFrame()
+        cell.setObjectName("settingsRow")
+        cell.setProperty("first", first)
+        friendly = self._messages.text(f"properties.label.{key}") if key in KNOWN_PROPERTIES else key
+        self._labels[key] = friendly
+        label = QLabel(friendly)
+        label.setObjectName("settingTitle")
         label.setProperty("invalid", bool(problem))
+        technical = QLabel(key)
+        technical.setObjectName("propertyKey")
+        technical.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        technical.setVisible(friendly != key)
         editor = self._editor(key, value, present=key in self._present)
         editor.setProperty("invalid", bool(problem))
         label.setBuddy(editor)
-        editor.setAccessibleName(key)  # property names are the same in every language
+        editor.setAccessibleName(friendly)
+        editor.setAccessibleDescription(key)
+        message = self._messages.text("properties.invalid_value", name=key, reason=problem) if problem else ""
         if problem:
-            editor.setAccessibleDescription(self._messages.text("properties.invalid_value", name=key, reason=problem))
+            editor.setAccessibleDescription(message)
+        if not isinstance(editor, QCheckBox):
+            editor.setFixedWidth(EDITOR_WIDTH)
         self._watch(editor)
-        error = QLabel(self._messages.text("properties.invalid_value", name=key, reason=problem) if problem else "")
+        error = QLabel(message)
         error.setObjectName("fieldError")
         error.setWordWrap(True)
         error.setVisible(bool(problem))
-        line = QHBoxLayout()
-        line.setContentsMargins(0, 0, 0, 0)
-        line.setSpacing(12)
-        line.addWidget(label, 0, Qt.AlignmentFlag.AlignVCenter)
-        line.addWidget(editor, 1)
-        error_line = QHBoxLayout()
-        error_line.setContentsMargins(_KEY_WIDTH + 12, 0, 0, 0)
-        error_line.addWidget(error)
-        box = QVBoxLayout(cell)
-        box.setContentsMargins(0, 0, 0, 0)
-        box.setSpacing(4)
-        box.addLayout(line)
-        box.addLayout(error_line)
+        texts = QVBoxLayout()
+        texts.setSpacing(1)
+        texts.addWidget(label)
+        texts.addWidget(technical)
+        texts.addWidget(error)
+        line = QHBoxLayout(cell)
+        line.setContentsMargins(16, 9, 16, 9)
+        line.setSpacing(16)
+        line.addLayout(texts, 1)
+        line.addWidget(editor, 0, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
+        repolish(cell)
         self._editors[key] = editor
         self._rows[key] = (label, editor, error)
         self._cells[key] = cell
@@ -267,9 +343,16 @@ class ServerPropertiesView(QFrame):
         self.save_button.setEnabled(self._server_id is not None and count > 0)
 
     def _apply_filter(self, text: str) -> None:
+        """Show the rows whose readable name or key contains ``text``; searching opens the "Other" group."""
         needle = text.strip().lower()
         for key, cell in self._cells.items():
-            cell.setVisible(not needle or needle in key.lower())
+            cell.setVisible(not needle or needle in key.lower() or needle in self._labels.get(key, "").lower())
+        other_open = self.other_button is not None and self.other_button.isChecked()
+        for heading, frame, keys in self._groups:
+            matches = any(not self._cells[key].isHidden() for key in keys)
+            is_other = self.other_button is not None and heading.isAncestorOf(self.other_button)
+            frame.setVisible(matches and (not is_other or other_open or bool(needle)))
+            heading.setVisible(matches)
 
     def _show_message(self, text: str, tone: str) -> None:
         self.message_banner.show_message(text, tone)
