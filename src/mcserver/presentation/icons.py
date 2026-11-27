@@ -86,6 +86,45 @@ def _pixmap(name: str, color: str, size: int, scale: float) -> QPixmap:
     return image
 
 
+LOGO_SVG = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<defs><linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+<stop offset="0%" stop-color="#43E6A1"/><stop offset="100%" stop-color="#00C982"/></linearGradient></defs>
+<rect width="64" height="64" rx="15" fill="url(#green)"/>
+<g fill="#10251D">
+<rect x="13" y="13" width="38" height="17" rx="5"/><rect x="13" y="34" width="38" height="17" rx="5"/>
+<circle cx="21" cy="21.5" r="3" fill="#35D99A"/><circle cx="21" cy="42.5" r="3" fill="#35D99A"/>
+<rect x="29" y="19" width="15" height="5" rx="2.5" fill="#35D99A"/>
+<rect x="29" y="40" width="15" height="5" rx="2.5" fill="#35D99A"/>
+</g></svg>"""
+"""The MCServer logo: two server racks on a green rounded square (the same in both themes)."""
+
+APP_ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
+"""Sizes drawn for the window, title bar and taskbar icon, so Windows never scales a bitmap blurry."""
+
+
+@lru_cache(maxsize=32)
+def logo_pixmap(size: int = 64, scale: float = 2.0) -> QPixmap:
+    """Return the logo at ``size`` logical pixels."""
+    renderer = QSvgRenderer(QByteArray(LOGO_SVG))
+    device = max(1, round(size * scale))
+    image = QPixmap(device, device)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    renderer.render(painter, QRectF(0, 0, device, device))
+    painter.end()
+    image.setDevicePixelRatio(scale)
+    return image
+
+
+def app_icon() -> QIcon:
+    """Return the application icon, drawn at every common size."""
+    result = QIcon()
+    for size in APP_ICON_SIZES:
+        result.addPixmap(logo_pixmap(size, 1.0))
+    return result
+
+
 def icon(name: str, color: str | None = None, size: int = 16, disabled: str | None = None) -> QIcon:
     """Return a ``QIcon`` with a dimmed disabled state (colours default to the current theme)."""
     result = QIcon()
@@ -94,4 +133,4 @@ def icon(name: str, color: str | None = None, size: int = 16, disabled: str | No
     return result
 
 
-__all__ = ["NAMES", "icon", "pixmap"]
+__all__ = ["APP_ICON_SIZES", "LOGO_SVG", "NAMES", "app_icon", "icon", "logo_pixmap", "pixmap"]

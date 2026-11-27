@@ -106,7 +106,7 @@ class ServerListView(QWidget):
         brand_mark.setObjectName("brandMark")
         brand_mark.setFixedSize(24, 24)
         brand_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        brand_mark.setPixmap(icons.pixmap("server", theme.TEXT_ON_ACCENT, 14))
+        brand_mark.setPixmap(icons.logo_pixmap(24))
         brand_title = QLabel(messages.text("app.title"))
         brand_title.setObjectName("brandTitle")
         brand = QHBoxLayout()

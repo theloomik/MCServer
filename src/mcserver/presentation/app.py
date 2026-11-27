@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QApplication
 from mcserver.application.ports import JavaRuntimeProvider
 from mcserver.bootstrap.server_runtime import build_server_runtime
 from mcserver.infrastructure.psutil_metrics import total_memory_mb
+from mcserver.presentation import icons
 from mcserver.presentation.adapters.session_end import CRASH_STOP_TIMEOUT_SECONDS, CrashHandler, SessionEndHandler
 from mcserver.presentation.appearance import apply_appearance
 from mcserver.presentation.i18n import Messages, messages_for, resolve_language
@@ -138,11 +139,28 @@ def run(app: QApplication, services: PresentationServices, messages: Messages) -
         services.close()
 
 
+APP_USER_MODEL_ID = "MCServer.MCServer.2"
+"""Lets Windows show MCServer's own icon on the taskbar, not Python's, and group its windows together."""
+
+
+def _use_own_taskbar_entry() -> None:
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+    except (AttributeError, OSError):  # an old or unusual Windows keeps the default entry; nothing else depends on it
+        pass
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Start the MCServer 2.0 GUI."""
     existing = QApplication.instance()
     app = existing if isinstance(existing, QApplication) else QApplication(list(sys.argv if argv is None else argv))
     app.setApplicationName("MCServer")
+    app.setWindowIcon(icons.app_icon())  # every window, including one rebuilt after a language change
+    _use_own_taskbar_entry()
     services = build_services(servers_root())
     setting = services.settings.current.language if services.settings is not None else None
     return run(app, services, messages_for(resolve_language(setting, QLocale.system().name())))
