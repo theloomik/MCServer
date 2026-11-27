@@ -588,10 +588,16 @@ class MainWindow(QMainWindow):
         except Exception:
             _logger.debug("Could not read process metrics.", exc_info=True)
             snapshot = None
+        history = self._services.metrics_history
+        if snapshot is not None:
+            history.add(snapshot)  # the running server's history, whichever server is selected
         row = self.dashboard_controller.state.row
         if snapshot is not None and (row is None or snapshot.server_id != row.server_id):
             snapshot = None
         self.dashboard_view.show_metrics(snapshot)
+        self.dashboard_view.show_history(
+            history.points(row.server_id if row is not None else None), live=snapshot is not None
+        )
         activity = self._services.activity
         if activity is None or snapshot is None:
             self.dashboard_view.show_activity(None)
