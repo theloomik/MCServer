@@ -165,7 +165,8 @@ Open **Settings** at the bottom left (Ctrl+,).
 - **Servers** — open the servers folder; **Stop timeout** (how long Stop waits before Kill is
   offered); **Startup timeout** (how long a start may take); **Restart a server automatically
   after a crash** (at most 3 times in 10 minutes; a server you stopped yourself is never restarted).
-- **Help** — the setup guide and **About MCServer** (version and project page).
+- **Help** — the setup guide, **MCServer log** (opens the folder with MCServer's own log) and
+  **About MCServer** (version and project page).
 
 Keyboard shortcuts: Ctrl+N new server · Ctrl+R start · Ctrl+, settings · F5 refresh the list ·
 Ctrl+1…4 tabs · Ctrl+L server list · Ctrl+K console.
@@ -179,6 +180,7 @@ Everything you create lives in your user profile, never in the program folder:
 | Servers (each in its own folder, with its worlds) | `%LOCALAPPDATA%\MCServer\servers\<server folder>` |
 | MCServer's settings and server list | `%LOCALAPPDATA%\MCServer\servers\` |
 | Backups | `%LOCALAPPDATA%\MCServer\servers\.backups\<server>` |
+| MCServer's log (for bug reports) | `%LOCALAPPDATA%\MCServer\logs\mcserver.log` |
 
 **Settings → Servers folder → Open** opens it. Paste `%LOCALAPPDATA%\MCServer` into the Explorer
 address bar to get there directly. Updating or uninstalling MCServer never touches this folder.
@@ -215,4 +217,5 @@ that the server is *Running*. Over the internet, the port has to be forwarded on
 Windows Firewall must allow Java (Windows asks the first time a server starts).
 
 **Something else** — press **Details…** on an error to see the technical details and copy them,
-then [report the problem](https://github.com/theloomik/MCServer/issues/new/choose).
+then [report the problem](https://github.com/theloomik/MCServer/issues/new/choose). Attaching
+`mcserver.log` (**Settings → Help → MCServer log**) helps a lot.

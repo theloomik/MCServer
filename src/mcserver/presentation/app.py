@@ -25,6 +25,7 @@ from mcserver.presentation import icons
 from mcserver.presentation.adapters.session_end import CRASH_STOP_TIMEOUT_SECONDS, CrashHandler, SessionEndHandler
 from mcserver.presentation.appearance import apply_appearance
 from mcserver.presentation.i18n import Messages, messages_for, resolve_language
+from mcserver.presentation.log_file import logs_folder, start_log_file
 from mcserver.presentation.main_window import MainWindow
 from mcserver.presentation.paths import servers_root
 from mcserver.presentation.services import PresentationServices
@@ -182,6 +183,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     app.setWindowIcon(icons.app_icon())  # every window, including one rebuilt after a language change
     _use_own_taskbar_entry()
     _announce_running()
-    services = build_services(servers_root())
+    root = servers_root()
+    start_log_file(logs_folder(root), __version__)
+    services = build_services(root)
     setting = services.settings.current.language if services.settings is not None else None
     return run(app, services, messages_for(resolve_language(setting, QLocale.system().name())))
