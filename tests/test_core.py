@@ -39,7 +39,9 @@ def test_server_start_rejects_busy_port(tmp_path, monkeypatch):
     (server_dir / "server.properties").write_text("server-ip=127.0.0.1\nserver-port=25565\n", encoding="utf-8")
     logs: list = []
     stopped: list[int] = []
-    callbacks = core.ServerCallbacks(lambda text, level: logs.append((text, level)), lambda *_: None, lambda *_: None, stopped.append)
+    callbacks = core.ServerCallbacks(
+        lambda text, level: logs.append((text, level)), lambda *_: None, lambda *_: None, stopped.append
+    )
     instance = core.ServerInstance(
         core.ServerData("Test", "paper.jar", str(server_dir / "paper.jar"), 1024, str(server_dir)),
         callbacks,
@@ -59,7 +61,9 @@ def test_server_start_rejects_missing_jar(tmp_path, monkeypatch):
     server_dir.mkdir()
     logs: list = []
     stopped: list[int] = []
-    callbacks = core.ServerCallbacks(lambda text, level: logs.append((text, level)), lambda *_: None, lambda *_: None, stopped.append)
+    callbacks = core.ServerCallbacks(
+        lambda text, level: logs.append((text, level)), lambda *_: None, lambda *_: None, stopped.append
+    )
     instance = core.ServerInstance(
         core.ServerData("Test", "missing.jar", str(server_dir / "missing.jar"), 1024, str(server_dir)),
         callbacks,
@@ -105,15 +109,17 @@ def test_invalid_ram_in_config_falls_back_to_safe_default(tmp_path):
     servers_dir = tmp_path / "servers"
     servers_dir.mkdir()
     (servers_dir / "servers_config.json").write_text(
-        json.dumps({
-            "Survival": {
-                "name": "Survival",
-                "core_name": "paper.jar",
-                "jar_path": "paper.jar",
-                "ram": "nope",
-                "directory": str(servers_dir / "Survival"),
+        json.dumps(
+            {
+                "Survival": {
+                    "name": "Survival",
+                    "core_name": "paper.jar",
+                    "jar_path": "paper.jar",
+                    "ram": "nope",
+                    "directory": str(servers_dir / "Survival"),
+                }
             }
-        }),
+        ),
         encoding="utf-8",
     )
 
@@ -140,7 +146,9 @@ def test_server_start_rejects_out_of_range_port(tmp_path, monkeypatch):
     (server_dir / "server.properties").write_text("server-port=99999\n", encoding="utf-8")
     logs: list = []
     stopped: list[int] = []
-    callbacks = core.ServerCallbacks(lambda text, level: logs.append((text, level)), lambda *_: None, lambda *_: None, stopped.append)
+    callbacks = core.ServerCallbacks(
+        lambda text, level: logs.append((text, level)), lambda *_: None, lambda *_: None, stopped.append
+    )
     instance = core.ServerInstance(
         core.ServerData("Test", "paper.jar", str(jar), 1024, str(server_dir)),
         callbacks,
@@ -158,7 +166,6 @@ def test_double_start_is_a_no_op(tmp_path, monkeypatch):
     """Calling start() while state == STARTING must not launch a second process."""
     server_dir = tmp_path / "server"
     server_dir.mkdir()
-    logs: list = []
     callbacks = core.ServerCallbacks(lambda *_: None, lambda *_: None, lambda *_: None, lambda *_: None)
     instance = core.ServerInstance(
         core.ServerData("Test", "paper.jar", str(server_dir / "paper.jar"), 1024, str(server_dir)),
@@ -178,16 +185,18 @@ def test_partial_config_recovery_skips_one_bad_entry(tmp_path):
     servers_dir.mkdir()
     (servers_dir / "Survival").mkdir()
     (servers_dir / "servers_config.json").write_text(
-        json.dumps({
-            "Survival": {
-                "name": "Survival",
-                "core_name": "paper.jar",
-                "jar_path": "paper.jar",
-                "ram": 1024,
-                "directory": str(servers_dir / "Survival"),
-            },
-            "corrupt!name": "not a dict",
-        }),
+        json.dumps(
+            {
+                "Survival": {
+                    "name": "Survival",
+                    "core_name": "paper.jar",
+                    "jar_path": "paper.jar",
+                    "ram": 1024,
+                    "directory": str(servers_dir / "Survival"),
+                },
+                "corrupt!name": "not a dict",
+            }
+        ),
         encoding="utf-8",
     )
 

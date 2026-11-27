@@ -1,0 +1,185 @@
+"""Tests for the GUI composition root and main window shell (offscreen Qt)."""
+
+from pathlib import Path
+
+import pytest
+from PySide6.QtWidgets import QApplication, QStatusBar
+from pytestqt.qtbot import QtBot
+
+from mcserver.application.errors import JavaNotFound
+from mcserver.application.ports import JavaInstallation
+from mcserver.application.server_coordinator import ServerCoordinator
+from mcserver.application.server_output import ServerOutputBuffer
+from mcserver.bootstrap.server_runtime import build_server_creation, build_server_management
+from mcserver.presentation.app import build_services, run
+from mcserver.presentation.i18n import messages_for
+from mcserver.presentation.main_window import MainWindow
+from mcserver.presentation.services import PresentationServices
+
+
+class StubJavaResolver:
+    configured_executable = None
+
+    def find(self, minimum_major: int | None = None) -> JavaInstallation:
+        return JavaInstallation("java", 21, "path")
+
+    def configure(self, executable: str | None) -> JavaInstallation | None:
+        return None
+
+
+class MissingJavaResolver(StubJavaResolver):
+    def find(self, minimum_major: int | None = None) -> JavaInstallation:
+        raise JavaNotFound(minimum_major)
+
+
+def fake_services(root: Path, *, java: bool, closes: list[str] | None = None) -> PresentationServices:
+    """Services built from real (cheap, file-free until used) builders, with a recording closer."""
+    calls = closes if closes is not None else []
+    return PresentationServices(
+        servers_root=root,
+        management=build_server_management(root),
+        server_creation=build_server_creation(root),
+        coordinator=None if not java else ServerCoordinator(runner_factory=None),  # type: ignore[arg-type]
+        output=ServerOutputBuffer() if java else None,
+        java_problem=None if java else "No usable Java runtime was found.",
+        closer=lambda: calls.append("closed"),
+    )
+
+
+# --- build_services ------------------------------------------------------------------
+
+
+def test_full_mode_launches_from_configuration_store(tmp_path: Path) -> None:
+    services = build_services(tmp_path, StubJavaResolver())
+    try:
+        assert services.can_run_servers
+        assert services.java_problem is None
+        assert isinstance(services.coordinator, ServerCoordinator)
+        assert isinstance(services.output, ServerOutputBuffer)
+        factory = services.coordinator._runner_factory  # type: ignore[attr-defined]
+        assert type(factory._repository).__name__ == "StoredServerLaunchSettings"
+    finally:
+        services.close()
+
+
+def test_missing_java_is_reported_and_the_runtime_is_still_built(tmp_path: Path) -> None:
+    services = build_services(tmp_path, MissingJavaResolver())
+
+    # Java is looked up on every start, so the runtime is complete; only the problem is reported.
+    assert isinstance(services.coordinator, ServerCoordinator)
+    assert services.java is not None and not services.java.status().available
+    assert services.java_problem == "No usable Java runtime was found."
+    # Management and creation share one repository, as in the full runtime.
+    shared = services.management._repository  # type: ignore[attr-defined]
+    assert services.server_creation._management._repository is shared  # type: ignore[attr-defined]
+    assert services.management.list_servers() == ()
+    services.close()
+
+
+def test_close_is_idempotent(tmp_path: Path) -> None:
+    closes: list[str] = []
+    services = fake_services(tmp_path, java=False, closes=closes)
+
+    services.close()
+    services.close()
+
+    assert closes == ["closed"]
+    assert services.closed
+
+
+def test_full_mode_close_releases_runtime(tmp_path: Path) -> None:
+    services = build_services(tmp_path, StubJavaResolver())
+    assert services.output is not None
+    services.output.subscribe(lambda _line: None)
+    dispatcher = services.output._dispatcher  # type: ignore[attr-defined]
+
+    services.close()
+
+    assert dispatcher is not None and not dispatcher.is_alive()
+
+
+# --- main window ------------------------------------------------------------------------
+
+
+def test_window_has_the_server_list_and_content_without_menu_or_status_bars(qtbot: QtBot, tmp_path: Path) -> None:
+    messages = messages_for()
+    window = MainWindow(fake_services(tmp_path, java=True), messages)
+    qtbot.addWidget(window)
+
+    assert window.windowTitle() == messages.text("app.title")
+    layout = window.centralWidget().layout()
+    assert layout.itemAt(0).widget() is window.server_list_view
+    assert layout.itemAt(1).widget() is window.content_host
+    assert window.content_host.currentWidget() is window.dashboard_view
+    assert window.menuWidget() is None or window.menuBar().actions() == []
+    assert window.findChild(QStatusBar) is None
+
+
+def test_default_size_fits_a_laptop_screen(qtbot: QtBot, tmp_path: Path) -> None:
+    window = MainWindow(fake_services(tmp_path, java=True), messages_for())
+    qtbot.addWidget(window)
+    assert window.width() <= 1280 and window.height() <= 720
+    assert window.minimumWidth() <= 900 and window.minimumHeight() <= 560
+
+
+def test_window_does_not_close_services(qtbot: QtBot, tmp_path: Path) -> None:
+    closes: list[str] = []
+    window = MainWindow(fake_services(tmp_path, java=True, closes=closes), messages_for())
+    qtbot.addWidget(window)
+    window.show()
+
+    window.close()
+
+    assert closes == []
+
+
+# --- run (event loop lifetime) ------------------------------------------------------------
+
+
+class EventLoopStub:
+    """Stands in for ``QApplication.exec``: running the real loop on the shared test
+    QApplication puts it into its closing state and breaks later cross-thread signal tests."""
+
+    def __init__(self, qapp: QApplication) -> None:
+        self.qapp = qapp
+        self.windows_seen: list[str] = []
+        self.commitDataRequest = qapp.commitDataRequest
+        self.exit_codes: list[int] = []
+
+    def exit(self, code: int) -> None:
+        self.exit_codes.append(code)
+
+    def exec(self) -> int:
+        self.windows_seen = [widget.windowTitle() for widget in self.qapp.topLevelWidgets() if widget.isVisible()]
+        for widget in self.qapp.topLevelWidgets():
+            if isinstance(widget, MainWindow) and widget.isVisible():
+                widget.close()
+        return 0
+
+
+def test_run_shows_window_and_closes_services_exactly_once_after_event_loop(qapp: QApplication, tmp_path: Path) -> None:
+    closes: list[str] = []
+    services = fake_services(tmp_path, java=True, closes=closes)
+    loop = EventLoopStub(qapp)
+
+    exit_code = run(loop, services, messages_for())  # type: ignore[arg-type]
+
+    assert exit_code == 0
+    assert messages_for().text("app.title") in loop.windows_seen
+    assert closes == ["closed"]
+
+
+def test_run_closes_services_even_if_window_creation_fails(
+    qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    closes: list[str] = []
+    services = fake_services(tmp_path, java=False, closes=closes)
+
+    def broken_window(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("widget construction failed")
+
+    monkeypatch.setattr("mcserver.presentation.app.MainWindow", broken_window)
+
+    with pytest.raises(RuntimeError, match="widget construction failed"):
+        run(qapp, services, messages_for())
+    assert closes == ["closed"]
