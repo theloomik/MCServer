@@ -252,11 +252,15 @@ def test_settings_page_groups_appearance_java_servers_and_help(qtbot: QtBot, tmp
     setup.window.open_settings_dialog()
     page = setup.window.settings_dialog
     assert page is not None
-    assert page.java_status.text() == MESSAGES.text("settings.java.found_at", major=21, path="C:/jdk/bin/java.exe")
+    assert page.java_status.text().replace("\u200b", "") == MESSAGES.text(
+        "settings.java.found_at", major=21, path="C:/jdk/bin/java.exe"
+    )
     assert page.java_status.property("tone") == "ok"
     page._pick_java = lambda _parent: "C:/jdk-17/bin/java.exe"  # type: ignore[method-assign]
     page.choose_java()
-    assert page.java_label.text() == MESSAGES.text("settings.java.custom", path="C:/jdk-17/bin/java.exe")
+    assert page.java_label.text().replace("\u200b", "") == MESSAGES.text(
+        "settings.java.custom", path="C:/jdk-17/bin/java.exe"
+    )
     assert page.java_status.text() == MESSAGES.text("settings.java.found", major=21)
     page.use_automatic_java()
     assert page.java_label.text() == MESSAGES.text("settings.java.automatic_hint")
@@ -353,3 +357,23 @@ def test_a_long_path_in_a_banner_wraps_instead_of_widening_the_dialog(qtbot: QtB
     banner.show_message(f"Found Java 25: {path}", "success")
     assert banner.minimumSizeHint().width() < 320
     assert banner.text.text().replace("\u200b", "") == f"Found Java 25: {path}"  # copying gives the real path
+
+
+def test_a_long_servers_folder_path_wraps_and_no_hint_is_cut_off(qtbot: QtBot, tmp_path: Path) -> None:
+    from PySide6.QtWidgets import QLabel
+
+    # Many folders without spaces or dashes, so the path can only break at its separators.
+    root = tmp_path.joinpath(*[f"Minecraft_servers_folder_{index}" for index in range(6)])
+    root.mkdir(parents=True)
+    setup = M2Setup(qtbot, root, SURVIVAL)
+    window = setup.window
+    window.resize(1000, 640)
+    window.show()
+    window.open_settings_dialog()
+    page = window.settings_dialog
+    assert page is not None
+    qtbot.wait(50)
+    assert page.minimumSizeHint().width() <= page.width()  # the path no longer widens the page
+    for label in page.findChildren(QLabel):
+        if label.wordWrap() and label.isVisible() and label.text():
+            assert label.height() + 1 >= label.heightForWidth(label.width()), label.text()

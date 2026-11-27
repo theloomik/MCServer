@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QCheckBox, QWidget
 from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.presentation.dialogs.form import FormDialog, danger_button, secondary_button
 from mcserver.presentation.i18n import Messages
+from mcserver.presentation.views.widgets import breakable
 
 
 class DeleteServerDialog(FormDialog):
@@ -26,7 +27,7 @@ class DeleteServerDialog(FormDialog):
         )
         self.files_check = QCheckBox(messages.text("delete.files"))
         self.body.addWidget(self.files_check)
-        self.files_hint = self.add_note(messages.text("delete.files_hint", path=str(folder)))
+        self.files_hint = self.add_note(breakable(messages.text("delete.files_hint", path=str(folder))))
         self.cancel_button = secondary_button(messages.text("delete.cancel"))
         self.cancel_button.clicked.connect(self.reject)
         self.delete_button = danger_button(messages.text("delete.confirm"), "trash")

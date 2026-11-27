@@ -58,7 +58,7 @@ def test_steps_back_next_and_finish(qtbot: QtBot, tmp_path: Path) -> None:
     ) == dialog.java_banner.text.text().replace("\u200b", "")
 
     dialog.next_button.click()
-    assert controller.state.step is Step.FOLDER and dialog.folder_path.text() == str(tmp_path)
+    assert controller.state.step is Step.FOLDER and dialog.folder_path.text().replace("​", "") == str(tmp_path)
     dialog.back_button.click()
     assert controller.state.step is Step.JAVA
     dialog.next_button.click()
