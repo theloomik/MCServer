@@ -498,5 +498,14 @@
   "properties.label.enable-command-block": "Командні блоки",
   "properties.label.enable-rcon": "Віддалена консоль (RCON)",
   "properties.label.enable-query": "Відповідати на запити сервера",
-  "properties.label.force-gamemode": "Примусовий режим гри під час входу"
+  "properties.label.force-gamemode": "Примусовий режим гри під час входу",
+  "about.title": "Про MCServer",
+  "about.version": "Версія {version}",
+  "about.description": "Створюйте, запускайте й доглядайте сервери Minecraft на Windows без командного рядка.",
+  "about.license": "Вільна програма за ліцензією MIT. {copyright}",
+  "about.homepage": "Сторінка проєкту на GitHub",
+  "about.close": "Закрити",
+  "settings.about": "Детальніше",
+  "settings.about.label": "Про MCServer",
+  "settings.about.hint": "Версія, ліцензія та сторінка проєкту."
 }

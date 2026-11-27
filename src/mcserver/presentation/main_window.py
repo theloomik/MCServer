@@ -43,6 +43,7 @@ from mcserver.presentation.controllers.server_dashboard import ServerDashboardCo
 from mcserver.presentation.controllers.server_list import ServerListController, ServerListState
 from mcserver.presentation.controllers.server_management import ManagementController
 from mcserver.presentation.controllers.worlds import WorldsController
+from mcserver.presentation.dialogs.about_dialog import AboutDialog
 from mcserver.presentation.dialogs.adopt_server_dialog import AdoptServerDialog
 from mcserver.presentation.dialogs.confirm_dialog import Choice, ask
 from mcserver.presentation.dialogs.create_server_dialog import CreateServerDialog
@@ -701,6 +702,12 @@ class MainWindow(QMainWindow):
         dialog.finished.connect(lambda _result: self._forget_dialog("adopt_dialog"))
         self.show_page(dialog)
 
+    def open_about_dialog(self) -> None:
+        """Show the version, license and project page."""
+        dialog = AboutDialog(self._messages, self)
+        dialog.finished.connect(dialog.deleteLater)
+        self.show_page(dialog, compact=True)
+
     def open_settings_dialog(self) -> None:
         """Show the application settings."""
         settings = self._services.settings
@@ -717,6 +724,7 @@ class MainWindow(QMainWindow):
             open_folder=self._open_folder,
         )
         dialog.setup_guide_requested.connect(self.open_first_run)
+        dialog.about_requested.connect(self.open_about_dialog)
         dialog.accepted.connect(self._after_settings_saved)
         self.settings_dialog = dialog
         dialog.finished.connect(lambda _result: self._forget_dialog("settings_dialog"))

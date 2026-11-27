@@ -323,3 +323,33 @@ def test_the_welcome_page_shows_the_logo(qtbot: QtBot, tmp_path: Path) -> None:
     setup = M3Setup(qtbot, tmp_path)
     logo = setup.window.dashboard_view.welcome_page.findChild(QWidget, "welcomeLogo")
     assert logo is not None and not logo.pixmap().isNull()
+
+
+# --- about (M5) -----------------------------------------------------------------------------
+
+
+def test_about_shows_the_version_and_project_page(qtbot: QtBot, tmp_path: Path) -> None:
+    import mcserver
+    from mcserver.presentation.dialogs.about_dialog import AboutDialog
+
+    setup = M2Setup(qtbot, tmp_path, SURVIVAL)
+    window = setup.window
+    window.open_settings_dialog()
+    assert window.settings_dialog is not None
+    window.settings_dialog.about_button.click()
+    about = window.page_host.current_page
+    assert isinstance(about, AboutDialog)
+    assert about.version_label.text() == MESSAGES.text("about.version", version=mcserver.__version__)
+    assert about.homepage_button.toolTip() == mcserver.HOMEPAGE
+    assert mcserver.COPYRIGHT in about.license_label.text()
+
+
+def test_a_long_path_in_a_banner_wraps_instead_of_widening_the_dialog(qtbot: QtBot) -> None:
+    from mcserver.presentation.views.widgets import Banner
+
+    banner = Banner()
+    qtbot.addWidget(banner)
+    path = r"C:\Program Files\Common Files\Oracle\Java\javapath_target_419678718\java.exe"
+    banner.show_message(f"Found Java 25: {path}", "success")
+    assert banner.minimumSizeHint().width() < 320
+    assert banner.text.text().replace("\u200b", "") == f"Found Java 25: {path}"  # copying gives the real path

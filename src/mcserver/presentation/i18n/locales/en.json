@@ -492,5 +492,14 @@
   "properties.label.enable-command-block": "Command blocks",
   "properties.label.enable-rcon": "Remote console (RCON)",
   "properties.label.enable-query": "Answer server queries",
-  "properties.label.force-gamemode": "Force the game mode on join"
+  "properties.label.force-gamemode": "Force the game mode on join",
+  "about.title": "About MCServer",
+  "about.version": "Version {version}",
+  "about.description": "Create, run and look after Minecraft servers on Windows, without the command line.",
+  "about.license": "Free software under the MIT License. {copyright}",
+  "about.homepage": "Project page on GitHub",
+  "about.close": "Close",
+  "settings.about": "About",
+  "settings.about.label": "About MCServer",
+  "settings.about.hint": "Version, license and project page."
 }

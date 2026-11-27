@@ -316,6 +316,7 @@ QComboBox QAbstractItemView {{
     selection-background-color: {ACCENT_SUBTLE}; outline: none;
 }}
 QLabel#dialogTitle {{ font-size: 18px; font-weight: 600; }}
+QLabel#aboutName {{ font-size: 20px; font-weight: 600; }}
 QFrame#dialogCard {{ background-color: {SURFACE_CARD}; border: none; }}
 QFrame#dialogCard QLabel {{ background: transparent; }}
 QFrame#dialogFooter {{ background-color: {BG_SIDEBAR}; border: none; border-top: 1px solid {BORDER}; }}
