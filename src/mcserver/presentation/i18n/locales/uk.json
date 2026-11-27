@@ -495,5 +495,7 @@
   "a11y.worlds_table": "Світи",
   "menu.view": "&Вигляд",
   "menu.view.server_list": "Перейти до &списку серверів",
-  "menu.view.console": "Перейти до &команди консолі"
+  "menu.view.console": "Перейти до &команди консолі",
+  "errors.server_not_found": "{server_id} більше немає в списку серверів. Можливо, його видалили поза MCServer; оновіть список.",
+  "errors.invalid_schedule": "Розклад резервних копій не збережено: інтервал має бути {min_hours}–{max_hours} год, а кількість копій — {min_keep}–{max_keep}."
 }

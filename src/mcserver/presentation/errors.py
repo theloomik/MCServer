@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from mcserver.application.backup_schedule import INTERVAL_HOURS_RANGE, KEEP_RANGE, InvalidBackupSchedule
 from mcserver.application.backups import BackupFailed, BackupNotFound, BackupNotPossible
 from mcserver.application.errors import (
     ActiveServerAlreadyExists,
@@ -19,6 +20,7 @@ from mcserver.application.errors import (
     ProvisioningRollbackFailed,
     ServerCommandFailed,
     ServerConfigurationAlreadyExists,
+    ServerConfigurationNotFound,
     ServerConfigurationStorageError,
     ServerCreationRollbackFailed,
     ServerDirectoryAlreadyExists,
@@ -159,6 +161,19 @@ def _describe_runtime_error(error: BaseException, details: str) -> UserMessage |
         )
     if isinstance(error, InvalidSettings):
         return UserMessage("errors.invalid_settings", {"reason": str(error)}, details)
+    if isinstance(error, InvalidBackupSchedule):
+        return UserMessage(
+            "errors.invalid_schedule",
+            {
+                "min_hours": INTERVAL_HOURS_RANGE[0],
+                "max_hours": INTERVAL_HOURS_RANGE[1],
+                "min_keep": KEEP_RANGE[0],
+                "max_keep": KEEP_RANGE[1],
+            },
+            details,
+        )
+    if isinstance(error, ServerConfigurationNotFound):
+        return UserMessage("errors.server_not_found", {"server_id": error.server_id}, details)
     if isinstance(error, LegacyConfigurationUnavailable):
         return UserMessage("errors.legacy_unavailable", {}, details)
     return None
