@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in MCServer doesn't work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time! Please check the [troubleshooting section](https://github.com/theloomik/MCServer/blob/main/docs/user-guide.md#troubleshooting) first.
+        Don't post anything private (passwords, your public IP address, player data).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Create a Paper 1.21 server with 4 GB
+        2. Press Start
+        3. ...
+  - type: input
+    id: version
+    attributes:
+      label: MCServer version
+      description: Settings → Help → About MCServer.
+      placeholder: 2.0.0
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2
+  - type: input
+    id: server
+    attributes:
+      label: Server software and Minecraft version
+      placeholder: Paper 1.21.4, Java 21
+  - type: textarea
+    id: details
+    attributes:
+      label: Error details or console output
+      description: If an error offered **Details…**, press it and **Copy**. Paste console lines here too.
+      render: text
