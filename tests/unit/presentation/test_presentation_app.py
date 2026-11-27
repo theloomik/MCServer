@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QStatusBar
 from pytestqt.qtbot import QtBot
 
 from mcserver.application.errors import JavaNotFound
@@ -101,38 +101,25 @@ def test_full_mode_close_releases_runtime(tmp_path: Path) -> None:
 # --- main window ------------------------------------------------------------------------
 
 
-def test_window_shows_title_folder_and_java_status_from_catalog(qtbot: QtBot, tmp_path: Path) -> None:
+def test_window_has_the_server_list_and_content_without_menu_or_status_bars(qtbot: QtBot, tmp_path: Path) -> None:
     messages = messages_for()
     window = MainWindow(fake_services(tmp_path, java=True), messages)
     qtbot.addWidget(window)
 
     assert window.windowTitle() == messages.text("app.title")
-    assert window.servers_folder_label.text() == messages.text("status.servers_folder", path=str(tmp_path))
-    assert window.java_status_label.text() == messages.text("status.java_available")
     layout = window.centralWidget().layout()
     assert layout.itemAt(0).widget() is window.server_list_view
-    assert layout.itemAt(1).widget() is window.page_host
-    assert window.page_host.currentWidget() is window.dashboard_view
+    assert layout.itemAt(1).widget() is window.content_host
+    assert window.content_host.currentWidget() is window.dashboard_view
+    assert window.menuWidget() is None or window.menuBar().actions() == []
+    assert window.findChild(QStatusBar) is None
 
 
-def test_window_explains_degraded_mode_with_details_on_hover(qtbot: QtBot, tmp_path: Path) -> None:
-    messages = messages_for()
-    window = MainWindow(fake_services(tmp_path, java=False), messages)
-    qtbot.addWidget(window)
-
-    assert window.java_status_label.text() == messages.text("status.java_missing")
-    assert window.java_status_label.toolTip() == "No usable Java runtime was found."
-
-
-def test_exit_action_closes_window(qtbot: QtBot, tmp_path: Path) -> None:
+def test_default_size_fits_a_laptop_screen(qtbot: QtBot, tmp_path: Path) -> None:
     window = MainWindow(fake_services(tmp_path, java=True), messages_for())
     qtbot.addWidget(window)
-    window.show()
-
-    assert window.exit_action.text() == messages_for().text("menu.file.exit")
-    window.exit_action.trigger()
-
-    assert not window.isVisible()
+    assert window.width() <= 1280 and window.height() <= 720
+    assert window.minimumWidth() <= 900 and window.minimumHeight() <= 560
 
 
 def test_window_does_not_close_services(qtbot: QtBot, tmp_path: Path) -> None:

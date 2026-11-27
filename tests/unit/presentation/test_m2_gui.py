@@ -1,10 +1,9 @@
-"""Offscreen Qt tests for M2: edit, delete, folder import, settings and the legacy import offer."""
+"""Offscreen Qt tests for M2: edit, delete, folder import and settings."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from fakes import FakeRunnerFactory, InMemoryRepository, MemoryFilesystem, creation_for
 from PySide6.QtCore import Qt
 from pytestqt.qtbot import QtBot
@@ -14,7 +13,7 @@ from mcserver.application.java_setup import JavaSetup
 from mcserver.application.ports import JavaInstallation, RemovedServerFiles
 from mcserver.application.server_adoption import ServerAdoption
 from mcserver.application.server_coordinator import ServerCoordinator
-from mcserver.application.server_management import LegacyImportResult, ServerManagement
+from mcserver.application.server_management import ServerManagement
 from mcserver.application.server_output import ServerOutputBuffer
 from mcserver.application.settings import ApplicationSettings, SettingsService
 from mcserver.domain.server_configuration import ServerConfiguration
@@ -76,7 +75,6 @@ class Setup:
         root: Path,
         *configurations: ServerConfiguration,
         legacy: Legacy | None = None,
-        offer_answer: bool = True,
         delete_answer: bool | None = False,
         first_run_guide: bool = False,
     ) -> None:
@@ -92,8 +90,6 @@ class Setup:
         )
         self.java = Java()
         self.settings = SettingsService(JsonApplicationSettingsStore(root), self.java)  # type: ignore[arg-type]
-        self.offers: list[int] = []
-        self.results: list[LegacyImportResult] = []
         self.delete_questions: list[str] = []
         services = PresentationServices(
             servers_root=root,
@@ -117,8 +113,6 @@ class Setup:
             MESSAGES,
             confirm_exit=lambda _server_id: True,
             ask_delete=ask_delete,
-            offer_legacy_import=lambda count: self.offers.append(count) or offer_answer,
-            notify_legacy_result=self.results.append,
             notify_unclean=lambda _incident: None,
             first_run_guide=first_run_guide,
         )
@@ -164,7 +158,7 @@ def test_edit_dialog_saves_the_new_settings(qtbot: QtBot, tmp_path: Path) -> Non
     dialog = setup.window.edit_dialog
     assert dialog is not None
     dialog.name_edit.setText("Survival Island")
-    dialog.memory_spin.setValue(6144)
+    dialog.memory_slider.slider.setValue(6)
     dialog.jvm_edit.setText("-XX:+UseG1GC")
     dialog.save()
 
@@ -306,52 +300,7 @@ def test_settings_refuse_a_java_that_does_not_run(qtbot: QtBot, tmp_path: Path) 
     dialog.choose_java()
 
     assert dialog.error_label.isVisible()
-    assert dialog.java_label.text() == MESSAGES.text("settings.java.auto")
-
-
-# --- legacy import offer (M2-GUI-02) -------------------------------------------------------------
-
-
-def test_legacy_servers_are_offered_once_and_imported(qtbot: QtBot, tmp_path: Path) -> None:
-    legacy = Legacy(ServerConfiguration("oldworld", "oldworld", "paper.jar", 2048))
-    setup = Setup(qtbot, tmp_path, legacy=legacy)
-
-    qtbot.waitUntil(lambda: setup.offers == [1])
-    qtbot.waitUntil(lambda: len(setup.results) == 1)
-    assert setup.results[0].imported == ("oldworld",)
-    qtbot.waitUntil(lambda: setup.window.server_list_view.server_ids() == ["oldworld"])
-    assert setup.settings.current.legacy_import_offered
-
-    again = Setup(qtbot, tmp_path, legacy=Legacy(ServerConfiguration("other", "other", "paper.jar", 2048)))
-    qtbot.wait(50)
-    assert again.offers == []  # offered once only; File › Import from MCServer 0.9.1 stays available
-
-
-def test_declined_offer_is_remembered_and_imports_nothing(qtbot: QtBot, tmp_path: Path) -> None:
-    legacy = Legacy(ServerConfiguration("oldworld", "oldworld", "paper.jar", 2048))
-    setup = Setup(qtbot, tmp_path, legacy=legacy, offer_answer=False)
-
-    qtbot.waitUntil(lambda: setup.offers == [1])
-    qtbot.wait(50)
-    assert setup.results == [] and setup.repository.items == {}
-    assert setup.settings.current.legacy_import_offered
-
-    setup.window.import_legacy_action.trigger()
-    qtbot.waitUntil(lambda: len(setup.results) == 1)
-    assert setup.repository.items["oldworld"].server_id == "oldworld"
-
-
-def test_no_offer_without_legacy_servers(qtbot: QtBot, tmp_path: Path) -> None:
-    setup = Setup(qtbot, tmp_path)
-    qtbot.wait(50)
-    assert setup.offers == []
-    assert not setup.settings.current.legacy_import_offered
-
-
-@pytest.mark.parametrize("key", ["legacy.offer.text"])
-def test_offer_text_has_plural_forms(key: str) -> None:
-    assert "1 server" in MESSAGES.plural(key, 1)
-    assert "3 servers" in MESSAGES.plural(key, 3)
+    assert dialog.java_label.text() == MESSAGES.text("settings.java.automatic_hint")
 
 
 def test_settings_defaults_are_valid() -> None:

@@ -1,4 +1,4 @@
-"""Central dashboard (M4 design): server header with actions, hint, banner, tabs; Overview = console + inspector."""
+"""Central dashboard (UX overhaul): header with status and actions; Overview = stat tiles + console."""
 
 from __future__ import annotations
 
@@ -8,12 +8,10 @@ from pathlib import Path
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
-    QBoxLayout,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QScrollArea,
     QSizePolicy,
     QStackedWidget,
     QTabWidget,
@@ -31,81 +29,88 @@ from mcserver.presentation.errors import UserMessage, render_message
 from mcserver.presentation.i18n import Messages
 from mcserver.presentation.metrics_history import HISTORY_CAPACITY, MetricPoint
 from mcserver.presentation.views.charts import Sparkline
+from mcserver.presentation.views.memory_slider import format_gb
 from mcserver.presentation.views.server_console_view import ServerConsoleView
 from mcserver.presentation.views.status_text import STATUS_KEYS
-from mcserver.presentation.views.widgets import (
-    Banner,
-    MetricRow,
-    WrapRow,
-    button,
-    caption,
-    card,
-    icon_button,
-    repolish,
-)
+from mcserver.presentation.views.widgets import Banner, button, icon_button, repolish
 
-INFO_FIELDS = ("directory", "location", "jar_file", "memory")
-"""Rows of the server card; each has the label key ``server_details.field.<name>``."""
-
-INSPECTOR_WIDTH = 284
-_INFO_VALUE_WIDTH = 150  # value column next to the labels
-_NO_TOOLTIP = ""
-METRIC_TILES = ("cpu", "memory", "uptime", "players", "tps")
-"""Resource rows; each has the label key ``metrics.<name>``."""
+METRIC_TILES = ("players", "memory", "cpu", "uptime")
+"""The stat tiles, in order; each has the label key ``metrics.<name>``."""
 _CHART_COLORS = {"cpu": "ACCENT", "memory": "INFO"}
-"""Metrics with a history chart, and the theme colour of each."""
+"""Tiles with a history chart, and the theme colour of each."""
 METRICS_SAMPLE_SECONDS = 2
 """How often the window samples metrics (``main_window.METRICS_INTERVAL_MS``)."""
+TILE_COLUMNS_NARROW_BELOW = 620
+"""Below this width the tiles form a 2 × 2 grid instead of one row."""
+_NO_TOOLTIP = ""
 
 
-class _Overview(QWidget):
-    """Console beside the inspector; below it when the window is narrow (125 %/150 % scaling, M4-GUI-07)."""
+class StatTile(QFrame):
+    """One figure: a caption, a large value, a quiet line below and, for CPU and memory, a history chart."""
 
-    STACKED_INSPECTOR_HEIGHT = 240
-    STACKED_INSPECTOR_MINIMUM = 100
-    """Below the console the inspector scrolls; in a short window it keeps at least this much."""
-
-    def __init__(self, console: QWidget, inspector: QScrollArea) -> None:
+    def __init__(self, caption_text: str, idle: str, chart: Sparkline | None = None) -> None:
         super().__init__()
-        self.console = console
-        self.inspector = inspector
-        self.layout_ = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
-        self.layout_.setContentsMargins(0, 0, 0, 0)
-        self.layout_.setSpacing(16)
-        self.layout_.addWidget(console, 1)
-        self.layout_.addWidget(inspector)
-        self._side_by_side(True)
+        self.setObjectName("statTile")
+        self.caption = QLabel(caption_text.upper())
+        self.caption.setObjectName("tileCaption")
+        self.value = QLabel(idle)
+        self.value.setObjectName("tileValue")
+        self.value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.detail = QLabel()
+        self.detail.setObjectName("tileDetail")
+        self.detail.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.chart = chart
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 10, 14, 8)
+        layout.setSpacing(1)
+        layout.addWidget(self.caption)
+        layout.addWidget(self.value)
+        layout.addWidget(self.detail)
+        layout.addSpacing(4)
+        if chart is not None:
+            chart.setFixedHeight(28)
+            layout.addWidget(chart)
+        else:
+            layout.addSpacing(28)  # every tile has the same height, chart or not
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-    @property
-    def stacked(self) -> bool:
-        """Return whether the inspector is below the console."""
-        return self.layout_.direction() is QBoxLayout.Direction.TopToBottom
+
+class TileGrid(QWidget):
+    """Four tiles in a row, or two rows of two when the window is narrow."""
+
+    def __init__(self, tiles: Sequence[StatTile]) -> None:
+        super().__init__()
+        self.tiles = list(tiles)
+        self.grid = QGridLayout(self)
+        self.grid.setContentsMargins(0, 0, 0, 0)
+        self.grid.setSpacing(12)
+        self.columns = 0
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self._arrange(len(self.tiles))
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802 (Qt override)
-        """Need only what the stacked layout needs, so the window can be narrow."""
-        console = self.console.minimumSizeHint()
-        return QSize(console.width(), console.height() + self.STACKED_INSPECTOR_MINIMUM + self.layout_.spacing())
+        """Need the width of two columns and the height of the rows shown now."""
+        tile = max((tile.minimumSizeHint() for tile in self.tiles), key=lambda size: size.width())
+        height = max(tile.sizeHint().height() for tile in self.tiles)
+        rows = -(-len(self.tiles) // max(1, self.columns))
+        return QSize(tile.width() * 2 + 12, height * rows + 12 * (rows - 1))
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt override)
-        """Put the inspector beside the console only when both fit."""
-        wide = event.size().width() >= self.console.minimumSizeHint().width() + INSPECTOR_WIDTH + 16
-        if wide == self.stacked:
-            self._side_by_side(wide)
+        """Rearrange when the width crosses the threshold."""
+        columns = len(self.tiles) if event.size().width() >= TILE_COLUMNS_NARROW_BELOW else 2
+        if columns != self.columns:
+            self._arrange(columns)
         super().resizeEvent(event)
 
-    def _side_by_side(self, wide: bool) -> None:
-        inspector = self.inspector
-        if wide:
-            self.layout_.setDirection(QBoxLayout.Direction.LeftToRight)
-            inspector.setMinimumHeight(0)
-            inspector.setMaximumHeight(16777215)
-            inspector.setFixedWidth(INSPECTOR_WIDTH)
-        else:
-            self.layout_.setDirection(QBoxLayout.Direction.TopToBottom)
-            inspector.setMinimumWidth(0)
-            inspector.setMaximumWidth(16777215)
-            inspector.setMinimumHeight(self.STACKED_INSPECTOR_MINIMUM)
-            inspector.setMaximumHeight(self.STACKED_INSPECTOR_HEIGHT)
+    def _arrange(self, columns: int) -> None:
+        for tile in self.tiles:
+            self.grid.removeWidget(tile)
+        for index, tile in enumerate(self.tiles):
+            self.grid.addWidget(tile, index // columns, index % columns)
+        for column in range(len(self.tiles)):
+            self.grid.setColumnStretch(column, 1 if column < columns else 0)
+        self.columns = columns
+        self.updateGeometry()
 
 
 class ServerDashboardView(QWidget):
@@ -173,9 +178,6 @@ class ServerDashboardView(QWidget):
         actions.addWidget(self.welcome_new_button)
         actions.addWidget(self.welcome_import_button)
         actions.addStretch(1)
-        legacy = QLabel(self._messages.text("welcome.legacy"))
-        legacy.setObjectName("welcomeLegacy")
-        legacy.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         layout = QVBoxLayout(page)
         layout.setSpacing(14)
@@ -186,22 +188,21 @@ class ServerDashboardView(QWidget):
         layout.addSpacing(4)
         layout.addLayout(actions)
         layout.addSpacing(6)
-        layout.addWidget(legacy)
         layout.addStretch(1)
         return page
 
     def _build_dashboard(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(24, 18, 24, 18)
-        layout.setSpacing(14)
+        layout.setContentsMargins(28, 18, 28, 16)
+        layout.setSpacing(10)
         layout.addLayout(self._build_header())
         self.hint_row = QWidget()
         hint_layout = QHBoxLayout(self.hint_row)
         hint_layout.setContentsMargins(0, 0, 0, 0)
-        hint_layout.setSpacing(6)
+        hint_layout.setSpacing(8)
         self.hint_icon = QLabel()
-        self.hint_icon.setFixedSize(14, 14)
+        self.hint_icon.setFixedSize(16, 16)
         self.hint_label = QLabel()
         self.hint_label.setObjectName("controlHint")
         self.hint_label.setWordWrap(True)
@@ -219,14 +220,15 @@ class ServerDashboardView(QWidget):
         self.tabs = QTabWidget()
         self.tabs.setObjectName("dashboardTabs")
         self.tabs.setDocumentMode(True)
+        self.tabs.setCornerWidget(self._build_server_actions(), Qt.Corner.TopRightCorner)
         self._tab_keys: list[str] = []
-        self.inspector = self._build_inspector()
-        self.overview = _Overview(self.console, self.inspector)
+        self.overview = self._build_overview()
         self.add_tab("overview", self.overview)
         layout.addWidget(self.tabs, 1)
         return page
 
     def _build_header(self) -> QHBoxLayout:
+        text = self._messages.text
         self.title_label = QLabel()
         self.title_label.setObjectName("serverTitle")
         self.title_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -240,12 +242,33 @@ class ServerDashboardView(QWidget):
         title_row.addWidget(self.title_label)
         title_row.addWidget(self.status_pill, 0, Qt.AlignmentFlag.AlignVCenter)
         title_row.addStretch(1)
+        # Where players connect: the one network detail beginners need, with a copy button.
+        address_caption = QLabel(text("dashboard.address"))
+        address_caption.setObjectName("serverSubtitle")
+        self.address_value = QLabel()
+        self.address_value.setObjectName("addressValue")
+        self.address_value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.copy_address_button = icon_button("copy", text("dashboard.copy_address"))
+        self.copy_address_button.clicked.connect(self._on_copy_address)
+        # The summary may be cut off in a narrow window (its tooltip keeps it whole); it never widens the window.
+        self.subtitle_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        address_row = QWidget()
+        address = QHBoxLayout(address_row)
+        address.setContentsMargins(0, 0, 0, 0)
+        address.setSpacing(6)
+        address.addWidget(address_caption)
+        address.addWidget(self.address_value)
+        address.addWidget(self.copy_address_button)
+        address.addStretch(1)
+        # Like the summary, the address line may be cut off in a narrow window rather than widen it.
+        address_row.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        address_row.setMinimumHeight(self.copy_address_button.sizeHint().height())
         titles = QVBoxLayout()
-        titles.setSpacing(4)
+        titles.setSpacing(3)
         titles.addLayout(title_row)
         titles.addWidget(self.subtitle_label)
+        titles.addWidget(address_row)
 
-        text = self._messages.text
         self.start_button = button(text("dashboard.start"), "primary", "play", "startButton")
         self.start_button.clicked.connect(self.start_requested)
         self.stop_button = button(text("dashboard.stop"), "secondary", "stop", "stopButton")
@@ -259,137 +282,59 @@ class ServerDashboardView(QWidget):
         controls.setSpacing(8)
         for widget in (self.start_button, self.stop_button, self.restart_button, self.kill_button):
             controls.addWidget(widget)
-
         header = QHBoxLayout()
         header.setSpacing(16)
         header.addLayout(titles, 1)
         header.addLayout(controls)
+        self.show_address(None)
         return header
 
-    def _build_inspector(self) -> QScrollArea:
-        column = QWidget()
-        layout = QVBoxLayout(column)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
-        self.metrics_card = self._build_metrics_card()
-        layout.addWidget(self.metrics_card)
-        layout.addWidget(self._build_info_card())
-        layout.addStretch(1)
-        # Small windows scroll the inspector instead of squeezing its rows.
-        scroll = QScrollArea()
-        scroll.setWidget(column)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setFixedWidth(INSPECTOR_WIDTH)
-        return scroll
-
-    def _build_metrics_card(self) -> QFrame:
-        frame = card("metricsCard")
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(16, 14, 16, 16)
-        layout.setSpacing(12)
-        head = QHBoxLayout()
-        self.metrics_caption = caption(self._messages.text("metrics.title"))
-        self.live_label = QLabel(self._messages.text("metrics.not_running"))
-        self.live_label.setObjectName("panelCount")
-        head.addWidget(self.metrics_caption, 1)
-        head.addWidget(self.live_label)
-        layout.addLayout(head)
-        self.metric_rows: dict[str, MetricRow] = {}
-        self.metric_values: dict[str, QLabel] = {}
-        idle = self._messages.text("metrics.idle")
-        self.charts: dict[str, Sparkline] = {}
-        for name in METRIC_TILES:
-            row = MetricRow(self._messages.text(f"metrics.{name}"), idle)
-            self.metric_rows[name] = row
-            self.metric_values[name] = row.value
-            layout.addWidget(row)
-            if name in _CHART_COLORS:
-                # History instead of a bar: the last ten minutes, newest on the right (M4-GUI-06).
-                chart = Sparkline(_CHART_COLORS[name], HISTORY_CAPACITY)
-                chart.setAccessibleName(self._messages.text(f"metrics.{name}"))
-                self.charts[name] = chart
-                layout.addWidget(chart)
-        self.history_caption = QLabel(
-            self._messages.text("metrics.history_span", minutes=HISTORY_CAPACITY * METRICS_SAMPLE_SECONDS // 60)
-        )
-        self.history_caption.setObjectName("panelCount")
-        layout.addWidget(self.history_caption)
-        self.show_history((), live=False)
-        self.players_label = QLabel()
-        self.players_label.setObjectName("fieldLabel")
-        self.players_label.setWordWrap(True)
-        self.players_label.hide()
-        layout.addWidget(self.players_label)
-        return frame
-
-    def _build_info_card(self) -> QFrame:
-        frame = card("infoCard")
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(16, 14, 16, 16)
-        layout.setSpacing(10)
-        layout.addWidget(caption(self._messages.text("dashboard.info.title")))
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(12)
-        grid.setVerticalSpacing(8)
-        grid.setColumnStretch(1, 1)
-        self.info_values: dict[str, QLabel] = {}
-        for row, field in enumerate(INFO_FIELDS):
-            label = QLabel(self._messages.text(f"server_details.field.{field}"))
-            label.setObjectName("fieldLabel")
-            value = QLabel()
-            value.setObjectName("fieldValue")
-            value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            # Long names never widen the card; the tooltip shows the whole value.
-            value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-            self.info_values[field] = value
-            grid.addWidget(label, row, 0)
-            grid.addWidget(value, row, 1)
-
-        address_label = QLabel(self._messages.text("dashboard.address"))
-        address_label.setObjectName("fieldLabel")
-        self.address_value = QLabel()
-        self.address_value.setObjectName("fieldValue")
-        self.address_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.address_value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.address_value.setWordWrap(True)  # "no network" texts are long in some languages
-        self.copy_address_button = icon_button("copy", self._messages.text("dashboard.copy_address"))
-        self.copy_address_button.clicked.connect(self._on_copy_address)
-        address_value_row = QHBoxLayout()
-        address_value_row.setSpacing(2)
-        address_value_row.addWidget(self.address_value, 1)
-        address_value_row.addWidget(self.copy_address_button)
-        grid.addWidget(address_label, len(INFO_FIELDS), 0)
-        grid.addLayout(address_value_row, len(INFO_FIELDS), 1)
-        layout.addLayout(grid)
-        self.show_address(None)
-
+    def _build_server_actions(self) -> QWidget:
+        """Folder, logs, edit and delete: quiet icon buttons beside the tabs (labels in tooltips and for readers)."""
         text = self._messages.text
-        self.open_folder_button = button(text("dashboard.open_folder"), "secondary", "folder", "openFolderButton")
+        self.open_folder_button = icon_button("folder", text("dashboard.open_folder"), "toolButton")
         self.open_folder_button.clicked.connect(self._on_open_folder)
-        self.open_logs_button = button(text("dashboard.open_logs"), "secondary", "external")
+        self.open_logs_button = icon_button("external", text("dashboard.open_logs"), "toolButton")
         self.open_logs_button.clicked.connect(self._on_open_logs)
-        self.edit_button = button(text("dashboard.edit"), "ghost", "sliders")
+        self.edit_button = icon_button("sliders", text("dashboard.edit"), "toolButton")
         self.edit_button.clicked.connect(self.edit_requested)
-        self.delete_button = button(text("dashboard.delete"), "ghost", "trash")
+        self.delete_button = icon_button("trash", text("dashboard.delete"), "toolButton")
         self.delete_button.clicked.connect(self.delete_requested)
-        # Side by side when both labels fit the inspector, otherwise one below the other (longer languages, scaling).
-        self.button_rows = [
-            WrapRow(first, second, 8, fill=True)
-            for first, second in (
-                (self.open_folder_button, self.open_logs_button),
-                (self.edit_button, self.delete_button),
-            )
-        ]
-        for button_row in self.button_rows:
-            layout.addWidget(button_row)
-        note = QLabel(text("server_details.next_launch_note"))
-        note.setObjectName("controlHint")
-        note.setWordWrap(True)
-        layout.addWidget(note)
-        return frame
+        actions = QWidget()
+        actions.setObjectName("tabActions")
+        row = QHBoxLayout(actions)
+        row.setContentsMargins(0, 0, 0, 6)
+        row.setSpacing(2)
+        for widget in (self.open_folder_button, self.open_logs_button, self.edit_button, self.delete_button):
+            row.addWidget(widget)
+        return actions
+
+    def _build_overview(self) -> QWidget:
+        """Four stat tiles above the console; the console takes the rest of the height."""
+        text = self._messages.text
+        idle = text("metrics.idle")
+        self.charts: dict[str, Sparkline] = {}
+        self.tiles: dict[str, StatTile] = {}
+        for name in METRIC_TILES:
+            chart = None
+            if name in _CHART_COLORS:
+                chart = Sparkline(_CHART_COLORS[name], HISTORY_CAPACITY)
+                chart.setAccessibleName(text(f"metrics.{name}"))
+                self.charts[name] = chart
+            self.tiles[name] = StatTile(text(f"metrics.{name}"), idle, chart)
+        self.metric_values: dict[str, QLabel] = {name: tile.value for name, tile in self.tiles.items()}
+        self.metric_values["tps"] = self.tiles["uptime"].detail
+        self.players_label = self.tiles["players"].detail
+        self.metrics_card = TileGrid(list(self.tiles.values()))
+        overview = QWidget()
+        layout = QVBoxLayout(overview)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(14)
+        layout.addWidget(self.metrics_card)
+        layout.addWidget(self.console, 1)
+        self.show_history((), live=False)
+        self.show_activity(None)
+        return overview
 
     # --- tabs and side data -----------------------------------------------------------------
 
@@ -398,7 +343,7 @@ class ServerDashboardView(QWidget):
         self._tab_keys.append(key)
         page = QWidget()
         page_layout = QVBoxLayout(page)
-        page_layout.setContentsMargins(0, 14, 0, 0)
+        page_layout.setContentsMargins(0, 12, 0, 0)
         page_layout.addWidget(widget)
         self.tabs.addTab(page, self._messages.text(f"tabs.{key}"))
 
@@ -418,55 +363,54 @@ class ServerDashboardView(QWidget):
         return self._tab_keys[self.tabs.currentIndex()]
 
     def set_metrics_available(self, available: bool) -> None:
-        """Show the resources card (only when metrics can be read at all)."""
+        """Show the stat tiles (only when metrics can be read at all)."""
         self.metrics_card.setVisible(available)
 
     def show_address(self, address: ServerAddress | None) -> None:
         """Show where LAN players connect (``None`` when it is not known)."""
         self._address = address
         self.address_value.setText(str(address) if address else self._messages.text("dashboard.address_unknown"))
-        self.copy_address_button.setEnabled(address is not None)
+        self.address_value.setToolTip(self.address_value.text())
+        self.copy_address_button.setVisible(address is not None)
 
     def show_activity(self, snapshot: ServerActivitySnapshot | None) -> None:
         """Show players online and tick rate of the running server, or dashes."""
+        text = self._messages.text
         players, tps = self.metric_values["players"], self.metric_values["tps"]
-        idle = self._messages.text("metrics.idle")
+        idle = text("metrics.idle")
         if snapshot is None:
             players.setText(idle)
             players.setToolTip(_NO_TOOLTIP)
-            tps.setText(idle)
-            self.players_label.hide()
+            self.players_label.setText(text("metrics.players_none"))
+            self.players_label.setToolTip(_NO_TOOLTIP)
+            tps.setText(text("metrics.tps_line", tps=idle))
             return
         maximum = snapshot.max_players
         players.setText(
-            self._messages.text("metrics.players_value", count=snapshot.player_count, maximum=maximum)
+            text("metrics.players_value", count=snapshot.player_count, maximum=maximum)
             if maximum is not None
             else str(snapshot.player_count)
         )
-        names = self._messages.text("metrics.players_names", names=", ".join(snapshot.players))
-        players.setToolTip(names)
-        self.players_label.setText(names)
-        self.players_label.setVisible(bool(snapshot.players))
-        tps.setText(
-            self._messages.text("metrics.tps_value", tps=f"{snapshot.tps:.1f}") if snapshot.tps is not None else idle
-        )
+        names = text("metrics.players_names", names=", ".join(snapshot.players))
+        players.setToolTip(names if snapshot.players else _NO_TOOLTIP)
+        self.players_label.setText(names if snapshot.players else text("metrics.players_none"))
+        self.players_label.setToolTip(names if snapshot.players else _NO_TOOLTIP)
+        tps.setText(text("metrics.tps_line", tps=f"{snapshot.tps:.1f}" if snapshot.tps is not None else idle))
 
     def show_metrics(self, snapshot: ServerMetricsSnapshot | None) -> None:
         """Show CPU, memory and uptime of the selected server, or dashes when it does not run."""
         text = self._messages.text
+        tiles = self.tiles
         if snapshot is None:
-            self.live_label.setText(text("metrics.not_running"))
             for name in ("cpu", "memory", "uptime"):
                 self.metric_values[name].setText(text("metrics.idle"))
-                self.metric_rows[name].set_fraction(None)
+            tiles["cpu"].detail.setText(text("metrics.not_running"))
+            tiles["memory"].detail.setText(text("metrics.not_running"))
             return
-        self.live_label.setText(text("metrics.live"))
         self.metric_values["cpu"].setText(text("metrics.cpu_value", percent=f"{snapshot.cpu_percent:.0f}"))
-        self.metric_rows["cpu"].set_fraction(snapshot.cpu_percent / 100)
-        self.metric_values["memory"].setText(
-            text("metrics.memory_value", used=f"{snapshot.memory_mb:.0f}", allocated=snapshot.allocated_mb)
-        )
-        self.metric_rows["memory"].set_fraction(snapshot.memory_mb / (snapshot.allocated_mb or 1))
+        tiles["cpu"].detail.setText(text("metrics.cpu_detail"))
+        self.metric_values["memory"].setText(text("metrics.memory_gb", used=format_gb(round(snapshot.memory_mb))))
+        tiles["memory"].detail.setText(text("metrics.memory_of", allocated=format_gb(snapshot.allocated_mb)))
         hours, rest = divmod(max(0, snapshot.uptime_seconds), 3600)
         minutes, seconds = divmod(rest, 60)
         self.metric_values["uptime"].setText(
@@ -520,7 +464,7 @@ class ServerDashboardView(QWidget):
         text = self._messages.text
         self.welcome_text.setText(text("welcome.text"))
         configuration = row.configuration
-        memory = text("server_details.memory_value", memory_mb=configuration.memory_mb)
+        memory = text("memory.gb", value=format_gb(configuration.memory_mb))
         self._folder = self._servers_root / configuration.directory
         self.title_label.setText(configuration.name)
         self.title_label.setToolTip(configuration.server_id)
@@ -534,10 +478,9 @@ class ServerDashboardView(QWidget):
                 folder=configuration.directory,
             )
         )
-        self._set_info("directory", configuration.directory)
-        self._set_info("location", str(self._folder), elide=True)
-        self._set_info("jar_file", configuration.jar_file)
-        self._set_info("memory", memory)
+        self.subtitle_label.setToolTip(self.subtitle_label.text())
+        folder_tip = self._messages.text("dashboard.open_folder_at", path=str(self._folder))
+        self.open_folder_button.setToolTip(folder_tip)
 
         self.status_pill.setText(text("dashboard.status_pill", status=text(STATUS_KEYS[state.status])))
         self.status_pill.setProperty("status", state.status.value)
@@ -572,20 +515,13 @@ class ServerDashboardView(QWidget):
             self._show_banner(state.success, "success")
         self.pages.setCurrentWidget(self.dashboard_page)
 
-    def _set_info(self, field: str, value: str, *, elide: bool = False) -> None:
-        label = self.info_values[field]
-        label.setToolTip(value)
-        if elide:  # a full path is shortened in the middle; the tooltip keeps it whole
-            value = label.fontMetrics().elidedText(value, Qt.TextElideMode.ElideMiddle, _INFO_VALUE_WIDTH)
-        label.setText(value)
-
     def _show_hint(self, state: DashboardState) -> None:
         hint, warning = self._hint(state)
         self.hint_label.setText(hint)
         self.hint_label.setProperty("tone", "warning" if warning else "")
         repolish(self.hint_label)
         color = theme.WARNING_TEXT if warning else theme.TEXT_MUTED
-        self.hint_icon.setPixmap(icons.pixmap("alert" if warning else "info", color, 14))
+        self.hint_icon.setPixmap(icons.pixmap("alert" if warning else "info", color, 16))
         self.hint_row.setVisible(bool(hint))
 
     def _hint(self, state: DashboardState) -> tuple[str, bool]:
@@ -604,6 +540,8 @@ class ServerDashboardView(QWidget):
             return text("dashboard.hint.stopping"), False
         if state.status is ServerStatus.RUNNING and state.operation is None:
             return text("dashboard.hint.running"), False
+        if state.status is ServerStatus.STOPPED and state.operation is None:
+            return text("dashboard.hint.stopped"), False
         return "", False
 
     def _show_banner(self, message: UserMessage | None, tone: str) -> None:

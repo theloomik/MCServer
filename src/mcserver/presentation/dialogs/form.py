@@ -47,7 +47,6 @@ class FormDialog(QDialog):
 
         heading = QLabel(title)
         heading.setObjectName("dialogTitle")
-        heading.setWordWrap(True)
         titles = QVBoxLayout()
         titles.setSpacing(4)
         titles.addWidget(heading)
@@ -101,8 +100,11 @@ class FormDialog(QDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.card)
 
-    def add_field(self, label: str, editor: QWidget | QLayout, hint: str = "") -> QLabel | None:
-        """Add a labelled field; return its hint label (so callers can change it) or ``None``."""
+    def add_field(
+        self, label: str, editor: QWidget | QLayout, hint: str = "", *, into: QVBoxLayout | None = None
+    ) -> QLabel | None:
+        """Add a labelled field (to ``into``, default the body); return its hint label or ``None``."""
+        target = self.body if into is None else into
         caption = QLabel(label)
         caption.setObjectName("formLabel")
         field = editor if isinstance(editor, QWidget) else _first_input(editor)
@@ -113,19 +115,41 @@ class FormDialog(QDialog):
                 field.setAccessibleName(label.replace("&", ""))
             if hint:
                 field.setAccessibleDescription(hint)
-        self.body.addWidget(caption)
+        target.addWidget(caption)
         if isinstance(editor, QLayout):
-            self.body.addLayout(editor)
+            target.addLayout(editor)
         else:
-            self.body.addWidget(editor)
+            target.addWidget(editor)
         hint_label: QLabel | None = None
         if hint:
             hint_label = QLabel(hint)
             hint_label.setObjectName("fieldHint")
             hint_label.setWordWrap(True)
-            self.body.addWidget(hint_label)
-        self.body.addSpacing(10)
+            target.addWidget(hint_label)
+        target.addSpacing(10)
         return hint_label
+
+    def add_advanced(self, label: str) -> QVBoxLayout:
+        """Add a collapsed "Advanced" group; return the layout its fields go into (progressive disclosure)."""
+        self.advanced_button = QPushButton(label)
+        self.advanced_button.setObjectName("disclosureButton")
+        self.advanced_button.setCheckable(True)
+        self.advanced_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.advanced_group = QWidget()
+        group = QVBoxLayout(self.advanced_group)
+        group.setContentsMargins(0, 6, 0, 0)
+        group.setSpacing(6)
+        self.advanced_group.hide()
+
+        def toggle(shown: bool) -> None:
+            self.advanced_group.setVisible(shown)
+            self.advanced_button.setIcon(icons.icon("chevron-up" if shown else "chevron-down"))
+
+        self.advanced_button.toggled.connect(toggle)
+        toggle(False)
+        self.body.addWidget(self.advanced_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.body.addWidget(self.advanced_group)
+        return group
 
     def add_note(self, text: str) -> QLabel:
         """Add a wrapped explanatory line."""

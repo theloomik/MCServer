@@ -6,39 +6,31 @@ import logging
 from collections.abc import Callable
 from datetime import datetime
 from enum import Enum
+from functools import partial
 from pathlib import Path
 
-import shiboken6
 from PySide6.QtCore import QLocale, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
-    QColor,
     QDesktopServices,
     QGuiApplication,
     QKeySequence,
-    QPainter,
-    QPixmap,
 )
 from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QHBoxLayout,
-    QLabel,
     QMainWindow,
-    QPushButton,
-    QSizePolicy,
     QWidget,
 )
 
 from mcserver.application.backups import BackupInfo
-from mcserver.application.errors import InvalidJavaExecutable, JavaNotFound, JavaVersionTooOld
-from mcserver.application.java_setup import JavaStatus
+from mcserver.application.errors import JavaNotFound, JavaVersionTooOld
 from mcserver.application.ports import StartOptions
 from mcserver.application.server_health import UncleanShutdown
-from mcserver.application.server_management import LegacyImportResult
 from mcserver.domain.server_configuration import ServerConfiguration
-from mcserver.presentation import appearance, icons, theme
+from mcserver.presentation import appearance, theme
 from mcserver.presentation.adapters.output_bridge import OutputBridge
 from mcserver.presentation.adapters.status_poller import StatusPoller
 from mcserver.presentation.controllers.backups import BackupsController
@@ -67,16 +59,17 @@ from mcserver.presentation.i18n import Messages, resolve_language
 from mcserver.presentation.notifications import NotificationCenter
 from mcserver.presentation.services import PresentationServices
 from mcserver.presentation.views.backups_view import BackupsView, format_created_at
+from mcserver.presentation.views.modal_host import ModalHost
 from mcserver.presentation.views.page_host import PageHost
 from mcserver.presentation.views.server_dashboard_view import ServerDashboardView
 from mcserver.presentation.views.server_list_view import ServerListView
 from mcserver.presentation.views.server_properties_view import ServerPropertiesView
 from mcserver.presentation.views.toasts import ToastStack
 from mcserver.presentation.views.worlds_view import WorldsView
+from mcserver.presentation.wheel_guard import install_wheel_guard
 from mcserver.presentation.workers import BackgroundRunner
 
 _logger = logging.getLogger(__name__)
-_NO_TOOLTIP = ""
 METRICS_INTERVAL_MS = 2000
 BACKUP_CHECK_INTERVAL_MS = 60_000
 
@@ -90,8 +83,6 @@ JavaProblemHandler = Callable[[JavaProblem], JavaChoice]
 UncleanNotifier = Callable[[UncleanShutdown], None]
 AskDelete = Callable[[ServerConfiguration, Path], bool | None]
 """Return ``None`` to cancel, else whether the folder goes to the Recycle Bin too."""
-LegacyOffer = Callable[[int], bool]
-LegacyResultNotifier = Callable[[LegacyImportResult], None]
 ConfirmBackup = Callable[[BackupInfo], bool]
 """Ask whether to restore or delete a backup; return the answer."""
 LogPathChooser = Callable[[str], str]
@@ -107,19 +98,6 @@ class StopTimeoutChoice(Enum):
 
 
 AskAfterStopTimeout = Callable[[str, float], StopTimeoutChoice]
-
-
-def _dot(color: str, size: int = 8) -> QPixmap:
-    image = QPixmap(size * 2, size * 2)
-    image.fill(QColor(0, 0, 0, 0))
-    painter = QPainter(image)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setPen(QColor(0, 0, 0, 0))
-    painter.setBrush(QColor(color))
-    painter.drawEllipse(2, 2, size * 2 - 4, size * 2 - 4)
-    painter.end()
-    image.setDevicePixelRatio(2.0)
-    return image
 
 
 def open_folder_with_system(path: Path) -> bool:
@@ -155,8 +133,6 @@ class MainWindow(QMainWindow):
         notify_unclean: UncleanNotifier | None = None,
         ask_after_stop_timeout: AskAfterStopTimeout | None = None,
         ask_delete: AskDelete | None = None,
-        offer_legacy_import: LegacyOffer | None = None,
-        notify_legacy_result: LegacyResultNotifier | None = None,
         confirm_restore: ConfirmBackup | None = None,
         confirm_delete_backup: ConfirmBackup | None = None,
         choose_log_path: LogPathChooser | None = None,
@@ -181,8 +157,6 @@ class MainWindow(QMainWindow):
         self._notify_unclean = notify_unclean or self._show_unclean_notice
         self._ask_after_stop_timeout = ask_after_stop_timeout or self._ask_after_timeout
         self._ask_delete = ask_delete or self._show_delete_dialog
-        self._offer_legacy_import = offer_legacy_import or self._ask_legacy_import
-        self._notify_legacy_result = notify_legacy_result or self._show_legacy_result
         self._confirm_restore = confirm_restore or self._ask_to_restore
         self._confirm_delete_backup = confirm_delete_backup or self._ask_to_delete_backup
         self._choose_log_path = choose_log_path or self._ask_log_path
@@ -197,9 +171,11 @@ class MainWindow(QMainWindow):
         self._exit_after_stop = False
         self._torn_down = False
         self.setWindowTitle(messages.text("app.title"))
-        self.resize(1280, 800)
-        self.setMinimumSize(980, 620)
+        # Fits a 1366 x 768 screen at 100 % and a 1920 x 1080 screen at 150 % with room to spare.
+        self.resize(1180, 720)
+        self.setMinimumSize(900, 560)
         self.setStyleSheet(theme.STYLESHEET)
+        install_wheel_guard()  # the wheel scrolls pages instead of changing numbers under the pointer
 
         self.background = BackgroundRunner(parent=self)
         coordinator = services.coordinator
@@ -247,9 +223,8 @@ class MainWindow(QMainWindow):
         self.metrics_timer.setInterval(METRICS_INTERVAL_MS)
         self.metrics_timer.timeout.connect(self.sample_metrics)
 
-        self._build_menu()
         self._build_content()
-        self._build_status_bar()
+        self._build_shortcuts()
         self._connect()
 
         if self.poller is not None:
@@ -259,72 +234,41 @@ class MainWindow(QMainWindow):
         if services.scheduled_backups is not None and services.backups is not None:
             self.backup_timer.start()
         self.server_list_controller.refresh()
-        # Shown once the window is up: incidents from the previous session (M1-GUI-06),
-        # then the one-time offer to import MCServer 0.9.1 servers (M2-GUI-02).
+        # Shown once the window is up: incidents from the previous session, then the setup guide.
         QTimer.singleShot(0, self._after_start)
 
     # --- construction ---------------------------------------------------------------------
 
-    def _build_menu(self) -> None:
-        file_menu = self.menuBar().addMenu(self._messages.text("menu.file"))
-        self.new_server_action = file_menu.addAction(self._messages.text("menu.file.new_server"))
-        self.new_server_action.setShortcut(QKeySequence(QKeySequence.StandardKey.New))
-        self.refresh_action = file_menu.addAction(self._messages.text("menu.file.refresh"))
-        self.refresh_action.setShortcut(QKeySequence(QKeySequence.StandardKey.Refresh))
-        self.import_folder_action = file_menu.addAction(self._messages.text("menu.file.import_folder"))
-        self.import_legacy_action = file_menu.addAction(self._messages.text("menu.file.import_legacy"))
-        self.first_run_action = file_menu.addAction(self._messages.text("menu.file.first_run"))
-        file_menu.addSeparator()
-        self.settings_action = file_menu.addAction(self._messages.text("menu.file.settings"))
-        self.settings_action.setShortcut(QKeySequence("Ctrl+,"))
-        file_menu.addSeparator()
-        self.exit_action = file_menu.addAction(self._messages.text("menu.file.exit"))
-        self.exit_action.triggered.connect(self.close)
+    def _build_shortcuts(self) -> None:
+        """Keyboard shortcuts for the whole window; there is no menu bar (UX overhaul).
 
-        self._build_view_menu()
+        Every action also has a visible control (sidebar, dashboard header, tabs), so the
+        shortcuts are a faster way, never the only way. They pause while a dialog is open.
+        """
+        self.shortcut_actions: list[QAction] = []
 
-        # Server menu: the selected server's actions, enabled exactly like their buttons (M4 design).
-        server_menu = self.menuBar().addMenu(self._messages.text("menu.server"))
-        view = self.dashboard_view
-        self.server_actions: dict[str, tuple[QAction, QPushButton]] = {}
-        groups = (
-            (
-                ("start", view.start_button, "Ctrl+R"),
-                ("stop", view.stop_button, None),
-                ("restart", view.restart_button, None),
-                ("kill", view.kill_button, None),
-            ),
-            (("open_folder", view.open_folder_button, None), ("open_logs", view.open_logs_button, None)),
-            (("edit", view.edit_button, None), ("delete", view.delete_button, None)),
-        )
-        for index, group in enumerate(groups):
-            if index:
-                server_menu.addSeparator()
-            for key, source, shortcut in group:
-                action = server_menu.addAction(self._messages.text(f"menu.server.{key}"))
-                if shortcut:
-                    action.setShortcut(QKeySequence(shortcut))
-                action.triggered.connect(source.click)
-                self.server_actions[key] = (action, source)
-        self._update_server_menu()
+        def shortcut(keys: QKeySequence | QKeySequence.StandardKey | str, handler: Callable[[], object]) -> QAction:
+            action = QAction(self)
+            action.setShortcut(QKeySequence(keys))
+            action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+            action.triggered.connect(lambda _checked=False: handler())
+            self.addAction(action)
+            self.shortcut_actions.append(action)
+            return action
 
-    def _build_view_menu(self) -> None:
-        """Keyboard ways to every area (M4-GUI-07): tabs, the server list and the console command."""
-        view_menu = self.menuBar().addMenu(self._messages.text("menu.view"))
+        self.new_server_action = shortcut(QKeySequence.StandardKey.New, self.open_create_dialog)
+        self.refresh_action = shortcut(QKeySequence.StandardKey.Refresh, self.server_list_controller.refresh)
+        self.settings_action = shortcut("Ctrl+,", self.open_settings_dialog)
+        self.start_action = shortcut("Ctrl+R", self.dashboard_view.start_button.click)
         self.tab_actions: dict[str, QAction] = {}
-        for number, key in enumerate(self.dashboard_view.tab_keys, start=1):
-            action = view_menu.addAction(self._messages.text(f"tabs.{key}"))
-            if number <= 9:
-                action.setShortcut(QKeySequence(f"Ctrl+{number}"))
-            action.triggered.connect(lambda _checked=False, tab=key: self.dashboard_view.show_tab(tab))
-            self.tab_actions[key] = action
-        view_menu.addSeparator()
-        self.focus_list_action = view_menu.addAction(self._messages.text("menu.view.server_list"))
-        self.focus_list_action.setShortcut(QKeySequence("Ctrl+L"))
-        self.focus_list_action.triggered.connect(self.focus_server_list)
-        self.focus_console_action = view_menu.addAction(self._messages.text("menu.view.console"))
-        self.focus_console_action.setShortcut(QKeySequence("Ctrl+K"))
-        self.focus_console_action.triggered.connect(self.focus_console)
+        for number, key in enumerate(self.dashboard_view.tab_keys[:9], start=1):
+            self.tab_actions[key] = shortcut(f"Ctrl+{number}", partial(self.dashboard_view.show_tab, key))
+        self.focus_list_action = shortcut("Ctrl+L", self.focus_server_list)
+        self.focus_console_action = shortcut("Ctrl+K", self.focus_console)
+
+    def _on_modal_changed(self, active: bool) -> None:
+        for action in self.shortcut_actions:
+            action.setEnabled(not active)
 
     def focus_server_list(self) -> None:
         """Move the keyboard focus to the server list."""
@@ -344,14 +288,16 @@ class MainWindow(QMainWindow):
     def _build_content(self) -> None:
         central = QWidget()
         central.setObjectName("central")
-        # Dialogs open as pages in the content area; the server list stays visible (M4 design).
-        self.page_host = PageHost(self.dashboard_view)
+        # Settings open as a page in the content area; dialogs open modally over the dimmed window.
+        self.content_host = PageHost(self.dashboard_view)
         layout = QHBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self.server_list_view)
-        layout.addWidget(self.page_host, 1)
+        layout.addWidget(self.content_host, 1)
         self.setCentralWidget(central)
+        self.page_host = ModalHost(central, blocked=(self.server_list_view, self.content_host))
+        self.page_host.active_changed.connect(self._on_modal_changed)
         # Notifications float at the bottom right, over pages too (M4-GUI-04).
         self.notifications = NotificationCenter(self)
         self.toast_stack = ToastStack(self._messages, central)
@@ -362,63 +308,16 @@ class MainWindow(QMainWindow):
         self.toast_stack.hover_changed.connect(self.notifications.hold)
 
     def show_page(self, dialog: QDialog, *, compact: bool = False) -> None:
-        """Open ``dialog`` as a page in the content area (it closes itself when finished)."""
+        """Open ``dialog`` as a modal dialog over the window (it closes itself when finished)."""
         self.page_host.open_page(dialog, compact=compact)
 
     def run_page(self, dialog: QDialog, *, compact: bool = True) -> int:
-        """Open ``dialog`` as a page and wait for its answer; return its result code."""
+        """Open ``dialog`` modally and wait for its answer; return its result code."""
         return self.page_host.run_page(dialog, compact=compact)
 
     def _on_dashboard_state(self, _state: object) -> None:
         # A bound method (not a lambda) is disconnected when this window is deleted.
         self._track_active_server()
-        self._update_server_menu()
-
-    def _update_server_menu(self) -> None:
-        """Mirror the toolbar: a menu action is enabled when its button is usable."""
-        has_server = self.dashboard_controller.state.row is not None
-        for action, source in self.server_actions.values():
-            if not (shiboken6.isValid(action) and shiboken6.isValid(source)):
-                return  # the window is being deleted; a late result must not touch its menu
-            action.setEnabled(has_server and source.isEnabled() and not source.isHidden())
-
-    def _build_status_bar(self) -> None:
-        status_bar = self.statusBar()
-        folder_icon = QLabel()
-        folder_icon.setPixmap(icons.pixmap("folder", theme.TEXT_MUTED, 14))
-        status_bar.addWidget(folder_icon)
-        self.servers_folder_label = QLabel(
-            self._messages.text("status.servers_folder", path=str(self._services.servers_root))
-        )
-        self.servers_folder_label.setObjectName("serversFolder")
-        # A long path is cut off rather than widening the window; the tooltip has all of it.
-        self.servers_folder_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self.servers_folder_label.setToolTip(str(self._services.servers_root))
-        if self._services.can_run_servers and not self._services.java_problem:
-            java_text = self._messages.text("status.java_available")
-        else:
-            java_text = self._messages.text("status.java_missing")
-        self.java_status_label = QLabel(java_text)
-        self.java_status_label.setObjectName("javaStatus")
-        if self._services.java_problem:
-            # Technical detail stays out of the main text; available on hover.
-            self.java_status_label.setToolTip(self._services.java_problem)
-        status_bar.addWidget(self.servers_folder_label, 1)
-        self.java_dot = QLabel()
-        self.java_dot.setObjectName("javaDot")
-        self._set_java_dot(self._services.can_run_servers and not self._services.java_problem)
-        status_bar.addPermanentWidget(self.java_dot)
-        status_bar.addPermanentWidget(self.java_status_label)
-        self.java_check_button = QPushButton(self._messages.text("status.java_check"))
-        self.java_check_button.setObjectName("javaCheck")
-        self.java_choose_button = QPushButton(self._messages.text("status.java_choose"))
-        self.java_choose_button.setObjectName("javaChoose")
-        if self._services.java is not None:
-            status_bar.addPermanentWidget(self.java_check_button)
-            status_bar.addPermanentWidget(self.java_choose_button)
-        else:
-            self.java_check_button.hide()
-            self.java_choose_button.hide()
 
     def _connect(self) -> None:
         QGuiApplication.styleHints().colorSchemeChanged.connect(self._on_system_color_scheme)
@@ -426,13 +325,11 @@ class MainWindow(QMainWindow):
         servers.state_changed.connect(self._show_list_state)
         self.server_list_view.server_selected.connect(self._on_server_picked)
         self.server_list_view.refresh_requested.connect(servers.refresh)
-        self.refresh_action.triggered.connect(servers.refresh)
         self.server_list_view.create_requested.connect(self.open_create_dialog)
         self.server_list_view.import_requested.connect(self.open_adopt_dialog)
         self.server_list_view.settings_requested.connect(self.open_settings_dialog)
         self.dashboard_view.new_server_requested.connect(self.open_create_dialog)
         self.dashboard_view.import_requested.connect(self.open_adopt_dialog)
-        self.new_server_action.triggered.connect(self.open_create_dialog)
         self.creation_controller.created.connect(self._on_server_created)
         if self.poller is not None:
             self.poller.changed.connect(lambda _snapshot: servers.update_statuses())
@@ -452,20 +349,13 @@ class MainWindow(QMainWindow):
         self.dashboard_view.open_folder_requested.connect(self._open_server_folder)
         self.dashboard_view.open_logs_requested.connect(self._open_logs_folder)
         self.dashboard_view.copy_address_requested.connect(self._copy_address)
-        self.java_check_button.clicked.connect(self.check_java)
-        self.java_choose_button.clicked.connect(self.choose_java)
 
         management = self.management_controller
         self.dashboard_view.edit_requested.connect(self.open_edit_dialog)
         self.dashboard_view.delete_requested.connect(self.request_delete)
-        self.import_folder_action.triggered.connect(self.open_adopt_dialog)
-        self.import_legacy_action.triggered.connect(management.import_legacy)
-        self.first_run_action.triggered.connect(self.open_first_run)
-        self.settings_action.triggered.connect(self.open_settings_dialog)
         management.changed.connect(self._on_servers_changed)
-        management.message.connect(self._show_message_in_status_bar)
+        management.message.connect(self._notify_success)
         management.failed.connect(self._show_failure)
-        management.legacy_imported.connect(self._on_legacy_imported)
 
         properties = self.properties_controller
         if self.properties_view is not None:
@@ -523,7 +413,7 @@ class MainWindow(QMainWindow):
 
     def _on_server_picked(self, server_id: object) -> None:
         """Picking a server closes open pages first; a page that is still working keeps the old selection."""
-        if not self.page_host.dismiss_all():
+        if not self.page_host.dismiss_all() or not self.content_host.dismiss_all():
             self.server_list_view.show_state(self.server_list_controller.state)
             return
         self.server_list_controller.select(server_id if isinstance(server_id, str) else None)
@@ -541,7 +431,9 @@ class MainWindow(QMainWindow):
         self, controller: ServerCreationController, messages: Messages, parent: QWidget
     ) -> CreateServerDialog:
         download = self.download_server_jar if self.jar_catalog_controller is not None else None
-        return CreateServerDialog(controller, messages, parent, download_jar=download)
+        return CreateServerDialog(
+            controller, messages, parent, download_jar=download, system_memory_mb=self._services.system_memory_mb
+        )
 
     def download_server_jar(self, parent: QWidget) -> str | None:
         """Let the user pick and download an official server JAR; return the verified file (M3-GUI-06)."""
@@ -649,7 +541,7 @@ class MainWindow(QMainWindow):
         try:
             suggested = service.suggest_name(server_id, Path(source).stem)
         except Exception as error:
-            self._show_error_in_status_bar(error)
+            self._notify_error(error)
             return
         name = self._world_dialogs.world_name(suggested)
         if name is not None:
@@ -724,7 +616,7 @@ class MainWindow(QMainWindow):
         self.background.run(
             lambda: provisioning.accept_eula(server_id),
             lambda _result: self.dashboard_controller.start(),
-            self._show_error_in_status_bar,
+            self._notify_error,
         )
 
     def _on_java_problem(self, problem: JavaProblem) -> None:
@@ -738,36 +630,9 @@ class MainWindow(QMainWindow):
             self.dashboard_controller.start(StartOptions(allow_outdated_java=True))
 
     def check_java(self) -> None:
-        """Detect Java again and update the status bar (no restart needed)."""
-        java = self._services.java
-        if java is not None:
-            self._show_java_status(java.status())
-
-    def choose_java(self) -> None:
-        """Let the user choose ``java.exe`` for later starts."""
-        java = self._services.java
-        if java is None:
-            return
-        path = pick_java_with_system_dialog(self._messages)(self)
-        if not path:
-            return
-        try:
-            self._show_java_status(java.choose_executable(path))
-        except InvalidJavaExecutable as error:
-            self._show_error_in_status_bar(error)
-
-    def _show_java_status(self, status: JavaStatus) -> None:
-        installation = status.installation
-        self._set_java_dot(installation is not None)
-        if installation is None:
-            self.java_status_label.setText(self._messages.text("status.java_missing"))
-            self.java_status_label.setToolTip(_NO_TOOLTIP)
-            return
-        self.java_status_label.setText(self._messages.text("status.java_ready", major=installation.major_version))
-        self.java_status_label.setToolTip(installation.executable)
-
-    def _set_java_dot(self, ready: bool) -> None:
-        self.java_dot.setPixmap(_dot(theme.ACCENT if ready else theme.DANGER))
+        """Detect Java again; the Settings page shows the result when it is open."""
+        if self.settings_dialog is not None:
+            self.settings_dialog.refresh_java()
 
     def notify(self, message: UserMessage, tone: str = "info") -> None:
         """Queue a notification (M4-GUI-04): success, info, notice (warning) or error."""
@@ -777,25 +642,14 @@ class MainWindow(QMainWindow):
         """Return the texts of every listed notification, shown and waiting."""
         return [render_message(self._messages, item.message) for item in self.notifications.all]
 
-    def _show_error_in_status_bar(self, error: BaseException) -> None:
+    def _notify_error(self, error: BaseException) -> None:
         self.notify(describe_error(error), "error")
 
-    def _show_message_in_status_bar(self, message: UserMessage) -> None:
+    def _notify_success(self, message: UserMessage) -> None:
         self.notify(message, "success")
 
     def _show_failure(self, message: UserMessage) -> None:
-        if self._guide_is_importing():
-            return  # the guide shows it on its import page
         self.notify(message, "error")
-
-    def _on_legacy_imported(self, result: LegacyImportResult) -> None:
-        if self._guide_is_importing():
-            return  # the guide shows the result on its import page
-        self._notify_legacy_result(result)
-
-    def _guide_is_importing(self) -> bool:
-        controller = self.first_run_controller
-        return controller is not None and controller.state.importing
 
     # --- M2: edit, delete, import, settings ---------------------------------------------------
 
@@ -814,7 +668,14 @@ class MainWindow(QMainWindow):
         if configuration is None:
             return
         running = self.dashboard_controller.active_server_id == configuration.server_id
-        dialog = EditServerDialog(self.management_controller, configuration, self._messages, self, running=running)
+        dialog = EditServerDialog(
+            self.management_controller,
+            configuration,
+            self._messages,
+            self,
+            running=running,
+            system_memory_mb=self._services.system_memory_mb,
+        )
         self.edit_dialog = dialog
         dialog.finished.connect(lambda _result: self._forget_dialog("edit_dialog"))
         self.show_page(dialog)
@@ -833,7 +694,9 @@ class MainWindow(QMainWindow):
         if self.adopt_dialog is not None:
             self.adopt_dialog.raise_()
             return
-        dialog = AdoptServerDialog(self.management_controller, self._messages, self)
+        dialog = AdoptServerDialog(
+            self.management_controller, self._messages, self, system_memory_mb=self._services.system_memory_mb
+        )
         self.adopt_dialog = dialog
         dialog.finished.connect(lambda _result: self._forget_dialog("adopt_dialog"))
         self.show_page(dialog)
@@ -843,6 +706,8 @@ class MainWindow(QMainWindow):
         settings = self._services.settings
         if settings is None:
             return
+        if self.settings_dialog is not None:
+            return
         dialog = SettingsDialog(
             self.management_controller,
             settings.current,
@@ -851,12 +716,11 @@ class MainWindow(QMainWindow):
             self,
             open_folder=self._open_folder,
         )
-        dialog.import_legacy_requested.connect(self.management_controller.import_legacy)
-        dialog.accepted.connect(self.check_java)
+        dialog.setup_guide_requested.connect(self.open_first_run)
         dialog.accepted.connect(self._after_settings_saved)
         self.settings_dialog = dialog
         dialog.finished.connect(lambda _result: self._forget_dialog("settings_dialog"))
-        self.show_page(dialog)
+        self.content_host.open_page(dialog, wide=True)
 
     # --- language change without a restart (M4-GUI-02) ----------------------------------------
 
@@ -876,6 +740,7 @@ class MainWindow(QMainWindow):
             or self.worlds_controller.busy
             or (self.jar_catalog_controller is not None and self.jar_catalog_controller.state.busy)
             or self.page_host.pages
+            or self.content_host.pages
         )
 
     def _after_settings_saved(self) -> None:
@@ -937,17 +802,14 @@ class MainWindow(QMainWindow):
         self.report_unclean_shutdowns()
         if self._first_run_guide and FirstRunController.should_run(self._services.settings, self._server_count()):
             self.open_first_run()
-            return
-        self.offer_legacy_import()
 
     # --- first-run guide (M4-GUI-08) ---------------------------------------------------------
 
     def open_first_run(self) -> None:
-        """Open the setup guide as a page (also from File › Setup guide)."""
+        """Open the setup guide (also from Settings › Setup guide)."""
         if self.first_run_dialog is not None:
             return
         controller = FirstRunController(
-            self.management_controller,
             str(self._services.servers_root),
             self._services.java,
             self._services.settings,
@@ -969,6 +831,7 @@ class MainWindow(QMainWindow):
 
     def _on_first_run_finished(self, ending: Ending) -> None:
         self.check_java()  # the guide may have found or chosen Java
+        self.content_host.dismiss_all()  # opened from Settings: go back to the servers
         self.server_list_controller.refresh()
         if ending is Ending.CREATE_SERVER:
             QTimer.singleShot(0, self.open_create_dialog)
@@ -982,16 +845,6 @@ class MainWindow(QMainWindow):
             dialog.deleteLater()
         if controller is not None:
             controller.deleteLater()
-
-    def offer_legacy_import(self) -> None:
-        """Offer once to import MCServer 0.9.1 servers that are not in the list yet."""
-        controller = self.management_controller
-        if not controller.should_offer_legacy_import():
-            return
-        pending = controller.pending_legacy_servers()
-        controller.mark_legacy_import_offered()
-        if self._offer_legacy_import(len(pending)):
-            controller.import_legacy()
 
     def report_unclean_shutdowns(self) -> None:
         """Tell the user once about each server that was not stopped cleanly last time (no recovery offered yet)."""
@@ -1039,43 +892,6 @@ class MainWindow(QMainWindow):
         remove_files = dialog.remove_files
         dialog.deleteLater()
         return remove_files if accepted else None
-
-    def _ask_legacy_import(self, count: int) -> bool:
-        text = self._messages.text
-        return (
-            ask(
-                self,
-                text("legacy.offer.title"),
-                self._messages.plural("legacy.offer.text", count),
-                [Choice("no", text("legacy.offer.no")), Choice("yes", text("legacy.offer.yes"), "primary")],
-                default="yes",
-            )
-            == "yes"
-        )
-
-    def _show_legacy_result(self, result: LegacyImportResult) -> None:
-        if not (result.imported or result.skipped or result.rejected):
-            text = self._messages.text("legacy.result.nothing")
-        else:
-            lines = [
-                self._messages.text(
-                    "legacy.result.text",
-                    imported=result.imported_count,
-                    skipped=result.skipped_count,
-                    rejected=result.rejected_count,
-                )
-            ]
-            lines += [
-                self._messages.text("legacy.result.rejected", server_id=item.server_id, reason=item.reason)
-                for item in result.rejected
-            ]
-            text = "\n".join(lines)
-        ask(
-            self,
-            self._messages.text("legacy.result.title"),
-            text,
-            [Choice("ok", self._messages.text("dialog.ok"), "primary")],
-        )
 
     def _ask_to_kill(self, server_id: str) -> bool:
         text = self._messages.text
@@ -1199,7 +1015,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Stop a running server (after confirmation) before closing; release GUI resources."""
-        if not self.page_host.dismiss_all():
+        if not self.page_host.dismiss_all() or not self.content_host.dismiss_all():
             event.ignore()
             self.notify(UserMessage("exit.wait_for_operation"), "notice")
             return

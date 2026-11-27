@@ -49,7 +49,7 @@ def harness(qtbot: QtBot) -> Harness:
 def test_jar_file_is_derived_from_selected_source() -> None:
     assert VALID.jar_file == "paper-1.21.4.jar"
     assert CreationForm().jar_file == ""
-    assert CreationForm().memory_mb == DEFAULT_MEMORY_MB == 4096
+    assert CreationForm().memory_mb == DEFAULT_MEMORY_MB == 2048  # 2 GB by default
 
 
 def test_valid_form_has_no_errors(harness: Harness) -> None:

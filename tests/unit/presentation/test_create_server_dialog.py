@@ -43,9 +43,11 @@ def test_dialog_renders_fields_with_catalog_texts_and_defaults(qtbot: QtBot) -> 
     dialog = setup.dialog
 
     assert dialog.windowTitle() == MESSAGES.text("create.title")
-    assert dialog.memory_spin.value() == 4096
-    assert dialog.jar_edit.isReadOnly()
-    assert dialog.jar_edit.placeholderText() == MESSAGES.text("create.jar.placeholder")
+    assert dialog.memory_mb == 2048  # 2 GB unless the user picks more
+    assert dialog.memory_slider.value_label.text() == MESSAGES.text("memory.gb", value="2")
+    assert dialog.jar_edit.text() == MESSAGES.text("create.jar.placeholder")
+    assert dialog.advanced_button.isEnabled() and not dialog.advanced_button.isChecked()
+    assert dialog.directory_edit.isHidden()  # the folder name waits under "Advanced"
     assert dialog.create_button.text() == MESSAGES.text("create.submit")
     assert not dialog.create_button.isEnabled()
     assert all(label.isHidden() for label in dialog.field_errors.values())  # no errors before typing

@@ -1,4 +1,4 @@
-"""Edit, delete and import servers, legacy migration and application settings (M2 GUI)."""
+"""Edit, delete and import servers, and application settings (M2 GUI)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from PySide6.QtCore import QObject, Signal
 
 from mcserver.application.progress import CancelToken
 from mcserver.application.server_adoption import FolderContents
-from mcserver.application.server_management import DeletedServer, LegacyImportResult
+from mcserver.application.server_management import DeletedServer
 from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.presentation.errors import UserMessage, describe_error
 from mcserver.presentation.services import PresentationServices
@@ -22,7 +22,7 @@ class ManagementController(QObject):
     """Run installation-level operations through the application use cases.
 
     Small changes (edit, settings) run synchronously and return an error
-    message or ``None``. Slow ones (delete, folder copy, legacy import) run in
+    message or ``None``. Slow ones (delete, folder copy) run in
     the background and report through signals. Business rules stay in the
     use cases; this controller only translates results into messages.
     """
@@ -32,7 +32,6 @@ class ManagementController(QObject):
     failed = Signal(object)  # UserMessage
     busy_changed = Signal(bool)
     copy_progress = Signal(object)  # Progress
-    legacy_imported = Signal(object)  # LegacyImportResult
 
     def __init__(self, services: PresentationServices, runner: BackgroundRunner, parent: QObject | None = None) -> None:
         """Use ``services``; background work goes through ``runner``."""
@@ -153,43 +152,6 @@ class ManagementController(QObject):
         """Ask the running copy to stop; the partly copied folder is removed."""
         if self._cancel is not None and self._busy:
             self._cancel.cancel()
-
-    # --- legacy import (M2-GUI-02) ----------------------------------------------------------------
-
-    def pending_legacy_servers(self) -> tuple[str, ...]:
-        """Return MCServer 0.9.1 servers not imported yet (none if the legacy list cannot be read)."""
-        try:
-            return self._services.management.pending_legacy_servers()
-        except Exception:
-            _logger.warning("Could not read the MCServer 0.9.1 server list.", exc_info=True)
-            return ()
-
-    def should_offer_legacy_import(self) -> bool:
-        """Return whether the one-time import offer should be shown now."""
-        settings = self._services.settings
-        if settings is not None and settings.current.legacy_import_offered:
-            return False
-        return bool(self.pending_legacy_servers())
-
-    def mark_legacy_import_offered(self) -> None:
-        """Remember that the offer was shown, so it is never repeated automatically."""
-        settings = self._services.settings
-        if settings is None or settings.current.legacy_import_offered:
-            return
-        try:
-            settings.update(legacy_import_offered=True)
-        except Exception:
-            _logger.warning("Could not save that the import was offered.", exc_info=True)
-
-    def import_legacy(self) -> None:
-        """Import MCServer 0.9.1 servers in the background (safe to repeat)."""
-        management = self._services.management
-
-        def done(result: LegacyImportResult) -> None:
-            self.legacy_imported.emit(result)
-            self.changed.emit(None)
-
-        self._run(management.import_legacy_servers, done)
 
     # --- settings (M2-GUI-01) ---------------------------------------------------------------------
 

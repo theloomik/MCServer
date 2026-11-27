@@ -11,16 +11,16 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLineEdit,
     QPushButton,
-    QSpinBox,
     QWidget,
 )
 
 from mcserver.application.server_adoption import FolderContents
-from mcserver.domain.server_configuration import MAX_MEMORY_MB, MIN_MEMORY_MB, is_safe_name
+from mcserver.domain.server_configuration import is_safe_name
 from mcserver.presentation.controllers.server_management import ManagementController
 from mcserver.presentation.dialogs.form import FormDialog, primary_button, secondary_button
 from mcserver.presentation.errors import UserMessage, render_message
 from mcserver.presentation.i18n import Messages
+from mcserver.presentation.views.memory_slider import MemorySlider
 from mcserver.presentation.views.progress_panel import ProgressPanel
 
 FolderPicker = Callable[[QWidget], str | None]
@@ -46,6 +46,7 @@ class AdoptServerDialog(FormDialog):
         parent: QWidget | None = None,
         *,
         pick_folder: FolderPicker | None = None,
+        system_memory_mb: int | None = None,
     ) -> None:
         """Build the empty form."""
         super().__init__(messages.text("adopt.title"), messages.text("adopt.subtitle"), parent)
@@ -70,12 +71,8 @@ class AdoptServerDialog(FormDialog):
         self.id_edit = QLineEdit()
         self.id_edit.textChanged.connect(lambda _text: self._refresh())
         self.add_field(messages.text("adopt.server_id.label"), self.id_edit)
-        self.memory_spin = QSpinBox()
-        self.memory_spin.setRange(MIN_MEMORY_MB, MAX_MEMORY_MB)
-        self.memory_spin.setSingleStep(512)
-        self.memory_spin.setSuffix(messages.text("create.memory.suffix"))
-        self.memory_spin.setValue(DEFAULT_MEMORY_MB)
-        self.add_field(messages.text("adopt.memory.label"), self.memory_spin)
+        self.memory_slider = MemorySlider(messages, system_memory_mb)
+        self.add_field(messages.text("adopt.memory.label"), self.memory_slider)
         self.progress = ProgressPanel(messages, cancellable=False)  # the footer button cancels
         self.body.addWidget(self.progress)
         self.cancel_button = secondary_button(messages.text("adopt.cancel"))
@@ -130,7 +127,7 @@ class AdoptServerDialog(FormDialog):
             contents.folder,
             server_id=self.id_edit.text().strip(),
             jar_file=self.jar_combo.currentText(),
-            memory_mb=self.memory_spin.value(),
+            memory_mb=self.memory_slider.value_mb(),
         )
 
     def _can_submit(self) -> bool:
@@ -146,7 +143,7 @@ class AdoptServerDialog(FormDialog):
         busy = self._controller.busy
         self.import_button.setEnabled(self._can_submit())
         self.import_button.setText(self._messages.text("adopt.submitting" if busy else "adopt.submit"))
-        for widget in (self.browse_button, self.jar_combo, self.id_edit, self.memory_spin):
+        for widget in (self.browse_button, self.jar_combo, self.id_edit, self.memory_slider):
             widget.setEnabled(not busy)
         self.cancel_button.setText(self._messages.text("progress.cancel" if busy else "adopt.cancel"))
         self.cancel_button.setEnabled(True)

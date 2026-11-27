@@ -125,7 +125,7 @@ def test_window_routes_messages_into_notifications(qtbot: QtBot, tmp_path) -> No
     setup = Setup(qtbot, tmp_path)
     window = setup.window
     window.notify(UserMessage("dashboard.no_logs"), "notice")
-    window._show_error_in_status_bar(OSError("boom"))  # type: ignore[attr-defined]
+    window._notify_error(OSError("boom"))  # type: ignore[attr-defined]
 
     assert MESSAGES.text("dashboard.no_logs") in window.notification_texts()
     tones = [item.tone for item in window.notifications.all]

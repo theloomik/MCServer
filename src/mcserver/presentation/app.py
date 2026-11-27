@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QApplication
 
 from mcserver.application.ports import JavaRuntimeProvider
 from mcserver.bootstrap.server_runtime import build_server_runtime
+from mcserver.infrastructure.psutil_metrics import total_memory_mb
 from mcserver.presentation.adapters.session_end import CRASH_STOP_TIMEOUT_SECONDS, CrashHandler, SessionEndHandler
 from mcserver.presentation.appearance import apply_appearance
 from mcserver.presentation.i18n import Messages, messages_for, resolve_language
@@ -64,6 +65,7 @@ def build_services(root: Path, java_resolver: JavaRuntimeProvider | None = None)
         scheduled_backups=runtime.scheduled_backups,
         worlds=runtime.worlds,
         jar_catalog=runtime.jar_catalog,
+        system_memory_mb=total_memory_mb(),
     )
     # A restore cut off by a crash is repaired before anything else touches the server folders.
     runtime.backups.recover_interrupted_restores()

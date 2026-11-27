@@ -19,7 +19,7 @@ from mcserver.presentation.workers import BackgroundRunner
 
 _logger = logging.getLogger(__name__)
 
-DEFAULT_MEMORY_MB = 4096
+DEFAULT_MEMORY_MB = 2048
 FIELDS = ("server_id", "directory", "source_jar", "memory_mb", "eula")
 
 

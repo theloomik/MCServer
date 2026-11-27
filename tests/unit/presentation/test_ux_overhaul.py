@@ -1,0 +1,211 @@
+"""UX overhaul: wheel behaviour, memory slider, grouped properties, dashboard tiles, settings page, no 0.9.1."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QWheelEvent
+from PySide6.QtWidgets import QApplication, QComboBox, QScrollArea, QSpinBox, QVBoxLayout, QWidget
+from pytestqt.qtbot import QtBot
+from test_m2_gui import SURVIVAL
+from test_m2_gui import Setup as M2Setup
+from test_m3_gui import Setup as M3Setup
+
+from mcserver.application.server_metrics import ServerMetricsSnapshot
+from mcserver.domain.lifecycle import ServerState
+from mcserver.presentation.i18n import messages_for
+from mcserver.presentation.views.memory_slider import MemorySlider, format_gb, memory_limits
+from mcserver.presentation.wheel_guard import install_wheel_guard
+
+MESSAGES = messages_for("en")
+LOCALES = Path(__file__).resolve().parents[3] / "src/mcserver/presentation/i18n/locales"
+
+
+# --- mouse wheel ----------------------------------------------------------------------------
+
+
+def _wheel(widget: QWidget, steps: int = 1) -> None:
+    centre = QPointF(widget.rect().center())
+    event = QWheelEvent(
+        centre,
+        QPointF(widget.mapToGlobal(QPoint(int(centre.x()), int(centre.y())))),
+        QPoint(0, 0),
+        QPoint(0, 120 * steps),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+    QApplication.sendEvent(widget, event)
+
+
+def test_the_wheel_scrolls_the_page_instead_of_changing_an_unfocused_value(qtbot: QtBot) -> None:
+    install_wheel_guard()
+    scroll = QScrollArea()
+    qtbot.addWidget(scroll)
+    page = QWidget()
+    layout = QVBoxLayout(page)
+    spin = QSpinBox()
+    spin.setRange(0, 100)
+    spin.setValue(50)
+    combo = QComboBox()
+    combo.addItems(["a", "b", "c"])
+    layout.addWidget(spin)
+    layout.addWidget(combo)
+    layout.addSpacing(2000)
+    scroll.setWidget(page)
+    scroll.resize(300, 200)
+    scroll.show()
+
+    _wheel(spin, -1)
+    _wheel(combo, -1)
+    assert spin.value() == 50 and combo.currentIndex() == 0  # unchanged
+    assert scroll.verticalScrollBar().value() > 0  # the page scrolled instead
+    assert spin.focusPolicy() == Qt.FocusPolicy.StrongFocus  # the wheel never takes the focus
+
+    spin.setFocus()
+    qtbot.waitUntil(spin.hasFocus)
+    _wheel(spin, 1)
+    assert spin.value() == 51  # after clicking in, the wheel changes the value on purpose
+
+
+# --- memory slider --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("total_mb", "maximum", "default"),
+    [(4096, 2, 2), (8192, 6, 2), (16384, 12, 2), (32768, 24, 2), (131072, 32, 2), (2048, 1, 1), (None, 6, 2)],
+)
+def test_memory_limits_leave_room_for_windows(total_mb: int | None, maximum: int, default: int) -> None:
+    limits = memory_limits(total_mb)
+    assert (limits.maximum_gb, limits.default_gb) == (maximum, default)
+
+
+def test_slider_shows_gigabytes_and_offers_common_sizes(qtbot: QtBot) -> None:
+    slider = MemorySlider(MESSAGES, 16384)
+    qtbot.addWidget(slider)
+    assert slider.value_mb() == 2048
+    assert slider.value_label.text() == MESSAGES.text("memory.gb", value="2")
+    assert (slider.slider.minimum(), slider.slider.maximum()) == (1, 12)
+    chips = {slider.presets.id(chip): chip for chip in slider.presets.buttons()}
+    assert sorted(chips) == [2, 4, 6, 8, 12]  # 16 GB is more than this PC can spare
+    chips[8].click()
+    assert slider.value_mb() == 8192 and chips[8].isChecked() and not chips[2].isChecked()
+    assert slider.slider.accessibleName() == MESSAGES.text("memory.label")
+
+
+def test_an_existing_unusual_value_is_kept_until_the_slider_moves(qtbot: QtBot) -> None:
+    slider = MemorySlider(MESSAGES, 8192, 4608)  # 4.5 GB, set before the slider existed
+    qtbot.addWidget(slider)
+    assert slider.value_mb() == 4608
+    slider.slider.setValue(3)
+    assert slider.value_mb() == 3072
+
+
+def test_a_value_above_the_recommendation_stays_selectable_and_is_flagged(qtbot: QtBot) -> None:
+    slider = MemorySlider(MESSAGES, 8192, 16384)
+    qtbot.addWidget(slider)
+    assert slider.slider.maximum() == 16 and slider.value_mb() == 16384
+    assert slider.value_label.property("warning") is True
+    assert slider.range_label.text() == MESSAGES.text("memory.over", maximum=6)
+    assert format_gb(1536) == "1.5" and format_gb(2048) == "2"
+
+
+def test_create_dialog_uses_the_pcs_memory(qtbot: QtBot, tmp_path: Path) -> None:
+    setup = M2Setup(qtbot, tmp_path)
+    setup.window._services.system_memory_mb = 32768  # type: ignore[attr-defined]
+    setup.window.open_create_dialog()
+    dialog = setup.window.create_dialog
+    assert dialog is not None
+    assert dialog.memory_slider.slider.maximum() == 24 and dialog.memory_mb == 2048
+
+
+# --- properties -----------------------------------------------------------------------------
+
+
+def test_properties_are_grouped_with_readable_names_and_searchable_by_either(qtbot: QtBot, tmp_path: Path) -> None:
+    setup = M3Setup(qtbot, tmp_path)
+    setup.select("survival")
+    view = setup.window.properties_view
+    assert view is not None
+    groups = [heading.findChild(QWidget).text() for heading, _frame, _keys in view._groups]  # type: ignore[attr-defined]
+    assert groups[0] == MESSAGES.text("properties.group.common").upper()
+    assert view.editors["motd"].accessibleName() == MESSAGES.text("properties.label.motd")
+    assert view.editors["motd"].accessibleDescription() == "motd"  # the technical name stays available
+
+    view.filter_edit.setText(MESSAGES.text("properties.label.max-players")[:7])  # by the readable name
+    assert not view._cells["max-players"].isHidden() and view._cells["motd"].isHidden()  # type: ignore[attr-defined]
+    view.filter_edit.setText("view-dist")  # by the key
+    assert not view._cells["view-distance"].isHidden()  # type: ignore[attr-defined]
+
+
+def test_unknown_properties_wait_in_a_collapsed_group_that_search_opens(qtbot: QtBot, tmp_path: Path) -> None:
+    setup = M3Setup(qtbot, tmp_path)
+    setup.select("survival")
+    view = setup.window.properties_view
+    assert view is not None and view.other_button is not None
+    other = [frame for heading, frame, _keys in view._groups if heading.isAncestorOf(view.other_button)][0]  # type: ignore[attr-defined]
+    assert other.isHidden() and not view.other_button.isChecked()
+    view.other_button.click()
+    assert not other.isHidden()
+    view.other_button.click()
+    unknown = [key for key in view.editors if key not in ("motd", "difficulty", "max-players", "pvp", "view-distance")]
+    view.filter_edit.setText(unknown[0])
+    assert not other.isHidden()  # a search reaches rare keys too
+
+
+# --- dashboard ------------------------------------------------------------------------------
+
+
+def test_stopped_and_running_states_are_clear_at_a_glance(qtbot: QtBot, tmp_path: Path) -> None:
+    setup = M3Setup(qtbot, tmp_path)
+    setup.select("survival")
+    view = setup.window.dashboard_view
+    assert view.hint_label.text() == MESSAGES.text("dashboard.hint.stopped")
+    assert view.tiles["memory"].detail.text() == MESSAGES.text("metrics.not_running")
+    assert view.players_label.text() == MESSAGES.text("metrics.players_none")
+
+    setup.metrics.snapshot = ServerMetricsSnapshot("survival", ServerState.RUNNING, 30.0, 1024.0, 4096, 75)
+    setup.window.sample_metrics()
+    assert view.metric_values["memory"].text() == MESSAGES.text("metrics.memory_gb", used="1")
+    assert view.tiles["memory"].detail.text() == MESSAGES.text("metrics.memory_of", allocated="4")
+    assert view.metric_values["uptime"].text() == "0:01:15"
+
+
+# --- settings -------------------------------------------------------------------------------
+
+
+def test_settings_page_groups_appearance_java_servers_and_help(qtbot: QtBot, tmp_path: Path) -> None:
+    setup = M2Setup(qtbot, tmp_path)
+    setup.window.open_settings_dialog()
+    page = setup.window.settings_dialog
+    assert page is not None
+    assert page.java_status.text() == MESSAGES.text("settings.java.found_at", major=21, path="C:/jdk/bin/java.exe")
+    assert page.java_status.property("tone") == "ok"
+    page._pick_java = lambda _parent: "C:/jdk-17/bin/java.exe"  # type: ignore[method-assign]
+    page.choose_java()
+    assert page.java_label.text() == MESSAGES.text("settings.java.custom", path="C:/jdk-17/bin/java.exe")
+    assert page.java_status.text() == MESSAGES.text("settings.java.found", major=21)
+    page.use_automatic_java()
+    assert page.java_label.text() == MESSAGES.text("settings.java.automatic_hint")
+    assert page.theme_combo.accessibleName() == MESSAGES.text("settings.theme.label")
+    assert page.footer.objectName() == "pageFooter"  # Save stays in view on the long page
+
+
+# --- MCServer 0.9.1 is gone from the interface ------------------------------------------------
+
+
+@pytest.mark.parametrize("language", ["en", "uk"])
+def test_no_interface_text_mentions_mcserver_0_9_1(language: str) -> None:
+    catalog = json.loads((LOCALES / f"{language}.json").read_text(encoding="utf-8"))
+    assert [key for key, text in catalog.items() if "0.9.1" in text or key.startswith(("legacy.", "menu."))] == []
+
+
+def test_the_window_has_no_legacy_import_controls(qtbot: QtBot, tmp_path: Path) -> None:
+    setup = M2Setup(qtbot, tmp_path, SURVIVAL)
+    window = setup.window
+    for name in ("import_legacy_action", "offer_legacy_import", "first_run_action", "java_status_label"):
+        assert not hasattr(window, name), name

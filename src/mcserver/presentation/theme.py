@@ -459,6 +459,68 @@ QListWidget#versionList::item {{ padding: 5px 8px; border-radius: 6px; }}
 QListWidget#versionList::item:hover {{ background-color: {BORDER}; }}
 QListWidget#versionList::item:selected {{ background-color: {ACCENT_SUBTLE}; color: {TEXT}; }}
 
+/* Dialogs over the dimmed window (UX overhaul) */
+QFrame#modalCard {{ background-color: {SURFACE_CARD}; border: 1px solid {BORDER_STRONG}; border-radius: 12px; }}
+QFrame#modalCard QFrame#dialogCard {{ background: transparent; border: none; }}
+QFrame#modalCard QFrame#dialogFooter {{
+    border-bottom-left-radius: 12px; border-bottom-right-radius: 12px;
+}}
+QScrollArea#modalScroll, QScrollArea#modalScroll > QWidget > QWidget {{ background: transparent; border: none; }}
+QPushButton#disclosureButton {{
+    background: transparent; border: 1px solid transparent; border-radius: 6px;
+    color: {TEXT_SECONDARY}; font-weight: 600; padding: 4px 8px 4px 4px; text-align: left;
+}}
+QPushButton#disclosureButton:hover {{ color: {TEXT}; background-color: {SURFACE_HOVER}; }}
+QPushButton#disclosureButton:focus {{ border-color: {FOCUS}; }}
+
+/* Settings and server properties: grouped rows (UX overhaul) */
+QDialog#settingsPage QFrame#dialogCard {{ background: transparent; border: none; }}
+QDialog#settingsPage QFrame#dialogFooter {{ background: transparent; border-top: 1px solid {BORDER}; }}
+QFrame#pageFooter {{ background-color: {BG_APP}; border: none; border-top: 1px solid {BORDER}; }}
+QFrame#settingsGroup {{ background-color: {SURFACE_CARD}; border: 1px solid {BORDER}; border-radius: 10px; }}
+QFrame#settingsRow {{ background: transparent; border: none; border-top: 1px solid {BORDER}; }}
+QFrame#settingsRow[first="true"] {{ border-top: none; }}
+QFrame#settingsGroup QLabel {{ background: transparent; border: none; }}
+QLabel#settingsSection {{ color: {TEXT}; font-size: 14px; font-weight: 600; }}
+QLabel#settingTitle {{ color: {TEXT}; font-size: 13px; }}
+QLabel#settingTitle[invalid="true"] {{ color: {DANGER_TEXT}; }}
+QLabel#settingStatus {{ color: {TEXT}; font-weight: 600; }}
+QLabel#settingStatus[tone="problem"] {{ color: {WARNING_TEXT}; }}
+QLabel#monoValue {{ color: {TEXT_SECONDARY}; font-family: {MONO_FAMILY}; font-size: 12px; }}
+
+/* Memory slider (UX overhaul) */
+QLabel#memoryValue {{ color: {TEXT}; font-size: 18px; font-weight: 600; min-width: 64px; }}
+QLabel#memoryValue[warning="true"] {{ color: {WARNING_TEXT}; }}
+QSlider#memorySliderBar::groove:horizontal {{ height: 4px; background: {BORDER_STRONG}; border-radius: 2px; }}
+QSlider#memorySliderBar::sub-page:horizontal {{ background: {ACCENT}; border-radius: 2px; }}
+QSlider#memorySliderBar::handle:horizontal {{
+    background: {SURFACE_CARD}; border: 2px solid {ACCENT}; width: 14px; height: 14px; margin: -7px 0; border-radius: 9px;
+}}
+QSlider#memorySliderBar::handle:horizontal:hover {{ background: {ACCENT_SUBTLE}; }}
+QSlider#memorySliderBar:focus::handle:horizontal {{ border-color: {FOCUS}; }}
+QSlider#memorySliderBar::sub-page:horizontal:disabled {{ background: {TEXT_FAINT}; }}
+QPushButton#chipButton {{
+    background-color: transparent; color: {TEXT_SECONDARY}; border: 1px solid {BORDER_STRONG};
+    border-radius: 12px; padding: 3px 10px; font-size: 12px;
+}}
+QPushButton#chipButton:hover {{ color: {TEXT}; border-color: {TEXT_FAINT}; }}
+QPushButton#chipButton:checked {{ color: {ACCENT_HOVER}; background-color: {ACCENT_SUBTLE}; border-color: {ACCENT_BORDER}; }}
+QPushButton#chipButton:focus {{ border-color: {FOCUS}; }}
+QLabel#jarName {{ color: {TEXT_MUTED}; }}
+QLabel#jarName[chosen="true"] {{ color: {TEXT}; font-weight: 600; }}
+
+/* Dashboard: stat tiles and tab-bar actions (UX overhaul) */
+QFrame#statTile {{ background-color: {SURFACE_CARD}; border: 1px solid {BORDER}; border-radius: 10px; }}
+QFrame#statTile QLabel {{ background: transparent; border: none; }}
+QLabel#tileCaption {{ color: {TEXT_MUTED}; font-size: 11px; font-weight: 600; letter-spacing: 0.6px; }}
+QLabel#tileValue {{ color: {TEXT}; font-size: 22px; font-weight: 600; }}
+QLabel#tileDetail {{ color: {TEXT_MUTED}; font-size: 12px; }}
+QLabel#addressValue {{ color: {TEXT}; font-family: {MONO_FAMILY}; font-size: 12px; }}
+QPushButton#toolButton {{ background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 6px; }}
+QPushButton#toolButton:hover {{ background-color: {SURFACE_HOVER}; }}
+QPushButton#toolButton:focus {{ border-color: {FOCUS}; }}
+QPushButton#toolButton:disabled {{ background: transparent; }}
+
 /* Keyboard focus (M4-GUI-07): every control shows where the focus is, in a colour no state uses. */
 {_PRIMARY}, {_SECONDARY}, {_DANGER}, QPushButton {{ outline: none; }}
 {_each(_PRIMARY, ":focus")} {{ border: 1px solid {FOCUS}; }}
