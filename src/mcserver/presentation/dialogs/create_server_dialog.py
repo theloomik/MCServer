@@ -11,7 +11,7 @@ from pathlib import PurePath
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QCloseEvent
-from PySide6.QtWidgets import QCheckBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QProgressBar, QWidget
+from PySide6.QtWidgets import QCheckBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QProgressBar, QVBoxLayout, QWidget
 
 from mcserver.domain.server_configuration import MAX_MEMORY_MB, MIN_MEMORY_MB, ServerConfiguration
 from mcserver.presentation import icons, theme
@@ -19,7 +19,7 @@ from mcserver.presentation.controllers.server_creation import CreationForm, Crea
 from mcserver.presentation.dialogs.form import FormDialog, primary_button, secondary_button
 from mcserver.presentation.i18n import Messages
 from mcserver.presentation.views.memory_slider import MemorySlider
-from mcserver.presentation.views.widgets import button, repolish
+from mcserver.presentation.views.widgets import WrapRow, button, repolish
 
 JarPicker = Callable[[QWidget], str | None]
 
@@ -128,15 +128,28 @@ class CreateServerDialog(FormDialog):
         self.jar_edit = QLabel(text("create.jar.placeholder"))
         self.jar_edit.setObjectName("jarName")
         self.jar_edit.setProperty("chosen", False)
+        # The two ways side by side when they fit, one below the other otherwise (long texts, scaling);
+        # the chosen file gets its own line, so nothing has to squeeze next to the buttons.
+        if self._download_jar is not None:
+            self.software_buttons: QWidget = WrapRow(self.download_button, self.browse_button, 8, fill=True)
+        else:
+            self.software_buttons = QWidget()
+            only = QHBoxLayout(self.software_buttons)
+            only.setContentsMargins(0, 0, 0, 0)
+            only.addWidget(self.browse_button)
+            only.addStretch(1)
+        self.jar_edit.setWordWrap(True)
+        chosen_row = QHBoxLayout()
+        chosen_row.setContentsMargins(2, 0, 0, 0)
+        chosen_row.setSpacing(8)
+        chosen_row.addWidget(self.jar_icon, 0, Qt.AlignmentFlag.AlignTop)
+        chosen_row.addWidget(self.jar_edit, 1)
         software = QWidget()
-        software_layout = QHBoxLayout(software)
+        software_layout = QVBoxLayout(software)
         software_layout.setContentsMargins(0, 0, 0, 0)
         software_layout.setSpacing(8)
-        software_layout.addWidget(self.download_button)
-        software_layout.addWidget(self.browse_button)
-        software_layout.addSpacing(6)
-        software_layout.addWidget(self.jar_icon)
-        software_layout.addWidget(self.jar_edit, 1)
+        software_layout.addWidget(self.software_buttons)
+        software_layout.addLayout(chosen_row)
         focus = self.download_button if self._download_jar is not None else self.browse_button
         self._field("source_jar", "create.source_jar.label", software, "create.source_jar.hint", focus=focus)
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import QPoint, QPointF, Qt
@@ -91,10 +92,50 @@ def test_slider_shows_gigabytes_and_offers_common_sizes(qtbot: QtBot) -> None:
     assert slider.value_label.text() == MESSAGES.text("memory.gb", value="2")
     assert (slider.slider.minimum(), slider.slider.maximum()) == (1, 12)
     chips = {slider.presets.id(chip): chip for chip in slider.presets.buttons()}
-    assert sorted(chips) == [2, 4, 6, 8, 12]  # 16 GB is more than this PC can spare
+    assert sorted(chips) == [2, 4, 8]  # 16 GB is more than this PC can spare
     chips[8].click()
     assert slider.value_mb() == 8192 and chips[8].isChecked() and not chips[2].isChecked()
+    slider.slider.setValue(4)  # the slider and the quick choices stay in step both ways
+    assert chips[4].isChecked() and not chips[8].isChecked()
+    slider.slider.setValue(3)
+    assert not any(chip.isChecked() for chip in chips.values())
     assert slider.slider.accessibleName() == MESSAGES.text("memory.label")
+
+
+def test_the_slider_moves_in_whole_gigabytes_with_a_mark_for_each(qtbot: QtBot) -> None:
+    slider = MemorySlider(MESSAGES, 16384)
+    qtbot.addWidget(slider)
+    slider.resize(520, slider.sizeHint().height())
+    slider.show()
+    bar = slider.slider
+    assert (bar.singleStep(), bar.pageStep()) == (1, 1)
+    assert slider.ticks.labelled_values() == list(range(1, 13))  # 12 marks, all numbered at this width
+    third = bar.position_of(3)
+    assert bar.value_at(third + 4) == 3 and bar.value_at(third - 4) == 3  # a click near a mark snaps to it
+    qtbot.mouseClick(bar, Qt.MouseButton.LeftButton, pos=QPoint(int(bar.position_of(7)), bar.height() // 2))
+    assert bar.value() == 7 and slider.value_mb() == 7 * 1024
+    qtbot.keyClick(bar, Qt.Key.Key_Right)
+    assert slider.value_mb() == 8 * 1024  # the arrow keys move one gigabyte
+
+
+def test_crowded_marks_number_only_every_few_steps(qtbot: QtBot) -> None:
+    slider = MemorySlider(MESSAGES, 128 * 1024)  # 32 GB range
+    qtbot.addWidget(slider)
+    slider.resize(360, slider.sizeHint().height())
+    slider.show()
+    labelled = slider.ticks.labelled_values()
+    assert labelled[0] == 1 and labelled[-1] == 32 and len(labelled) < 32
+    assert slider.ticks.label_step() > 1
+
+
+@pytest.mark.parametrize(("total_mb", "maximum", "value", "chips"), [(2048, 1, 1024, False), (4096, 2, 2048, False)])
+def test_a_small_pc_gets_a_safe_default_and_no_needless_quick_choices(
+    qtbot: QtBot, total_mb: int, maximum: int, value: int, chips: bool
+) -> None:
+    slider = MemorySlider(MESSAGES, total_mb)
+    qtbot.addWidget(slider)
+    assert slider.slider.maximum() == maximum and slider.value_mb() == value
+    assert bool(slider.presets.buttons()) is chips  # with so few steps the marks are enough
 
 
 def test_an_existing_unusual_value_is_kept_until_the_slider_moves(qtbot: QtBot) -> None:
@@ -209,3 +250,29 @@ def test_the_window_has_no_legacy_import_controls(qtbot: QtBot, tmp_path: Path) 
     window = setup.window
     for name in ("import_legacy_action", "offer_legacy_import", "first_run_action", "java_status_label"):
         assert not hasattr(window, name), name
+
+
+@pytest.mark.parametrize("language", ["en", "uk"])
+def test_create_dialog_content_never_overflows_its_card(
+    qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, language: str
+) -> None:
+    import test_m2_gui
+
+    monkeypatch.setattr(test_m2_gui, "MESSAGES", messages_for(language))
+    setup = M2Setup(qtbot, tmp_path)
+    window = setup.window
+    # Any catalog makes the download button show; closing the window asks whether it is busy.
+    window.jar_catalog_controller = SimpleNamespace(state=SimpleNamespace(busy=False))  # type: ignore[assignment]
+    window.resize(window.minimumWidth(), window.minimumHeight())
+    window.show()
+    window.open_create_dialog()
+    dialog = window.create_dialog
+    assert dialog is not None and not dialog.download_button.isHidden()
+    dialog._use_jar("C:/Downloads/paper-1.21.4-232-with-a-rather-long-file-name.jar")  # type: ignore[attr-defined]
+    qtbot.wait(20)
+    card = dialog.parentWidget()
+    while card is not None and card.objectName() != "modalCard":
+        card = card.parentWidget()
+    assert card is not None
+    assert dialog.minimumSizeHint().width() <= card.width()  # nothing is pushed past the right edge
+    assert dialog.width() <= card.width()

@@ -164,9 +164,13 @@ class WrapRow(QWidget):
         return self.row.direction() is QBoxLayout.Direction.TopToBottom
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802 (Qt override)
-        """Need only the wider group, so the window can be narrow."""
+        """Need only the wider group's width, and the height of the arrangement shown now."""
         first, second = self.first.minimumSizeHint(), self.second.minimumSizeHint()
-        return QSize(max(first.width(), second.width()), first.height() + second.height() + self.row.spacing())
+        if self.wrapped:
+            height = first.height() + second.height() + self.row.spacing()
+        else:
+            height = max(first.height(), second.height())
+        return QSize(max(first.width(), second.width()), height)
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt override)
         """Put both groups on one line only when they fit."""
@@ -174,6 +178,7 @@ class WrapRow(QWidget):
         wrap = event.size().width() < needed
         if wrap != self.wrapped:
             self.row.setDirection(QBoxLayout.Direction.TopToBottom if wrap else QBoxLayout.Direction.LeftToRight)
+            self.updateGeometry()
         super().resizeEvent(event)
 
 
