@@ -243,10 +243,12 @@ class ServerPropertiesView(QFrame):
         cell.setProperty("first", first)
         friendly = self._messages.text(f"properties.label.{key}") if key in KNOWN_PROPERTIES else key
         self._labels[key] = friendly
-        label = QLabel(friendly)
+        # Every child gets its row as parent at once: a parentless widget made visible is a window of its own
+        # and flashes on screen until the layout adopts it.
+        label = QLabel(friendly, cell)
         label.setObjectName("settingTitle")
         label.setProperty("invalid", bool(problem))
-        technical = QLabel(key)
+        technical = QLabel(key, cell)
         technical.setObjectName("propertyKey")
         technical.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         technical.setVisible(friendly != key)
@@ -261,7 +263,7 @@ class ServerPropertiesView(QFrame):
         if not isinstance(editor, QCheckBox):
             editor.setFixedWidth(EDITOR_WIDTH)
         self._watch(editor)
-        error = QLabel(message)
+        error = QLabel(message, cell)
         error.setObjectName("fieldError")
         error.setWordWrap(True)
         error.setVisible(bool(problem))
