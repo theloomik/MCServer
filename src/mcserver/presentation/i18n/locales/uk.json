@@ -497,5 +497,11 @@
   "menu.view.server_list": "Перейти до &списку серверів",
   "menu.view.console": "Перейти до &команди консолі",
   "errors.server_not_found": "{server_id} більше немає в списку серверів. Можливо, його видалили поза MCServer; оновіть список.",
-  "errors.invalid_schedule": "Розклад резервних копій не збережено: інтервал має бути {min_hours}–{max_hours} год, а кількість копій — {min_keep}–{max_keep}."
+  "errors.invalid_schedule": "Розклад резервних копій не збережено: інтервал має бути {min_hours}–{max_hours} год, а кількість копій — {min_keep}–{max_keep}.",
+  "settings.theme.label": "Тема",
+  "settings.theme.auto": "Автоматично (режим застосунків Windows)",
+  "settings.theme.dark": "Темна",
+  "settings.theme.light": "Світла",
+  "settings.theme.hint": "Застосовується одразу. «Автоматично» дотримується Windows › Персоналізація › Кольори.",
+  "settings.theme.later": "Тема зміниться, коли закриються відкриті сторінки й завершаться операції, або після перезапуску MCServer."
 }

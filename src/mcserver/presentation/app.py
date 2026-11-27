@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QApplication
 from mcserver.application.ports import JavaRuntimeProvider
 from mcserver.bootstrap.server_runtime import build_server_runtime
 from mcserver.presentation.adapters.session_end import CRASH_STOP_TIMEOUT_SECONDS, CrashHandler, SessionEndHandler
+from mcserver.presentation.appearance import apply_appearance
 from mcserver.presentation.i18n import Messages, messages_for, resolve_language
 from mcserver.presentation.main_window import MainWindow
 from mcserver.presentation.paths import servers_root
@@ -70,7 +71,7 @@ def build_services(root: Path, java_resolver: JavaRuntimeProvider | None = None)
 
 
 class WindowHost:
-    """Own the main window; on a language change, replace it with one in the new language.
+    """Own the main window; on a language or theme change, replace it with one built anew.
 
     Services (and running servers) are untouched: the new window reads the same
     coordinator, output buffer and stores, so the console history, status and
@@ -118,6 +119,8 @@ def run(app: QApplication, services: PresentationServices, messages: Messages) -
 
     sys.excepthook = on_unhandled
     try:
+        # The first window is built in the chosen theme (dark, light, or the Windows app mode).
+        apply_appearance(services.settings.current.theme if services.settings is not None else None)
         host = WindowHost(services, messages)
         if services.coordinator is not None:
             session_end = SessionEndHandler(

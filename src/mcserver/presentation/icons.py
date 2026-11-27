@@ -22,6 +22,8 @@ _STROKED = {
     "alert": '<path d="M12 3 2 21h20z"/><path d="M12 10v4M12 17.5v.01"/>',
     "info": '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
     "close": '<path d="M6 6l12 12M18 6 6 18"/>',
+    "chevron-down": '<path d="m6 9 6 6 6-6"/>',
+    "chevron-up": '<path d="m6 15 6-6 6 6"/>',
     "settings": (
         '<path d="M4 6h9M19 6h1M4 12h3M11 12h9M4 18h11M19 18h1"/>'
         '<circle cx="16" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>'
@@ -65,9 +67,14 @@ def _svg(name: str, color: str) -> bytes:
     ).encode()
 
 
-@lru_cache(maxsize=256)
-def pixmap(name: str, color: str = theme.TEXT_SECONDARY, size: int = 16, scale: float = 2.0) -> QPixmap:
-    """Return ``name`` drawn in ``color`` at ``size`` logical pixels (crisp on high-DPI screens)."""
+def pixmap(name: str, color: str | None = None, size: int = 16, scale: float = 2.0) -> QPixmap:
+    """Return ``name`` drawn in ``color`` (default: the current theme's secondary text) at ``size`` logical pixels."""
+    return _pixmap(name, color or theme.TEXT_SECONDARY, size, scale)
+
+
+@lru_cache(maxsize=512)
+def _pixmap(name: str, color: str, size: int, scale: float) -> QPixmap:
+    """Draw and cache one icon; the cache key includes the colour, so both themes are cached correctly."""
     renderer = QSvgRenderer(QByteArray(_svg(name, color)))
     device = max(1, round(size * scale))
     image = QPixmap(device, device)
@@ -79,11 +86,11 @@ def pixmap(name: str, color: str = theme.TEXT_SECONDARY, size: int = 16, scale: 
     return image
 
 
-def icon(name: str, color: str = theme.TEXT_SECONDARY, size: int = 16, disabled: str = theme.TEXT_FAINT) -> QIcon:
-    """Return a ``QIcon`` with a dimmed disabled state."""
+def icon(name: str, color: str | None = None, size: int = 16, disabled: str | None = None) -> QIcon:
+    """Return a ``QIcon`` with a dimmed disabled state (colours default to the current theme)."""
     result = QIcon()
     result.addPixmap(pixmap(name, color, size), QIcon.Mode.Normal)
-    result.addPixmap(pixmap(name, disabled, size), QIcon.Mode.Disabled)
+    result.addPixmap(pixmap(name, disabled or theme.TEXT_FAINT, size), QIcon.Mode.Disabled)
     return result
 
 

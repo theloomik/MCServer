@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -161,40 +161,53 @@ def contrast(foreground: str, background: str) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
-SURFACES = {
-    "app": theme.BG_APP,
-    "sidebar": theme.BG_SIDEBAR,
-    "card": theme.SURFACE_CARD,
-    "raised": theme.SURFACE_RAISED,
-    "hover": theme.SURFACE_HOVER,
-    "console": theme.SURFACE_CONSOLE,
-}
+@pytest.fixture(params=theme.THEMES)
+def palette(request: pytest.FixtureRequest) -> Iterator[str]:
+    """Run a contrast check once per theme, then restore the dark theme."""
+    theme.apply(request.param)
+    yield request.param
+    theme.apply(theme.DEFAULT_THEME)
+
+
+def surfaces() -> dict[str, str]:
+    """Return the backgrounds text is drawn on, in the applied theme."""
+    return {
+        "app": theme.BG_APP,
+        "sidebar": theme.BG_SIDEBAR,
+        "card": theme.SURFACE_CARD,
+        "raised": theme.SURFACE_RAISED,
+        "hover": theme.SURFACE_HOVER,
+        "band": theme.SURFACE_BAND,
+        "console": theme.SURFACE_CONSOLE,
+    }
 
 
 @pytest.mark.parametrize(
     "name", ["TEXT", "TEXT_SECONDARY", "TEXT_MUTED", "CONSOLE_TEXT", "CONSOLE_TIMESTAMP", "DANGER_TEXT", "INFO"]
 )
-def test_text_colours_reach_aa_on_every_surface(name: str) -> None:
+def test_text_colours_reach_aa_on_every_surface(palette: str, name: str) -> None:
     color = getattr(theme, name)
-    for surface, background in SURFACES.items():
+    for surface, background in surfaces().items():
         if name.startswith("CONSOLE_") and surface != "console":
             continue  # console colours are only drawn on the console background
-        assert contrast(color, background) >= 4.5, (name, surface)
+        assert contrast(color, background) >= 4.5, (palette, name, surface)
 
 
-def test_banner_and_button_text_reach_aa() -> None:
+def test_banner_and_button_text_reach_aa(palette: str) -> None:
     for tone, (background, _border, foreground) in theme.TONE_COLORS.items():
-        assert contrast(foreground, background) >= 4.5, tone
-        assert contrast(theme.TEXT, background) >= 4.5, tone
-    assert contrast(theme.TEXT_ON_ACCENT, theme.ACCENT) >= 4.5
-    assert contrast(theme.DANGER_TEXT, theme.DANGER_SUBTLE) >= 4.5
+        assert contrast(foreground, background) >= 4.5, (palette, tone)
+        assert contrast(theme.TEXT, background) >= 4.5, (palette, tone)
+    assert contrast(theme.TEXT_ON_ACCENT, theme.ACCENT) >= 4.5, palette
+    assert contrast(theme.TEXT_ON_ACCENT, theme.ACCENT_HOVER) >= 4.5, palette  # primary button, hovered
+    assert contrast(theme.DANGER_TEXT, theme.DANGER_SUBTLE) >= 4.5, palette
+    assert contrast(theme.DANGER_TEXT, theme.DANGER_HOVER) >= 4.5, palette  # danger button, hovered
 
 
-def test_focus_and_status_marks_reach_the_non_text_minimum() -> None:
-    for background in SURFACES.values():
-        assert contrast(theme.FOCUS, background) >= 3
-        for color in theme.STATUS_COLORS.values():
-            assert contrast(color, background) >= 3
+def test_focus_and_status_marks_reach_the_non_text_minimum(palette: str) -> None:
+    for surface, background in surfaces().items():
+        assert contrast(theme.FOCUS, background) >= 3, (palette, surface)
+        for status, color in theme.STATUS_COLORS.items():
+            assert contrast(color, background) >= 3, (palette, status, surface)
 
 
 @pytest.mark.skipif(not os.environ.get("QT_QPA_FONTDIR"), reason="text widths need the real fonts")
