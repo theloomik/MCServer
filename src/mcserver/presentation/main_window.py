@@ -38,7 +38,7 @@ from mcserver.application.ports import StartOptions
 from mcserver.application.server_health import UncleanShutdown
 from mcserver.application.server_management import LegacyImportResult
 from mcserver.domain.server_configuration import ServerConfiguration
-from mcserver.presentation import icons, theme
+from mcserver.presentation import appearance, icons, theme
 from mcserver.presentation.adapters.output_bridge import OutputBridge
 from mcserver.presentation.adapters.status_poller import StatusPoller
 from mcserver.presentation.controllers.backups import BackupsController
@@ -138,7 +138,7 @@ class MainWindow(QMainWindow):
     """
 
     language_change_requested = Signal(str)
-    """The user chose another language; ``app.py`` replaces this window with one in that language."""
+    """Language or theme changed; ``app.py`` replaces this window with one built in ``language`` and the current theme."""
 
     def __init__(
         self,
@@ -421,6 +421,7 @@ class MainWindow(QMainWindow):
             self.java_choose_button.hide()
 
     def _connect(self) -> None:
+        QGuiApplication.styleHints().colorSchemeChanged.connect(self._on_system_color_scheme)
         servers = self.server_list_controller
         servers.state_changed.connect(self._show_list_state)
         self.server_list_view.server_selected.connect(self._on_server_picked)
@@ -876,15 +877,33 @@ class MainWindow(QMainWindow):
         if settings is None:
             return
         language = resolve_language(settings.current.language, QLocale.system().name())
-        if language != self.language:
+        theme_setting = settings.current.theme
+        if language != self.language or appearance.resolve(theme_setting) != theme.current:
             # Let the Settings page close first; then rebuild if nothing would be lost.
-            QTimer.singleShot(0, lambda: self._request_language(language))
+            QTimer.singleShot(0, lambda: self._request_rebuild(language, theme_setting))
 
     def _request_language(self, language: str) -> None:
+        settings = self._services.settings
+        self._request_rebuild(language, settings.current.theme if settings is not None else None)
+
+    def _request_rebuild(self, language: str, theme_setting: str | None) -> None:
+        """Rebuild the window in ``language`` and the theme ``theme_setting`` means, unless that would lose work."""
+        theme_changes = appearance.resolve(theme_setting) != theme.current
         if self.is_busy():
-            self.notify(UserMessage("settings.language.later"), "notice")
+            key = "settings.language.later" if language != self.language else "settings.theme.later"
+            self.notify(UserMessage(key), "notice")
             return
+        if theme_changes:
+            appearance.apply_appearance(theme_setting)
         self.language_change_requested.emit(language)
+
+    def _on_system_color_scheme(self, _scheme: object) -> None:
+        """Follow a change of the Windows app mode when the theme setting is Automatic."""
+        settings = self._services.settings
+        if settings is None or settings.current.theme is not None:
+            return
+        if appearance.resolve(None) != theme.current:
+            QTimer.singleShot(0, lambda: self._request_rebuild(self.language, None))
 
     def view_state(self) -> tuple[str | None, str]:
         """Return the selected server and the shown tab, to restore them in a rebuilt window."""

@@ -10,7 +10,12 @@ from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEd
 
 from mcserver.application.errors import InvalidJavaExecutable
 from mcserver.application.java_setup import JavaSetup
-from mcserver.application.settings import STARTUP_TIMEOUT_RANGE, STOP_TIMEOUT_RANGE, ApplicationSettings
+from mcserver.application.settings import (
+    STARTUP_TIMEOUT_RANGE,
+    STOP_TIMEOUT_RANGE,
+    SUPPORTED_THEMES,
+    ApplicationSettings,
+)
 from mcserver.presentation.controllers.server_management import ManagementController
 from mcserver.presentation.dialogs.edit_server_dialog import JavaPicker, pick_java_with_system_dialog
 from mcserver.presentation.dialogs.form import FormDialog, primary_button, secondary_button
@@ -81,6 +86,13 @@ class SettingsDialog(FormDialog):
             messages.text("settings.language.label"), self.language_combo, messages.text("settings.language.hint")
         )
 
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItem(messages.text("settings.theme.auto"), None)
+        for name in SUPPORTED_THEMES:
+            self.theme_combo.addItem(messages.text(f"settings.theme.{name}"), name)
+        self.theme_combo.setCurrentIndex(max(0, self.theme_combo.findData(settings.theme)))
+        self.add_field(messages.text("settings.theme.label"), self.theme_combo, messages.text("settings.theme.hint"))
+
         self.stop_spin = self._seconds(STOP_TIMEOUT_RANGE, settings.stop_timeout_seconds)
         self.add_field(
             messages.text("settings.stop_timeout.label"), self.stop_spin, messages.text("settings.stop_timeout.hint")
@@ -145,6 +157,7 @@ class SettingsDialog(FormDialog):
             startup_timeout_seconds=self.startup_spin.value(),
             auto_restart=self.auto_restart_check.isChecked(),
             language=self.language_combo.currentData(),
+            theme=self.theme_combo.currentData(),
         )
         if error is not None:
             self.show_error(render_message(self._messages, error))

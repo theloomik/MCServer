@@ -65,7 +65,7 @@ def icon_button(icon_name: str, tooltip: str, object_name: str = "iconButton") -
     return result
 
 
-def icon_label(icon_name: str, color: str = theme.TEXT_SECONDARY, size: int = 16) -> QLabel:
+def icon_label(icon_name: str, color: str | None = None, size: int = 16) -> QLabel:
     """Return a label showing an icon."""
     label = QLabel()
     label.setPixmap(icons.pixmap(icon_name, color, size))

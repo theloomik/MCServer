@@ -29,6 +29,7 @@ _FIELDS = (
     "legacy_import_offered",
     "auto_restart",
     "first_run_completed",
+    "theme",
 )
 
 

@@ -17,13 +17,17 @@ from PySide6.QtWidgets import (
 from mcserver.presentation import icons, theme
 from mcserver.presentation.views.widgets import button
 
-TONES = {
-    "info": ("info", theme.INFO, theme.INFO_SUBTLE),
-    "warning": ("alert", theme.WARNING_TEXT, theme.WARNING_SUBTLE),
-    "danger": ("alert", theme.DANGER_TEXT, theme.DANGER_SUBTLE),
-    "success": ("check", theme.ACCENT_HOVER, theme.ACCENT_SUBTLE),
-}
-"""Header tone → (icon, icon colour, tile colour)."""
+TONES = ("info", "warning", "danger", "success")
+
+
+def tone_style(tone: str) -> tuple[str, str, str]:
+    """Return (icon, icon colour, tile colour) of a header ``tone`` in the current theme."""
+    return {
+        "info": ("info", theme.INFO, theme.INFO_SUBTLE),
+        "warning": ("alert", theme.WARNING_TEXT, theme.WARNING_SUBTLE),
+        "danger": ("alert", theme.DANGER_TEXT, theme.DANGER_SUBTLE),
+        "success": ("check", theme.ACCENT_HOVER, theme.ACCENT_SUBTLE),
+    }[tone]
 
 
 class FormDialog(QDialog):
@@ -57,7 +61,7 @@ class FormDialog(QDialog):
         header = QHBoxLayout()
         header.setSpacing(14)
         if tone in TONES:
-            icon_name, color, tile_color = TONES[tone]
+            icon_name, color, tile_color = tone_style(tone)
             tile = QLabel()
             tile.setObjectName("dialogTone")
             tile.setFixedSize(36, 36)
