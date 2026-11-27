@@ -503,5 +503,9 @@
   "settings.theme.dark": "Темна",
   "settings.theme.light": "Світла",
   "settings.theme.hint": "Застосовується одразу. «Автоматично» дотримується Windows › Персоналізація › Кольори.",
-  "settings.theme.later": "Тема зміниться, коли закриються відкриті сторінки й завершаться операції, або після перезапуску MCServer."
+  "settings.theme.later": "Тема зміниться, коли закриються відкриті сторінки й завершаться операції, або після перезапуску MCServer.",
+  "metrics.history_span": "Графіки показують останні {minutes} хв.",
+  "metrics.history_empty": "Історії ще немає; вона накопичується, поки сервер працює.",
+  "metrics.history_cpu": "ЦП за останні {minutes} хв: {low}–{high}%",
+  "metrics.history_memory": "Пам'ять за останні {minutes} хв: {low}–{high} МБ із {allocated} МБ"
 }

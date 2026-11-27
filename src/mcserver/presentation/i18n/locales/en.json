@@ -495,5 +495,9 @@
   "settings.theme.dark": "Dark",
   "settings.theme.light": "Light",
   "settings.theme.hint": "Applies right away. Automatic follows Windows › Personalization › Colors.",
-  "settings.theme.later": "The theme changes after open pages and running operations finish, or after restarting MCServer."
+  "settings.theme.later": "The theme changes after open pages and running operations finish, or after restarting MCServer.",
+  "metrics.history_span": "Charts show the last {minutes} minutes.",
+  "metrics.history_empty": "No history yet; it builds up while the server runs.",
+  "metrics.history_cpu": "CPU over the last {minutes} minutes: {low}–{high}%",
+  "metrics.history_memory": "Memory over the last {minutes} minutes: {low}–{high} MB of {allocated} MB"
 }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, Signal
@@ -28,6 +29,8 @@ from mcserver.presentation.controllers.server_dashboard import DashboardState, O
 from mcserver.presentation.controllers.server_list import ServerStatus
 from mcserver.presentation.errors import UserMessage, render_message
 from mcserver.presentation.i18n import Messages
+from mcserver.presentation.metrics_history import HISTORY_CAPACITY, MetricPoint
+from mcserver.presentation.views.charts import Sparkline
 from mcserver.presentation.views.server_console_view import ServerConsoleView
 from mcserver.presentation.views.status_text import STATUS_KEYS
 from mcserver.presentation.views.widgets import (
@@ -49,7 +52,10 @@ _INFO_VALUE_WIDTH = 150  # value column next to the labels
 _NO_TOOLTIP = ""
 METRIC_TILES = ("cpu", "memory", "uptime", "players", "tps")
 """Resource rows; each has the label key ``metrics.<name>``."""
-_BAR_METRICS = frozenset({"cpu", "memory"})
+_CHART_COLORS = {"cpu": "ACCENT", "memory": "INFO"}
+"""Metrics with a history chart, and the theme colour of each."""
+METRICS_SAMPLE_SECONDS = 2
+"""How often the window samples metrics (``main_window.METRICS_INTERVAL_MS``)."""
 
 
 class _Overview(QWidget):
@@ -293,11 +299,24 @@ class ServerDashboardView(QWidget):
         self.metric_rows: dict[str, MetricRow] = {}
         self.metric_values: dict[str, QLabel] = {}
         idle = self._messages.text("metrics.idle")
+        self.charts: dict[str, Sparkline] = {}
         for name in METRIC_TILES:
-            row = MetricRow(self._messages.text(f"metrics.{name}"), idle, name in _BAR_METRICS)
+            row = MetricRow(self._messages.text(f"metrics.{name}"), idle)
             self.metric_rows[name] = row
             self.metric_values[name] = row.value
             layout.addWidget(row)
+            if name in _CHART_COLORS:
+                # History instead of a bar: the last ten minutes, newest on the right (M4-GUI-06).
+                chart = Sparkline(_CHART_COLORS[name], HISTORY_CAPACITY)
+                chart.setAccessibleName(self._messages.text(f"metrics.{name}"))
+                self.charts[name] = chart
+                layout.addWidget(chart)
+        self.history_caption = QLabel(
+            self._messages.text("metrics.history_span", minutes=HISTORY_CAPACITY * METRICS_SAMPLE_SECONDS // 60)
+        )
+        self.history_caption.setObjectName("panelCount")
+        layout.addWidget(self.history_caption)
+        self.show_history((), live=False)
         self.players_label = QLabel()
         self.players_label.setObjectName("fieldLabel")
         self.players_label.setWordWrap(True)
@@ -452,6 +471,37 @@ class ServerDashboardView(QWidget):
         minutes, seconds = divmod(rest, 60)
         self.metric_values["uptime"].setText(
             text("metrics.uptime_value", hours=hours, minutes=minutes, seconds=seconds)
+        )
+
+    def show_history(self, points: Sequence[MetricPoint], *, live: bool) -> None:
+        """Draw the CPU and memory history of the selected server (dimmed once it stopped)."""
+        text = self._messages.text
+        minutes = HISTORY_CAPACITY * METRICS_SAMPLE_SECONDS // 60
+        cpu = [point.cpu_percent for point in points]
+        memory = [point.memory_mb for point in points]
+        allocated = max((point.allocated_mb for point in points), default=0)
+        if len(points) < 2:
+            empty = text("metrics.history_empty")
+            self.charts["cpu"].set_series((), 100, active=live, description=empty)
+            self.charts["memory"].set_series((), 1, active=live, description=empty)
+            return
+        self.charts["cpu"].set_series(
+            cpu,
+            max(100.0, *cpu),
+            active=live,
+            description=text("metrics.history_cpu", minutes=minutes, low=f"{min(cpu):.0f}", high=f"{max(cpu):.0f}"),
+        )
+        self.charts["memory"].set_series(
+            memory,
+            float(allocated or max(memory)),
+            active=live,
+            description=text(
+                "metrics.history_memory",
+                minutes=minutes,
+                low=f"{min(memory):.0f}",
+                high=f"{max(memory):.0f}",
+                allocated=allocated,
+            ),
         )
 
     # --- rendering ------------------------------------------------------------------------

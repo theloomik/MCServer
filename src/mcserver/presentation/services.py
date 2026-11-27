@@ -23,6 +23,7 @@ from mcserver.application.server_properties import ServerPropertiesService
 from mcserver.application.server_provisioning import ServerProvisioning
 from mcserver.application.settings import SettingsService
 from mcserver.application.worlds import WorldService
+from mcserver.presentation.metrics_history import MetricsHistory
 
 
 class PresentationServices:
@@ -78,6 +79,8 @@ class PresentationServices:
         self.properties = properties
         """Reads and changes server.properties."""
         self.metrics = metrics
+        self.metrics_history = MetricsHistory()
+        """Recent CPU and memory samples; kept here so a rebuilt window shows the same charts."""
         """CPU, memory and uptime of the running server."""
         self.backups = backups
         """Backups and restores."""
