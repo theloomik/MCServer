@@ -99,6 +99,19 @@ def caption(text: str) -> QLabel:
     return label
 
 
+ZERO_WIDTH_SPACE = "\u200b"
+BACKSLASH = "\\"
+
+
+def breakable(text: str) -> str:
+    """Return ``text`` with invisible break points after path separators, so a long path can wrap.
+
+    A word-wrapping label never breaks inside a word; a Java or folder path is one long "word"
+    and would otherwise make the whole dialog wider than its card.
+    """
+    return text.replace(BACKSLASH, BACKSLASH + ZERO_WIDTH_SPACE).replace("/", "/" + ZERO_WIDTH_SPACE)
+
+
 class Banner(QFrame):
     """Inline message with a tone (error, notice, success, info), an icon and an optional action."""
 
@@ -129,7 +142,7 @@ class Banner(QFrame):
         """Show ``text`` in ``tone``; the action button is shown when asked."""
         foreground = theme.TONE_COLORS.get(tone, theme.TONE_COLORS["info"])[2]
         self.icon.setPixmap(icons.pixmap(self._ICONS.get(tone, "info"), foreground, 16))
-        self.text.setText(text)
+        self.text.setText(breakable(text))
         self.setProperty("tone", tone)
         repolish(self)
         self.action.setVisible(show_action)

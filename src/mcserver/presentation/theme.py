@@ -294,7 +294,6 @@ QPushButton#linkButton:hover, QPushButton#detailsButton:hover {{ text-decoration
 
 /* Sidebar */
 QWidget#sidebar {{ background-color: {BG_SIDEBAR}; border-right: 1px solid {BORDER}; }}
-QLabel#brandMark {{ background-color: {ACCENT}; border-radius: 6px; }}
 QLabel#brandTitle {{ color: {TEXT}; font-size: 14px; font-weight: 600; }}
 QLabel#sectionCaption {{ color: {TEXT_MUTED}; font-size: 11px; font-weight: 600; letter-spacing: 0.6px; }}
 QListWidget#serverList {{ background: transparent; border: none; outline: none; }}
@@ -317,6 +316,7 @@ QComboBox QAbstractItemView {{
     selection-background-color: {ACCENT_SUBTLE}; outline: none;
 }}
 QLabel#dialogTitle {{ font-size: 18px; font-weight: 600; }}
+QLabel#aboutName {{ font-size: 20px; font-weight: 600; }}
 QFrame#dialogCard {{ background-color: {SURFACE_CARD}; border: none; }}
 QFrame#dialogCard QLabel {{ background: transparent; }}
 QFrame#dialogFooter {{ background-color: {BG_SIDEBAR}; border: none; border-top: 1px solid {BORDER}; }}
@@ -378,8 +378,6 @@ QLabel#propertyKey[invalid="true"] {{ color: {DANGER_TEXT}; }}
 QLabel#unsavedCount {{ color: {WARNING_TEXT}; font-size: 12px; }}
 QLabel#emptyTitle {{ font-size: 14px; font-weight: 600; }}
 QLabel#emptyText {{ color: {TEXT_MUTED}; font-size: 12px; }}
-QLabel#iconTile {{ background-color: {SURFACE_RAISED}; border-radius: 10px; }}
-QLabel#iconTile[tone="accent"] {{ background-color: {ACCENT_SUBTLE}; border: 1px solid {ACCENT_BORDER}; border-radius: 12px; }}
 
 QLabel#statusPill {{
     border-radius: 11px; padding: 2px 10px 2px 8px; font-weight: 600; font-size: 12px;

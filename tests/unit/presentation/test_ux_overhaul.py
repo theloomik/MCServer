@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, Qt
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import QApplication, QComboBox, QScrollArea, QSpinBox, QVBoxLayout, QWidget
 from pytestqt.qtbot import QtBot
@@ -198,6 +198,34 @@ def test_unknown_properties_wait_in_a_collapsed_group_that_search_opens(qtbot: Q
     assert not other.isHidden()  # a search reaches rare keys too
 
 
+class _WindowWatcher(QObject):
+    """Records every widget shown as a window of its own (a stray one flashes on screen as a small frame)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.shown: list[str] = []
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 (Qt override)
+        if event.type() == QEvent.Type.Show and isinstance(watched, QWidget) and watched.isWindow():
+            self.shown.append(f"{type(watched).__name__} {watched.objectName()!r}")
+        return False
+
+
+def test_switching_servers_opens_no_stray_windows(qtbot: QtBot, tmp_path: Path) -> None:
+    setup = M3Setup(qtbot, tmp_path)
+    watcher = _WindowWatcher()
+    app = QApplication.instance()
+    assert app is not None
+    app.installEventFilter(watcher)
+    try:
+        setup.select("survival")
+        setup.window.dashboard_view.tabs.setCurrentIndex(1)  # the properties page builds a row per key
+        qtbot.wait(20)
+    finally:
+        app.removeEventFilter(watcher)
+    assert watcher.shown == []
+
+
 # --- dashboard ------------------------------------------------------------------------------
 
 
@@ -276,3 +304,52 @@ def test_create_dialog_content_never_overflows_its_card(
     assert card is not None
     assert dialog.minimumSizeHint().width() <= card.width()  # nothing is pushed past the right edge
     assert dialog.width() <= card.width()
+
+
+# --- logo -----------------------------------------------------------------------------------
+
+
+def test_the_logo_is_the_window_icon_at_every_common_size(qtbot: QtBot) -> None:
+    from mcserver.presentation import icons
+
+    app_icon = icons.app_icon()
+    assert sorted(size.width() for size in app_icon.availableSizes()) == sorted(icons.APP_ICON_SIZES)
+    logo = icons.logo_pixmap(32, 1.0).toImage()
+    assert logo.pixelColor(16, 3).green() > 180  # the green square, drawn and not blank
+    assert logo.pixelColor(0, 0).alpha() == 0  # rounded corners stay transparent
+
+
+def test_the_welcome_page_shows_the_logo(qtbot: QtBot, tmp_path: Path) -> None:
+    setup = M3Setup(qtbot, tmp_path)
+    logo = setup.window.dashboard_view.welcome_page.findChild(QWidget, "welcomeLogo")
+    assert logo is not None and not logo.pixmap().isNull()
+
+
+# --- about (M5) -----------------------------------------------------------------------------
+
+
+def test_about_shows_the_version_and_project_page(qtbot: QtBot, tmp_path: Path) -> None:
+    import mcserver
+    from mcserver.presentation.dialogs.about_dialog import AboutDialog
+
+    setup = M2Setup(qtbot, tmp_path, SURVIVAL)
+    window = setup.window
+    window.open_settings_dialog()
+    assert window.settings_dialog is not None
+    window.settings_dialog.about_button.click()
+    about = window.page_host.current_page
+    assert isinstance(about, AboutDialog)
+    assert about.version_label.text() == MESSAGES.text("about.version", version=mcserver.__version__)
+    assert about.homepage_button.toolTip() == mcserver.HOMEPAGE
+    assert mcserver.COPYRIGHT in about.license_label.text()
+
+
+def test_a_long_path_in_a_banner_wraps_instead_of_widening_the_dialog(qtbot: QtBot) -> None:
+    from mcserver.presentation.views.widgets import Banner
+
+    banner = Banner()
+    qtbot.addWidget(banner)
+    path = r"C:\Program Files\Common Files\Oracle\Java\javapath_target_419678718\java.exe"
+    banner.show_message(f"Found Java 25: {path}", "success")
+    assert banner.minimumSizeHint().width() < 320
+    assert banner.text.text().replace("\u200b", "") == f"Found Java 25: {path}"  # copying gives the real path

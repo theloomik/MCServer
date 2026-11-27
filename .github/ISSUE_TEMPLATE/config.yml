@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: User guide
+    url: https://github.com/theloomik/MCServer/blob/main/docs/user-guide.md
+    about: How to install, create, run and back up servers, and fixes for common problems.
+  - name: Report a security problem
+    url: https://github.com/theloomik/MCServer/security/advisories/new
+    about: Please report security problems privately, not as a public issue.

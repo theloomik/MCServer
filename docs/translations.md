@@ -15,7 +15,6 @@ src/mcserver/presentation/i18n/locales/
 - **Keys never change meaning.** If a text changes meaning, give it a new key.
 - **Placeholders stay as written**: `{server_id}`, `{count}`, `{minutes:02d}`. Translators may move them but must not translate or drop them. A test checks that every translation uses exactly the placeholders of the English text.
 - **Plurals** use suffixed keys: `properties.unsaved_one` and `properties.unsaved_other` in English. Crowdin asks for the forms each language needs. Ukrainian, for example, has `_one`, `_few` and `_many` (1 зміна · 3 зміни · 7 змін).
-- `&` in menu texts marks the Alt shortcut letter (`&File` → Alt+F).
 
 ## Adding a text
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from mcserver.application.errors import ProcessGuardUnavailable
-from mcserver.infrastructure.windows_job import CREATE_SUSPENDED, NoProcessGuard, WindowsJobGuard
+from mcserver.infrastructure.windows_job import CREATE_NO_WINDOW, CREATE_SUSPENDED, NoProcessGuard, WindowsJobGuard
 
 
 class FakeJobApi:
@@ -47,7 +47,7 @@ def test_process_is_created_suspended_assigned_then_resumed() -> None:
 
     guard.protect(10)
 
-    assert guard.creation_flags == CREATE_SUSPENDED
+    assert guard.creation_flags == CREATE_SUSPENDED | CREATE_NO_WINDOW  # no console window pops up for Java
     assert api.calls == ["create", "assign:77:10", "resume:10"]
     assert guard.job == 77
     guard.release()

@@ -53,7 +53,9 @@ def test_steps_back_next_and_finish(qtbot: QtBot, tmp_path: Path) -> None:
     controller = setup.window.first_run_controller
     assert dialog is not None and controller is not None
     assert dialog.back_button.isHidden()
-    assert MESSAGES.text("first_run.java.found", major=21, path="C:/jdk/bin/java.exe") == dialog.java_banner.text.text()
+    assert MESSAGES.text(
+        "first_run.java.found", major=21, path="C:/jdk/bin/java.exe"
+    ) == dialog.java_banner.text.text().replace("\u200b", "")
 
     dialog.next_button.click()
     assert controller.state.step is Step.FOLDER and dialog.folder_path.text() == str(tmp_path)

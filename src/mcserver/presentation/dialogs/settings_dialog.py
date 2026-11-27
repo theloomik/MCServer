@@ -48,6 +48,7 @@ class SettingsDialog(FormDialog):
     """Show and change application settings; the Java choice is checked before it is saved."""
 
     setup_guide_requested = Signal()
+    about_requested = Signal()
 
     def __init__(
         self,
@@ -143,6 +144,9 @@ class SettingsDialog(FormDialog):
         self.setup_guide_button = button(text("settings.setup_guide"), "secondary")
         self.setup_guide_button.clicked.connect(self.setup_guide_requested)
         self._row(help_section, "settings.setup_guide.label", "settings.setup_guide.hint", self.setup_guide_button)
+        self.about_button = button(text("settings.about"), "secondary")
+        self.about_button.clicked.connect(self.about_requested)
+        self._row(help_section, "settings.about.label", "settings.about.hint", self.about_button)
 
         self.cancel_button = secondary_button(text("settings.cancel"))
         self.cancel_button.clicked.connect(self.reject)

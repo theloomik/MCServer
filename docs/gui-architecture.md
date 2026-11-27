@@ -1,6 +1,9 @@
 # MCServer 2.0 GUI Architecture (Proposal)
 
-**Status:** Proposal — awaiting review before implementation.
+**Status:** Implemented (M1–M4); kept as the original design record. The window has changed since:
+the UX overhaul removed the menus and the status bar (pages and dialogs open inside the window, and
+Settings is a page) and the MCServer 0.9.1 import from the interface. For how MCServer looks and works
+today, see the [user guide](user-guide.md).
 **Scope:** PySide6 presentation layer on top of the merged backend (`origin/dev` at `e47eaed`). No backend changes are proposed as part of the MVP; backend follow-ups are listed separately.
 
 ---

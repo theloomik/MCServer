@@ -79,13 +79,13 @@ Settings › Language › Українська (the window switches without a re
 | U2 | Setup guide, Create, Settings, Adopt, Download, Delete pages | Labels and hints wrap instead of being cut off |
 | U3 | Plurals: 1, 2, 5, 11, 21 backups or servers where counts appear | The right form (сервер / сервери / серверів) |
 | U4 | Notifications with long texts | Wrapped inside the toast, close button still visible |
-| U5 | Menu mnemonics (Alt+letter) in Ukrainian | Each top-level menu has its own letter |
+| U5 | Keyboard shortcuts (Ctrl+N, Ctrl+R, Ctrl+, , F5, Ctrl+1…4, Ctrl+L, Ctrl+K) with the Ukrainian layout active | Each works; none is taken by an open dialog |
 
 ## 5. Contrast and colour
 
 | # | Check | Expected |
 | --- | --- | --- |
-| C1 | Hints, captions and the status bar on a dim or glossy laptop screen | Readable |
+| C1 | Hints, captions and stat tiles on a dim or glossy laptop screen | Readable |
 | C2 | Windows contrast themes (Settings › Accessibility › Contrast themes) | Note how MCServer looks (not verified yet); every text must stay readable. Report anything that is not |
 | C3 | Status is never shown by colour alone | Every coloured dot has a text next to it (Running, Stopped…) |
 

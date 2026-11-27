@@ -1,62 +1,52 @@
+<div align="center">
+
+<img src="docs/images/logo.svg" width="88" alt="MCServer logo">
+
 # MCServer
 
-A desktop Minecraft server manager for Windows. It allows you to create, run, and manage
-multiple servers via a user-friendly graphical interface — without the command line.
+**A simple, modern way to host and manage Minecraft servers.**
 
-> MCServer 2.0 is under active development. Its new Clean-lite architecture is being introduced incrementally while the legacy implementation remains available.
+[![Release](https://img.shields.io/github/v/release/theloomik/MCServer?include_prereleases&sort=semver)](https://github.com/theloomik/MCServer/releases)
+[![Quality](https://github.com/theloomik/MCServer/actions/workflows/quality.yml/badge.svg?branch=dev)](https://github.com/theloomik/MCServer/actions/workflows/quality.yml)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4)](#requirements)
+[![License](https://img.shields.io/github/license/theloomik/MCServer)](LICENSE)
+
+<img src="docs/images/dashboard.png" width="860" alt="MCServer running a Minecraft server: status, players, memory, CPU, uptime and the live console">
+
+</div>
+
+MCServer is a Windows desktop app for running Minecraft Java servers on your own PC — no command
+line, no batch files. Create a server in a minute, start it with one click, and keep an eye on
+players, performance and the console in one window.
 
 ## Features
 
-- Run PaperMC, Purpur, Spigot, Fabric, Forge, and Vanilla servers
-- Real-time RAM, CPU, TPS, and player count monitoring
-- Edit `server.properties` directly inside the application
-- Public access via a TCP tunnel (no registration or static IP required)
-- Automatic installation of Java 25 during the first run of the installer
+- **Create in a minute** — download Paper or Vanilla, or use your own server JAR; memory is sized for your PC.
+- **Import what you have** — bring in an existing server folder; the original is never changed.
+- **Run it safely** — start, stop and restart with proper saving, and automatic restart after a crash.
+- **See what's happening** — live console with command history, plus players, memory, CPU and uptime.
+- **Configure without a text editor** — `server.properties` with readable names, grouped and searchable.
+- **Worlds and backups** — create, import and switch worlds; one-click and scheduled backups with safe restore.
+- **Feels at home** — English and Ukrainian, light and dark theme that follows Windows.
+
+<img src="docs/images/create-server.png" width="860" alt="Creating a server: name, Paper or Vanilla download, memory slider and EULA">
 
 ## Requirements
 
-| Component | Version |
-|-----------|---------|
-| Windows   | 10 or newer (64-bit) |
-| Java      | 25+ (JRE) |
+- Windows 10 or 11 (64-bit)
+- Java — not included; MCServer finds the Java on your PC. Minecraft 1.20.5 and newer need Java 21 or newer
+  ([Eclipse Temurin](https://adoptium.net) works well).
 
-> **The installer will install Java 25 automatically** if an internet connection is available.
-> If Java is already present on the computer but its version is lower than 25, the installer will prompt to update.
+## Get started
 
-## Installation
+Download the installer from [Releases](https://github.com/theloomik/MCServer/releases), run it, and
+open MCServer from the Start menu. No administrator rights needed. The
+**[User guide](docs/user-guide.md)** walks through everything else.
 
-1. Download `MCServer_Setup_vX.X.X.exe` from the [Releases](../../releases) section.
-2. Run the installer as administrator.
-3. Once completed, a shortcut will appear on the desktop and in the Start menu.
+## Links
 
-## Data Locations
-
-All files that change during application operation are stored outside the installation folder:
-
-| What | Path |
-|------|------|
-| Server folders (worlds, plugins, configs) | `%LOCALAPPDATA%\MCServer\servers\` |
-| Application settings | `%LOCALAPPDATA%\MCServer\servers\app_settings.json` |
-| Downloaded tunnel agent | `%LOCALAPPDATA%\MCServer\playit.exe` |
-
-> To back up a server, copy the corresponding folder from `%LOCALAPPDATA%\MCServer\servers\`.
-> Data is preserved between application updates and after uninstallation.
-
-## Security Model
-
-### Tunnel (Public Access)
-
-MCServer uses [playit.gg](https://playit.gg) in guest mode — **no registration required**.
-The agent is downloaded from GitHub Releases and verified against a SHA-256 checksum.
-The tunnel opens only the specified server port; all other traffic is not routed.
-
-### Server JAR Files
-
-MCServer executes the JAR file that you specified when creating the server.
-**Do not run JAR files from unknown sources.** The server JAR runs with the same
-permissions as MCServer (current user level, without privilege elevation).
-
-### Network
-
-- The installer downloads the Java JRE exclusively from `api.adoptium.net` and verifies the SHA-256 after downloading.
-- The application does not collect analytics and does not send data to the internet, except for launching the tunnel and requesting the public IP address via `api.ipify.org`.
+- [User guide](docs/user-guide.md) — install, create, run, back up, troubleshoot
+- [Building from source](docs/building.md) — development setup, tests, app and installer builds
+- [Translations](docs/translations.md) — help translate MCServer
+- [Report a bug or suggest a feature](https://github.com/theloomik/MCServer/issues/new/choose)
+- [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [MIT License](LICENSE)

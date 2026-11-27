@@ -27,6 +27,8 @@ from typing import Protocol
 from mcserver.application.errors import ProcessGuardUnavailable
 
 CREATE_SUSPENDED = 0x00000004
+CREATE_NO_WINDOW = 0x08000000
+"""Java is a console program: without this, MCServer (a window, not a console) would open a console for it."""
 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 _PROCESS_SET_QUOTA = 0x0100
@@ -88,7 +90,7 @@ class NoProcessGuard:
 class WindowsJobGuard:
     """Create suspended → assign to a kill-on-close job → resume (see the module docstring)."""
 
-    creation_flags = CREATE_SUSPENDED
+    creation_flags = CREATE_SUSPENDED | CREATE_NO_WINDOW
 
     def __init__(self, api: JobApi | None = None) -> None:
         """Use the real Win32 API unless ``api`` is given."""
