@@ -29,6 +29,19 @@ multiple servers via a user-friendly graphical interface — without the command
 2. Run the installer as administrator.
 3. Once completed, a shortcut will appear on the desktop and in the Start menu.
 
+The MCServer 2.0 installer (`MCServer-<version>-setup.exe`) installs for the current user without
+administrator rights; it does not install Java (MCServer finds an installed Java and explains what
+to do if there is none).
+
+## Building from Source
+
+```powershell
+.venv\Scripts\python tools\build_windows.py
+```
+
+This builds `dist\windows\MCServer\MCServer.exe` and the installer. See
+[docs/building.md](docs/building.md) for requirements, output and details.
+
 ## Data Locations
 
 All files that change during application operation are stored outside the installation folder:

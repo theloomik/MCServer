@@ -32,6 +32,7 @@ MANIFEST
 *.manifest
 *.spec
 !MCServer.spec
+!packaging/windows/MCServer.spec
 
 # Installer logs
 pip-log.txt
@@ -231,6 +232,7 @@ java/
 # MCServer local app assets/build inputs
 icon.ico
 *.spec
+!packaging/windows/MCServer.spec
 
 # Local audit / review scratch files
 PRE_BETA_AUDIT.md
