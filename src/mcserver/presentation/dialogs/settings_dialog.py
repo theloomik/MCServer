@@ -31,7 +31,8 @@ from mcserver.presentation.dialogs.edit_server_dialog import JavaPicker, pick_ja
 from mcserver.presentation.dialogs.form import FormDialog, primary_button, secondary_button
 from mcserver.presentation.errors import describe_error, render_message
 from mcserver.presentation.i18n import Messages, available_languages
-from mcserver.presentation.views.widgets import button, repolish
+from mcserver.presentation.log_file import logs_folder
+from mcserver.presentation.views.widgets import breakable, button, repolish
 
 FolderOpener = Callable[[Path], bool]
 CONTROL_WIDTH = 240
@@ -122,7 +123,8 @@ class SettingsDialog(FormDialog):
 
         # Servers
         servers = self._section("settings.section.servers", "server")
-        self.folder_label = _text("monoValue", str(controller.servers_root))
+        # Paths get break points, so a long one wraps instead of widening the page and clipping the hints.
+        self.folder_label = _text("monoValue", breakable(str(controller.servers_root)))
         self.folder_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.open_folder_button = button(text("settings.open_folder"), "secondary", "folder")
         self.open_folder_button.clicked.connect(self._open)
@@ -144,6 +146,9 @@ class SettingsDialog(FormDialog):
         self.setup_guide_button = button(text("settings.setup_guide"), "secondary")
         self.setup_guide_button.clicked.connect(self.setup_guide_requested)
         self._row(help_section, "settings.setup_guide.label", "settings.setup_guide.hint", self.setup_guide_button)
+        self.logs_button = button(text("settings.logs.open"), "secondary", "folder")
+        self.logs_button.clicked.connect(self._open_logs)
+        self._row(help_section, "settings.logs.label", "settings.logs.hint", self.logs_button)
         self.about_button = button(text("settings.about"), "secondary")
         self.about_button.clicked.connect(self.about_requested)
         self._row(help_section, "settings.about.label", "settings.about.hint", self.about_button)
@@ -266,7 +271,7 @@ class SettingsDialog(FormDialog):
         """Show which Java starts servers and whether it works."""
         text = self._messages.text
         self.java_label.setText(
-            text("settings.java.custom", path=self._java_executable)
+            breakable(text("settings.java.custom", path=self._java_executable))
             if self._java_executable
             else text("settings.java.automatic_hint")
         )
@@ -287,7 +292,7 @@ class SettingsDialog(FormDialog):
             else:
                 ready = True
                 message = text("settings.java.found_at", major=detected.major_version, path=detected.executable)
-        self.java_status.setText(message)
+        self.java_status.setText(breakable(message))
         color = theme.TEXT_MUTED if ready is None else (theme.ACCENT if ready else theme.WARNING_TEXT)
         self.java_status_icon.setPixmap(icons.pixmap("check" if ready else "alert", color, 16))
         self.java_status.setProperty("tone", "unknown" if ready is None else ("ok" if ready else "problem"))
@@ -296,3 +301,8 @@ class SettingsDialog(FormDialog):
     def _open(self) -> None:
         if self._open_folder is not None:
             self._open_folder(self._controller.servers_root)
+
+    def _open_logs(self) -> None:
+        folder = logs_folder(self._controller.servers_root)
+        if self._open_folder is not None and folder.is_dir():
+            self._open_folder(folder)

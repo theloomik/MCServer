@@ -12,7 +12,7 @@ from mcserver.presentation.controllers.first_run import Ending, FirstRunControll
 from mcserver.presentation.dialogs.form import FormDialog, primary_button, secondary_button
 from mcserver.presentation.errors import render_message
 from mcserver.presentation.i18n import Messages
-from mcserver.presentation.views.widgets import Banner, button
+from mcserver.presentation.views.widgets import Banner, breakable, button
 
 JavaPicker = Callable[[QWidget], str | None]
 FolderOpener = Callable[[Path], bool]
@@ -142,7 +142,7 @@ class FirstRunDialog(FormDialog):
         self.step_title.setText(text(f"first_run.{step.value}.title"))
         self.pages.setCurrentWidget(self._page_for[step])
         self._show_java(state)
-        self.folder_path.setText(state.servers_root)
+        self.folder_path.setText(breakable(state.servers_root))
         has_servers = self._controller.has_servers
         self.create_intro.setText(text("first_run.create.has_servers" if has_servers else "first_run.create.intro"))
         movable = state.can_move

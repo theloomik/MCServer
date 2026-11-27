@@ -23,9 +23,9 @@
   "server_list.item": "{server_id}\n{status}",
   "server_list.subtitle": "{status} · {memory}",
   "server_list.empty": "No servers yet. Create one, or import a folder you already have.",
-  "server_list.error.load": "The server list couldn't be loaded. The configuration file may be damaged or from a newer MCServer version. Details were written to the log.",
+  "server_list.error.load": "The server list couldn't be loaded. The configuration file may be damaged or from a newer MCServer version. Details are in MCServer's log (Settings › Help).",
   "server_details.error.gone": "This server no longer exists. Refresh the list to see the current servers.",
-  "server_details.error.load": "This server's details couldn't be loaded. Details were written to the log.",
+  "server_details.error.load": "This server's details couldn't be loaded. Details are in MCServer's log (Settings › Help).",
   "welcome.title": "Welcome to MCServer",
   "welcome.text": "Select a server in the list on the left.",
   "welcome.first": "Run and manage Minecraft Java servers on this PC. Create a server from a Paper or Vanilla download, or import a server folder you already have.",
@@ -501,5 +501,8 @@
   "about.close": "Close",
   "settings.about": "About",
   "settings.about.label": "About MCServer",
-  "settings.about.hint": "Version, license and project page."
+  "settings.about.hint": "Version, license and project page.",
+  "settings.logs.label": "MCServer log",
+  "settings.logs.hint": "Technical details of warnings and errors. Attach it when you report a problem.",
+  "settings.logs.open": "Open folder"
 }
