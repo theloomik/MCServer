@@ -43,9 +43,11 @@ def test_dialog_renders_fields_with_catalog_texts_and_defaults(qtbot: QtBot) -> 
     dialog = setup.dialog
 
     assert dialog.windowTitle() == MESSAGES.text("create.title")
-    assert dialog.memory_spin.value() == 4096
-    assert dialog.jar_edit.isReadOnly()
-    assert dialog.jar_edit.placeholderText() == MESSAGES.text("create.jar.placeholder")
+    assert dialog.memory_mb == 2048  # 2 GB unless the user picks more
+    assert dialog.memory_slider.value_label.text() == MESSAGES.text("memory.gb", value="2")
+    assert dialog.jar_edit.text() == MESSAGES.text("create.jar.placeholder")
+    assert dialog.advanced_button.isEnabled() and not dialog.advanced_button.isChecked()
+    assert dialog.directory_edit.isHidden()  # the folder name waits under "Advanced"
     assert dialog.create_button.text() == MESSAGES.text("create.submit")
     assert not dialog.create_button.isEnabled()
     assert all(label.isHidden() for label in dialog.field_errors.values())  # no errors before typing
@@ -211,7 +213,7 @@ def test_successful_creation_selects_new_stopped_server_with_confirmation(qtbot:
     assert dashboard.status_pill.property("status") == "stopped"
     assert dashboard.banner.isVisible() and dashboard.banner.property("tone") == "success"
     assert dashboard.banner.text() == MESSAGES.text("dashboard.success.created", server_id="survival")
-    assert window.statusBar().currentMessage() == MESSAGES.text("create.done", server_id="survival")
+    assert MESSAGES.text("create.done", server_id="survival") in window.notification_texts()
     assert setup.filesystem.tree["survival"] == {"eula.txt": "eula=true", "paper-1.21.4.jar": SOURCE}
 
 
@@ -246,6 +248,6 @@ def test_window_refuses_to_close_while_creating(qtbot: QtBot, tmp_path: Path) ->
     setup.window.close()
 
     assert setup.window.isVisible()
-    assert setup.window.statusBar().currentMessage() == MESSAGES.text("exit.wait_for_operation")
+    assert MESSAGES.text("exit.wait_for_operation") in setup.window.notification_texts()
     setup.filesystem.install_gate.set()
     qtbot.waitUntil(lambda: setup.window.create_dialog is None)

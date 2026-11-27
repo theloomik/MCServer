@@ -4,13 +4,13 @@ from pathlib import Path
 
 from fakes import InMemoryRepository, coordinator, services_for
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence
 from pytestqt.qtbot import QtBot
 
 from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.presentation.controllers.server_list import ServerStatus
 from mcserver.presentation.i18n import en, messages_for
 from mcserver.presentation.main_window import MainWindow
-from mcserver.presentation.views.server_dashboard_view import INFO_FIELDS
 from mcserver.presentation.views.status_text import STATUS_KEYS
 
 SURVIVAL = ServerConfiguration("survival", "survival", "paper.jar", 4096)
@@ -55,10 +55,13 @@ def test_selecting_an_item_opens_its_dashboard(qtbot: QtBot, tmp_path: Path) -> 
     dashboard = window.dashboard_view
     assert dashboard.pages.currentWidget() is dashboard.dashboard_page
     assert dashboard.title_label.text() == "creative"
-    assert dashboard.info_values["directory"].text() == "creative-files"
-    assert dashboard.info_values["location"].toolTip() == str(tmp_path / "creative-files")
-    assert dashboard.info_values["jar_file"].text() == "fabric.jar"
-    assert dashboard.info_values["memory"].text() == MESSAGES.text("server_details.memory_value", memory_mb=2048)
+    assert dashboard.subtitle_label.text() == MESSAGES.text(
+        "dashboard.subtitle_folder",
+        jar_file="fabric.jar",
+        memory=MESSAGES.text("memory.gb", value="2"),
+        folder="creative-files",
+    )
+    assert str(tmp_path / "creative-files") in dashboard.open_folder_button.toolTip()
     assert dashboard.status_pill.text() == MESSAGES.text(
         "dashboard.status_pill", status=MESSAGES.text("status.server.stopped")
     )
@@ -124,7 +127,7 @@ def test_java_unavailable_mode_lists_servers_with_unknown_status(qtbot: QtBot, t
     assert window.dashboard_view.status_pill.text() == MESSAGES.text(
         "dashboard.status_pill", status=MESSAGES.text("status.server.unknown")
     )
-    assert window.java_status_label.text() == MESSAGES.text("status.java_missing")
+    assert window.dashboard_view.hint_label.text() == MESSAGES.text("dashboard.hint.java_missing")
 
 
 def test_active_server_shows_running(qtbot: QtBot, tmp_path: Path) -> None:
@@ -165,13 +168,12 @@ def test_window_texts_come_from_catalog(qtbot: QtBot, tmp_path: Path) -> None:
     window = window_for(qtbot, InMemoryRepository(SURVIVAL), tmp_path)
 
     assert window.windowTitle() == MESSAGES.text("app.title")
-    assert window.refresh_action.text() == MESSAGES.text("menu.file.refresh")
+    assert window.refresh_action.shortcut().matches(QKeySequence(QKeySequence.StandardKey.Refresh)) is not None
     assert window.server_list_view.refresh_button.toolTip() == MESSAGES.text("server_list.refresh")
 
 
 def test_all_dynamically_built_keys_exist_in_catalog() -> None:
-    dynamic = {f"server_details.field.{field}" for field in INFO_FIELDS}
-    dynamic |= set(STATUS_KEYS.values())
+    dynamic = set(STATUS_KEYS.values())
 
     assert set(STATUS_KEYS) == set(ServerStatus)
     assert sorted(dynamic - set(en.MESSAGES)) == []

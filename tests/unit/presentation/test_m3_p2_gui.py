@@ -67,7 +67,6 @@ class Setup:
             confirm_exit=lambda _server_id: True,
             open_folder=lambda path: self.opened.append(path) or True,
             notify_unclean=lambda _incident: None,
-            offer_legacy_import=lambda _count: False,
             choose_log_path=lambda _server_id: str(self.saved_to),
             auto_restart_delay_ms=20,
         )
@@ -203,7 +202,7 @@ def test_console_filter_history_and_save(qtbot: QtBot, tmp_path: Path) -> None:
     qtbot.mouseClick(console.save_button, Qt.MouseButton.LeftButton)
     saved = setup.saved_to.read_text(encoding="utf-8")
     assert "hello world" in saved and "Can't keep up!" in saved
-    assert MESSAGES.text("console.saved", path=str(setup.saved_to)) == setup.window.statusBar().currentMessage()
+    assert MESSAGES.text("console.saved", path=str(setup.saved_to)) in setup.window.notification_texts()
     setup.stop_for_teardown()
 
 
@@ -219,7 +218,7 @@ def test_address_row_logs_button_and_copy(qtbot: QtBot, tmp_path: Path) -> None:
 
     qtbot.mouseClick(setup.dashboard.open_logs_button, Qt.MouseButton.LeftButton)
     assert setup.opened == []  # no logs folder yet
-    assert setup.window.statusBar().currentMessage() == MESSAGES.text("dashboard.no_logs")
+    assert MESSAGES.text("dashboard.no_logs") in setup.window.notification_texts()
     (tmp_path / "survival" / "logs").mkdir()
     qtbot.mouseClick(setup.dashboard.open_logs_button, Qt.MouseButton.LeftButton)
     assert setup.opened == [tmp_path / "survival" / "logs"]
@@ -232,7 +231,7 @@ def test_address_without_network(qtbot: QtBot, tmp_path: Path) -> None:
     setup = Setup(qtbot, tmp_path, lan=None)
     setup.select("survival")
     assert setup.dashboard.address_value.text() == MESSAGES.text("dashboard.address_unknown")
-    assert not setup.dashboard.copy_address_button.isEnabled()
+    assert setup.dashboard.copy_address_button.isHidden()
 
 
 def test_players_and_tps_tiles(qtbot: QtBot, tmp_path: Path) -> None:
@@ -246,7 +245,7 @@ def test_players_and_tps_tiles(qtbot: QtBot, tmp_path: Path) -> None:
     setup.window.sample_metrics()
     assert values["players"].text() == "1 / 12"
     assert values["players"].toolTip() == "Steve"
-    assert values["tps"].text() == "19.5"
+    assert values["tps"].text() == MESSAGES.text("metrics.tps_line", tps="19.5")
 
     setup.metrics.snapshot = None
     setup.window.sample_metrics()

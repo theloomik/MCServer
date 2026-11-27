@@ -17,13 +17,17 @@ from PySide6.QtWidgets import (
 from mcserver.presentation import icons, theme
 from mcserver.presentation.views.widgets import button
 
-TONES = {
-    "info": ("info", theme.INFO, theme.INFO_SUBTLE),
-    "warning": ("alert", theme.WARNING_TEXT, theme.WARNING_SUBTLE),
-    "danger": ("alert", theme.DANGER_TEXT, theme.DANGER_SUBTLE),
-    "success": ("check", theme.ACCENT_HOVER, theme.ACCENT_SUBTLE),
-}
-"""Header tone → (icon, icon colour, tile colour)."""
+TONES = ("info", "warning", "danger", "success")
+
+
+def tone_style(tone: str) -> tuple[str, str, str]:
+    """Return (icon, icon colour, tile colour) of a header ``tone`` in the current theme."""
+    return {
+        "info": ("info", theme.INFO, theme.INFO_SUBTLE),
+        "warning": ("alert", theme.WARNING_TEXT, theme.WARNING_SUBTLE),
+        "danger": ("alert", theme.DANGER_TEXT, theme.DANGER_SUBTLE),
+        "success": ("check", theme.ACCENT_HOVER, theme.ACCENT_SUBTLE),
+    }[tone]
 
 
 class FormDialog(QDialog):
@@ -43,7 +47,6 @@ class FormDialog(QDialog):
 
         heading = QLabel(title)
         heading.setObjectName("dialogTitle")
-        heading.setWordWrap(True)
         titles = QVBoxLayout()
         titles.setSpacing(4)
         titles.addWidget(heading)
@@ -57,7 +60,7 @@ class FormDialog(QDialog):
         header = QHBoxLayout()
         header.setSpacing(14)
         if tone in TONES:
-            icon_name, color, tile_color = TONES[tone]
+            icon_name, color, tile_color = tone_style(tone)
             tile = QLabel()
             tile.setObjectName("dialogTone")
             tile.setFixedSize(36, 36)
@@ -97,23 +100,56 @@ class FormDialog(QDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.card)
 
-    def add_field(self, label: str, editor: QWidget | QLayout, hint: str = "") -> QLabel | None:
-        """Add a labelled field; return its hint label (so callers can change it) or ``None``."""
+    def add_field(
+        self, label: str, editor: QWidget | QLayout, hint: str = "", *, into: QVBoxLayout | None = None
+    ) -> QLabel | None:
+        """Add a labelled field (to ``into``, default the body); return its hint label or ``None``."""
+        target = self.body if into is None else into
         caption = QLabel(label)
         caption.setObjectName("formLabel")
-        self.body.addWidget(caption)
+        field = editor if isinstance(editor, QWidget) else _first_input(editor)
+        if field is not None:
+            # Screen readers announce the field with its label; Alt+mnemonic in the label focuses it.
+            caption.setBuddy(field)
+            if not field.accessibleName():
+                field.setAccessibleName(label.replace("&", ""))
+            if hint:
+                field.setAccessibleDescription(hint)
+        target.addWidget(caption)
         if isinstance(editor, QLayout):
-            self.body.addLayout(editor)
+            target.addLayout(editor)
         else:
-            self.body.addWidget(editor)
+            target.addWidget(editor)
         hint_label: QLabel | None = None
         if hint:
             hint_label = QLabel(hint)
             hint_label.setObjectName("fieldHint")
             hint_label.setWordWrap(True)
-            self.body.addWidget(hint_label)
-        self.body.addSpacing(10)
+            target.addWidget(hint_label)
+        target.addSpacing(10)
         return hint_label
+
+    def add_advanced(self, label: str) -> QVBoxLayout:
+        """Add a collapsed "Advanced" group; return the layout its fields go into (progressive disclosure)."""
+        self.advanced_button = QPushButton(label)
+        self.advanced_button.setObjectName("disclosureButton")
+        self.advanced_button.setCheckable(True)
+        self.advanced_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.advanced_group = QWidget()
+        group = QVBoxLayout(self.advanced_group)
+        group.setContentsMargins(0, 6, 0, 0)
+        group.setSpacing(6)
+        self.advanced_group.hide()
+
+        def toggle(shown: bool) -> None:
+            self.advanced_group.setVisible(shown)
+            self.advanced_button.setIcon(icons.icon("chevron-up" if shown else "chevron-down"))
+
+        self.advanced_button.toggled.connect(toggle)
+        toggle(False)
+        self.body.addWidget(self.advanced_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.body.addWidget(self.advanced_group)
+        return group
 
     def add_note(self, text: str) -> QLabel:
         """Add a wrapped explanatory line."""
@@ -139,6 +175,19 @@ class FormDialog(QDialog):
         """Show ``text`` above the buttons, or hide the error line for ``None``."""
         self.error_label.setText(text or "")
         self.error_label.setVisible(bool(text))
+
+
+def _first_input(layout: QLayout) -> QWidget | None:
+    """Return the first focusable widget in ``layout`` (the field a row of widgets is about)."""
+    for index in range(layout.count()):
+        item = layout.itemAt(index)
+        widget = item.widget() if item is not None else None
+        if widget is not None and widget.focusPolicy() != Qt.FocusPolicy.NoFocus:
+            return widget
+        child = item.layout() if item is not None else None
+        if child is not None and (found := _first_input(child)) is not None:
+            return found
+    return None
 
 
 def primary_button(text: str, icon_name: str | None = None) -> QPushButton:

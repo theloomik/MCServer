@@ -11,6 +11,7 @@ from typing import Protocol
 
 from mcserver.application.errors import ServerIsRunning
 from mcserver.application.ports import RemovedServerFiles, ServerConfigurationRepository
+from mcserver.application.progress import CancelToken, ProgressReporter, Stage, report, stage_callback
 from mcserver.domain.lifecycle import ServerState
 
 _logger = logging.getLogger(__name__)
@@ -167,15 +168,20 @@ class BackupService:
         self,
         server_id: str,
         note: str = "",
-        progress: BackupProgress | None = None,
+        progress: ProgressReporter | None = None,
         kind: BackupKind = BackupKind.MANUAL,
+        cancel: CancelToken | None = None,
     ) -> BackupInfo:
         """Back up ``server_id`` (online if it runs); raise ``BackupNotPossible`` while it starts or stops."""
         directory = self._repository.get(server_id).directory
+        archiving = stage_callback(Stage.ARCHIVING, progress, cancel)
         if self._coordinator.active_server_id != server_id:
-            return self._store.create_backup(server_id, directory, kind, note, False, self._clock(), progress)
+            return self._store.create_backup(server_id, directory, kind, note, False, self._clock(), archiving)
         if self._coordinator.state is not ServerState.RUNNING:
             raise BackupNotPossible(server_id)
+        if cancel is not None:
+            cancel.check()
+        report(progress, Stage.SAVING_WORLD)
         self._coordinator.send_command(server_id, "save-off")
         try:
             confirmed = self._coordinator.send_and_wait_for_line(
@@ -183,14 +189,20 @@ class BackupService:
             )
             if not confirmed:
                 raise BackupFailed(server_id, "the server did not confirm that the world was saved")
-            return self._store.create_backup(server_id, directory, kind, note, True, self._clock(), progress)
+            return self._store.create_backup(server_id, directory, kind, note, True, self._clock(), archiving)
         finally:
             try:
                 self._coordinator.send_command(server_id, "save-on")
             except Exception:
                 _logger.exception("Could not turn world saving back on for %r.", server_id)
 
-    def restore(self, server_id: str, backup_id: str, progress: BackupProgress | None = None) -> BackupInfo:
+    def restore(
+        self,
+        server_id: str,
+        backup_id: str,
+        progress: ProgressReporter | None = None,
+        cancel: CancelToken | None = None,
+    ) -> BackupInfo:
         """Restore ``backup_id`` while the server is stopped; return the safety backup made first."""
         if self._coordinator.active_server_id == server_id:
             raise ServerIsRunning(server_id)
@@ -198,9 +210,16 @@ class BackupService:
             raise BackupNotFound(server_id, backup_id)
         directory = self._repository.get(server_id).directory
         safety = self._store.create_backup(
-            server_id, directory, BackupKind.SAFETY, f"before restoring {backup_id}", False, self._clock(), None
+            server_id,
+            directory,
+            BackupKind.SAFETY,
+            f"before restoring {backup_id}",
+            False,
+            self._clock(),
+            stage_callback(Stage.SAFETY_BACKUP, progress, cancel),
         )
-        self._store.restore_backup(server_id, directory, backup_id, progress)
+        # Cancel is honoured while extracting; once the folders are swapped the restore always completes.
+        self._store.restore_backup(server_id, directory, backup_id, stage_callback(Stage.EXTRACTING, progress, cancel))
         return safety
 
     def delete(self, server_id: str, backup_id: str) -> RemovedServerFiles:

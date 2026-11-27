@@ -205,7 +205,7 @@ def test_folder_outside_the_root_is_copied_and_the_source_is_untouched(tmp_path:
         jar_file="paper.jar",
         memory_mb=4096,
         display_name="Old",
-        progress=lambda d, t: progress.append((d, t)),
+        progress=lambda p: progress.append((p.done, p.total)),
     )
 
     assert not contents.inside_root and contents.jar_files == ("paper.jar", "spigot.jar") and contents.eula_accepted

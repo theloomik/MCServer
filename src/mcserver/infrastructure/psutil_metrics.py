@@ -15,6 +15,14 @@ import psutil
 from mcserver.application.server_metrics import ProcessSample
 
 
+def total_memory_mb() -> int | None:
+    """Return this PC's physical memory in megabytes, or ``None`` when it cannot be read."""
+    try:
+        return int(psutil.virtual_memory().total // (1024 * 1024))
+    except Exception:
+        return None
+
+
 class PsutilProcessMetrics:
     """Implement ``ProcessMetricsSource`` for a process and all of its children."""
 

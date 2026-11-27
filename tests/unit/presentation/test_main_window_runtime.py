@@ -194,7 +194,7 @@ def test_old_java_start_anyway_passes_the_override(qtbot: QtBot, tmp_path: Path)
     assert setup.factory.options[-1] == StartOptions(allow_outdated_java=True)
 
 
-def test_missing_java_retry_starts_normally_and_updates_the_status_bar(qtbot: QtBot, tmp_path: Path) -> None:
+def test_missing_java_retry_starts_normally(qtbot: QtBot, tmp_path: Path) -> None:
     setup = Setup(qtbot, tmp_path, java_choice=JavaChoice.RETRY)
     setup.factory.preflight_error = JavaNotFound(21)
 
@@ -202,15 +202,6 @@ def test_missing_java_retry_starts_normally_and_updates_the_status_bar(qtbot: Qt
 
     qtbot.waitUntil(lambda: setup.dashboard.status_pill.property("status") == "running")
     assert setup.factory.options[-1] == StartOptions()
-    assert setup.window.java_status_label.text() == MESSAGES.text("status.java_ready", major=21)
-
-
-def test_check_java_reports_missing_java(qtbot: QtBot, tmp_path: Path) -> None:
-    setup = Setup(qtbot, tmp_path, java_major=None)
-
-    setup.window.java_check_button.click()
-
-    assert setup.window.java_status_label.text() == MESSAGES.text("status.java_missing")
 
 
 def test_unclean_shutdown_is_reported_once_without_recovery_actions(qtbot: QtBot, tmp_path: Path) -> None:

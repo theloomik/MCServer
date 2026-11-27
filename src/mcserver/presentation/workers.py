@@ -95,3 +95,21 @@ class BackgroundRunner(QObject):
                 callback(value)
 
         return deliver
+
+
+class ProgressRelay(QObject):
+    """Carry ``Progress`` reports from a worker thread to the GUI thread (M4-GUI-05).
+
+    ``report`` may be called on any thread; connect ``progress`` with a queued
+    connection (``connect_to`` does) so receivers run on the GUI thread.
+    """
+
+    progress = Signal(object)  # Progress
+
+    def report(self, progress: object) -> None:
+        """Forward one report."""
+        self.progress.emit(progress)
+
+    def connect_to(self, signal: Any) -> None:
+        """Forward every report to ``signal`` on the receiver's thread."""
+        self.progress.connect(signal, Qt.ConnectionType.QueuedConnection)

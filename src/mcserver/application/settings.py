@@ -12,6 +12,7 @@ from mcserver.application.ports import JavaRuntimeProvider
 _logger = logging.getLogger(__name__)
 
 SUPPORTED_LANGUAGES = ("en", "uk")
+SUPPORTED_THEMES = ("dark", "light")
 STOP_TIMEOUT_RANGE = (10, 3600)
 STARTUP_TIMEOUT_RANGE = (30, 7200)
 
@@ -37,11 +38,17 @@ class ApplicationSettings:
     legacy_import_offered: bool = False
     auto_restart: bool = False
     """Start a crashed server again (at most 3 times in 10 minutes, M3-BE-05)."""
+    first_run_completed: bool = False
+    """The first-run guide was finished or skipped (M4-GUI-08); it can be opened again from the File menu."""
+    theme: str | None = None
+    """``dark`` or ``light``; ``None`` follows the Windows app mode (M4 light theme)."""
 
     def __post_init__(self) -> None:
         """Reject values the application cannot use."""
         if self.language is not None and self.language not in SUPPORTED_LANGUAGES:
             raise InvalidSettings(f"Unsupported language: {self.language!r}.")
+        if self.theme is not None and self.theme not in SUPPORTED_THEMES:
+            raise InvalidSettings(f"Unsupported theme: {self.theme!r}.")
         if self.java_executable is not None and (
             not isinstance(self.java_executable, str) or not self.java_executable.strip()
         ):
@@ -52,7 +59,7 @@ class ApplicationSettings:
         ):
             if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
                 raise InvalidSettings(f"The {name} must be between {low} and {high} seconds.")
-        for flag in ("legacy_import_offered", "auto_restart"):
+        for flag in ("legacy_import_offered", "auto_restart", "first_run_completed"):
             if not isinstance(getattr(self, flag), bool):
                 raise InvalidSettings(f"{flag} must be true or false.")
 

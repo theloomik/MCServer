@@ -156,6 +156,11 @@ class ServerDashboardController(QObject):
         return self._operation is not None
 
     @property
+    def has_pending_auto_restart(self) -> bool:
+        """Return whether a crashed server waits for its automatic start."""
+        return bool(self._auto_pending)
+
+    @property
     def active_server_id(self) -> str | None:
         """Return the coordinator's active server right now (not the last polled value)."""
         return self._coordinator.active_server_id if self._coordinator is not None else None

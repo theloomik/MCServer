@@ -1,4 +1,8 @@
-"""Modal dialog for creating a server from a JAR the user already has."""
+"""Create a server: a name, the server software, how much memory, the EULA (UX overhaul).
+
+Beginners see four things and one primary button. The folder name, which follows the
+server name, waits under "Advanced" for those who want a different one.
+"""
 
 from __future__ import annotations
 
@@ -7,35 +11,17 @@ from pathlib import PurePath
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QCloseEvent
-from PySide6.QtWidgets import (
-    QCheckBox,
-    QDialog,
-    QFileDialog,
-    QFrame,
-    QGridLayout,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QProgressBar,
-    QPushButton,
-    QSpinBox,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QCheckBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QProgressBar, QVBoxLayout, QWidget
 
 from mcserver.domain.server_configuration import MAX_MEMORY_MB, MIN_MEMORY_MB, ServerConfiguration
-from mcserver.presentation import theme
-from mcserver.presentation.controllers.server_creation import (
-    DEFAULT_MEMORY_MB,
-    CreationForm,
-    CreationState,
-    ServerCreationController,
-)
+from mcserver.presentation import icons, theme
+from mcserver.presentation.controllers.server_creation import CreationForm, CreationState, ServerCreationController
+from mcserver.presentation.dialogs.form import FormDialog, primary_button, secondary_button
 from mcserver.presentation.i18n import Messages
+from mcserver.presentation.views.memory_slider import MemorySlider
+from mcserver.presentation.views.widgets import WrapRow, button, repolish
 
 JarPicker = Callable[[QWidget], str | None]
-
-MEMORY_STEP_MB = 512
 
 
 def pick_jar_with_system_dialog(messages: Messages) -> JarPicker:
@@ -50,19 +36,13 @@ def pick_jar_with_system_dialog(messages: Messages) -> JarPicker:
     return pick
 
 
-def _repolish(widget: QWidget) -> None:
-    style = widget.style()
-    style.unpolish(widget)
-    style.polish(widget)
+class CreateServerDialog(FormDialog):
+    """Collect the name, JAR and memory, then let the controller create the server.
 
-
-class CreateServerDialog(QDialog):
-    """Collect ID, folder, JAR and memory, then let the controller create the server.
-
-    The folder follows the server ID until the user edits it. The JAR can only
-    be chosen with the file dialog, so the path always names an existing file
-    at selection time. While the backend works, every input is disabled and the
-    dialog cannot be closed, because the copy cannot be cancelled.
+    The folder follows the server name until the user edits it. The JAR comes from the
+    download dialog or the file dialog, so it names an existing file when chosen. While
+    the backend works every input is disabled and the dialog cannot be closed, because
+    the copy cannot be cancelled.
     """
 
     def __init__(
@@ -73,14 +53,11 @@ class CreateServerDialog(QDialog):
         *,
         pick_jar: JarPicker | None = None,
         download_jar: JarPicker | None = None,
+        system_memory_mb: int | None = None,
     ) -> None:
         """Build the form; ``pick_jar`` replaces the native file dialog in tests."""
-        super().__init__(parent)
+        super().__init__(messages.text("create.title"), messages.text("create.subtitle"), parent)
         self.setObjectName("createServerDialog")
-        self.setWindowTitle(messages.text("create.title"))
-        self.setModal(True)
-        self.setMinimumWidth(560)
-        self.setStyleSheet(theme.STYLESHEET)
         self._controller = controller
         self._messages = messages
         self._pick_jar = pick_jar or pick_jar_with_system_dialog(messages)
@@ -89,6 +66,9 @@ class CreateServerDialog(QDialog):
         self._directory_follows_id = True
         self._attempted = False
         self.created_server_id: str | None = None
+        self.field_errors: dict[str, QLabel] = {}
+        self.field_hints: dict[str, QLabel] = {}
+        self._system_memory_mb = system_memory_mb
 
         self._build()
         controller.state_changed.connect(self._on_state)
@@ -96,92 +76,93 @@ class CreateServerDialog(QDialog):
         controller.begin()
         self._refresh_validation()
 
-    # --- construction ---------------------------------------------------------------------
+    # --- construction -----------------------------------------------------------------------
+
+    def _field(
+        self, field: str, label_key: str, editor: QWidget, hint_key: str | None, *, focus: QWidget
+    ) -> list[QWidget]:
+        """Add a caption, the editor, a hint and an error line that replaces the hint when needed."""
+        caption = QLabel(self._messages.text(label_key))
+        caption.setObjectName("formLabel")
+        caption.setBuddy(focus)
+        focus.setAccessibleName(caption.text())
+        hint = QLabel(self._messages.text(hint_key) if hint_key else "")
+        hint.setObjectName("fieldHint")
+        hint.setWordWrap(True)
+        if hint_key:
+            focus.setAccessibleDescription(hint.text())
+        error = QLabel()
+        error.setObjectName("fieldError")
+        error.setWordWrap(True)
+        error.hide()
+        for widget in (caption, editor, hint, error):
+            self.body.addWidget(widget)
+        self.body.addSpacing(8)
+        self.field_hints[field] = hint
+        self.field_errors[field] = error
+        return [caption, editor, hint, error]
 
     def _build(self) -> None:
-        messages = self._messages
-        title = QLabel(messages.text("create.title"))
-        title.setObjectName("dialogTitle")
-        subtitle = QLabel(messages.text("create.subtitle"))
-        subtitle.setObjectName("dialogSubtitle")
-        subtitle.setWordWrap(True)
-
+        text = self._messages.text
         self.server_id_edit = QLineEdit()
         self.server_id_edit.setObjectName("serverIdInput")
-        self.server_id_edit.setPlaceholderText(messages.text("create.server_id.placeholder"))
+        self.server_id_edit.setPlaceholderText(text("create.server_id.placeholder"))
         self.server_id_edit.textEdited.connect(self._on_server_id_edited)
+        self._field(
+            "server_id",
+            "create.server_id.label",
+            self.server_id_edit,
+            "create.server_id.hint",
+            focus=self.server_id_edit,
+        )
 
-        self.directory_edit = QLineEdit()
-        self.directory_edit.setObjectName("directoryInput")
-        self.directory_edit.setPlaceholderText(messages.text("create.directory.placeholder"))
-        self.directory_edit.textEdited.connect(self._on_directory_edited)
-
-        self.jar_edit = QLineEdit()
-        self.jar_edit.setObjectName("jarInput")
-        self.jar_edit.setReadOnly(True)
-        self.jar_edit.setPlaceholderText(messages.text("create.jar.placeholder"))
-        self.browse_button = QPushButton(messages.text("create.jar.browse"))
-        self.browse_button.setObjectName("secondaryButton")
-        self.browse_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.browse_button.clicked.connect(self._on_browse)
-        jar_row = QHBoxLayout()
-        jar_row.setSpacing(8)
-        jar_row.addWidget(self.jar_edit, 1)
-        jar_row.addWidget(self.browse_button)
-        self.download_button = QPushButton(messages.text("create.jar.download"))
-        self.download_button.setObjectName("secondaryButton")
-        self.download_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Server software: download an official one, or use a JAR the user already has.
+        self.download_button = button(text("create.jar.download"), "primary", "download")
         self.download_button.clicked.connect(self._on_download)
         self.download_button.setVisible(self._download_jar is not None)
-        jar_row.addWidget(self.download_button)
+        self.browse_button = button(text("create.jar.browse"), "secondary", "folder")
+        self.browse_button.clicked.connect(self._on_browse)
+        self.jar_icon = QLabel()
+        self.jar_icon.setFixedSize(16, 16)
+        # The chosen file, shown (not typed): it always comes from the download or the file dialog.
+        self.jar_edit = QLabel(text("create.jar.placeholder"))
+        self.jar_edit.setObjectName("jarName")
+        self.jar_edit.setProperty("chosen", False)
+        # The two ways side by side when they fit, one below the other otherwise (long texts, scaling);
+        # the chosen file gets its own line, so nothing has to squeeze next to the buttons.
+        if self._download_jar is not None:
+            self.software_buttons: QWidget = WrapRow(self.download_button, self.browse_button, 8, fill=True)
+        else:
+            self.software_buttons = QWidget()
+            only = QHBoxLayout(self.software_buttons)
+            only.setContentsMargins(0, 0, 0, 0)
+            only.addWidget(self.browse_button)
+            only.addStretch(1)
+        self.jar_edit.setWordWrap(True)
+        chosen_row = QHBoxLayout()
+        chosen_row.setContentsMargins(2, 0, 0, 0)
+        chosen_row.setSpacing(8)
+        chosen_row.addWidget(self.jar_icon, 0, Qt.AlignmentFlag.AlignTop)
+        chosen_row.addWidget(self.jar_edit, 1)
+        software = QWidget()
+        software_layout = QVBoxLayout(software)
+        software_layout.setContentsMargins(0, 0, 0, 0)
+        software_layout.setSpacing(8)
+        software_layout.addWidget(self.software_buttons)
+        software_layout.addLayout(chosen_row)
+        focus = self.download_button if self._download_jar is not None else self.browse_button
+        self._field("source_jar", "create.source_jar.label", software, "create.source_jar.hint", focus=focus)
 
-        self.memory_spin = QSpinBox()
-        self.memory_spin.setObjectName("memoryInput")
-        self.memory_spin.setRange(MIN_MEMORY_MB, MAX_MEMORY_MB)
-        self.memory_spin.setSingleStep(MEMORY_STEP_MB)
-        self.memory_spin.setValue(DEFAULT_MEMORY_MB)
-        self.memory_spin.setSuffix(messages.text("create.memory.suffix"))
-        # Keep the step buttons: with a stylesheet, Qt collapses a button-less spin box's editor.
-        self.memory_spin.valueChanged.connect(lambda _value: self._refresh_validation())
+        self.memory_slider = MemorySlider(self._messages, self._system_memory_mb)
+        self.memory_slider.changed.connect(lambda _value: self._refresh_validation())
+        self._field("memory_mb", "create.memory_mb.label", self.memory_slider, None, focus=self.memory_slider.slider)
+        self.field_hints["memory_mb"].hide()
 
-        self.field_errors: dict[str, QLabel] = {}
-        self.field_hints: dict[str, QLabel] = {}
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(0)
-        grid.setVerticalSpacing(4)
-        rows = (
-            ("server_id", self.server_id_edit),
-            ("directory", self.directory_edit),
-            ("source_jar", jar_row),
-            ("memory_mb", self.memory_spin),
-        )
-        row_index = 0
-        for field, editor in rows:
-            label = QLabel(messages.text(f"create.{field}.label"))
-            label.setObjectName("formLabel")
-            hint = QLabel(messages.text(f"create.{field}.hint"))
-            hint.setObjectName("fieldHint")
-            hint.setWordWrap(True)
-            error = QLabel()
-            error.setObjectName("fieldError")
-            error.setWordWrap(True)
-            error.hide()
-            self.field_hints[field] = hint
-            self.field_errors[field] = error
-            grid.addWidget(label, row_index, 0)
-            if isinstance(editor, QHBoxLayout):
-                grid.addLayout(editor, row_index + 1, 0)
-            else:
-                grid.addWidget(editor, row_index + 1, 0)
-            grid.addWidget(hint, row_index + 2, 0)
-            grid.addWidget(error, row_index + 3, 0)
-            grid.setRowMinimumHeight(row_index + 4, 10)
-            row_index += 5
-
-        self.eula_check = QCheckBox(messages.text("create.eula.label"))
+        self.eula_check = QCheckBox(text("create.eula.label"))
         self.eula_check.setObjectName("eulaCheck")
         self.eula_check.toggled.connect(lambda _checked: self._refresh_validation())
-        eula_hint = QLabel(messages.text("create.eula.hint"))
+        self.eula_check.setAccessibleDescription(text("create.eula.hint"))
+        eula_hint = QLabel(text("create.eula.hint"))
         eula_hint.setObjectName("fieldHint")
         eula_hint.setWordWrap(True)
         eula_hint.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -189,11 +170,28 @@ class CreateServerDialog(QDialog):
         eula_error.setObjectName("fieldError")
         eula_error.setWordWrap(True)
         eula_error.hide()
+        for widget in (self.eula_check, eula_hint, eula_error):
+            self.body.addWidget(widget)
         self.field_hints["eula"] = eula_hint
         self.field_errors["eula"] = eula_error
-        grid.addWidget(self.eula_check, row_index, 0)
-        grid.addWidget(eula_hint, row_index + 1, 0)
-        grid.addWidget(eula_error, row_index + 2, 0)
+
+        # Advanced: the folder name (it follows the server name by default).
+        self.advanced_button = button(text("create.advanced"), "ghost", "chevron-down")
+        self.advanced_button.setCheckable(True)
+        self.advanced_button.toggled.connect(self._show_advanced)
+        self.body.addSpacing(6)
+        self.body.addWidget(self.advanced_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.directory_edit = QLineEdit()
+        self.directory_edit.setObjectName("directoryInput")
+        self.directory_edit.setPlaceholderText(text("create.directory.placeholder"))
+        self.directory_edit.textEdited.connect(self._on_directory_edited)
+        self._advanced_widgets = self._field(
+            "directory",
+            "create.directory.label",
+            self.directory_edit,
+            "create.directory.hint",
+            focus=self.directory_edit,
+        )
 
         self.progress = QProgressBar()
         self.progress.setObjectName("creationProgress")
@@ -201,11 +199,10 @@ class CreateServerDialog(QDialog):
         self.progress.setTextVisible(False)
         self.progress.setFixedHeight(4)
         self.progress.hide()
-        self.progress_label = QLabel(messages.text("create.progress"))
+        self.progress_label = QLabel(text("create.progress"))
         self.progress_label.setObjectName("fieldHint")
         self.progress_label.setWordWrap(True)
         self.progress_label.hide()
-
         self.error_banner = QLabel()
         self.error_banner.setObjectName("banner")
         self.error_banner.setProperty("tone", "error")
@@ -217,50 +214,38 @@ class CreateServerDialog(QDialog):
         self.details_label.setWordWrap(True)
         self.details_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.details_label.hide()
+        for status in (self.progress, self.progress_label, self.error_banner, self.details_label):
+            self.body.addWidget(status)
 
-        self.cancel_button = QPushButton(messages.text("create.cancel"))
-        self.cancel_button.setObjectName("secondaryButton")
+        self.cancel_button = secondary_button(text("create.cancel"))
         self.cancel_button.clicked.connect(self.reject)
-        self.create_button = QPushButton(messages.text("create.submit"))
-        self.create_button.setObjectName("primaryButton")
-        self.create_button.setDefault(True)
+        self.create_button = primary_button(text("create.submit"), "plus")
         self.create_button.clicked.connect(self._on_submit)
-        for button in (self.cancel_button, self.create_button):
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-        buttons = QHBoxLayout()
-        buttons.addStretch(1)
-        buttons.addWidget(self.cancel_button)
-        buttons.addWidget(self.create_button)
+        self.add_buttons(self.cancel_button, self.create_button, default=self.create_button)
+        self._show_advanced(False)
+        self._show_jar()
 
-        card = QFrame()
-        card.setObjectName("dialogCard")
-        content = QVBoxLayout()
-        content.setContentsMargins(28, 24, 28, 18)
-        content.setSpacing(10)
-        content.addWidget(title)
-        content.addWidget(subtitle)
-        content.addSpacing(8)
-        content.addLayout(grid)
-        content.addWidget(self.progress)
-        content.addWidget(self.progress_label)
-        content.addWidget(self.error_banner)
-        content.addWidget(self.details_label)
-        footer = QFrame()
-        footer.setObjectName("dialogFooter")
-        footer_layout = QHBoxLayout(footer)
-        footer_layout.setContentsMargins(28, 12, 20, 12)
-        footer_layout.addLayout(buttons)
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(0, 0, 0, 0)
-        card_layout.setSpacing(0)
-        card_layout.addLayout(content, 1)
-        card_layout.addWidget(footer)
+    def _show_advanced(self, shown: bool) -> None:
+        caption, editor = self._advanced_widgets[:2]
+        hint, error = self.field_hints["directory"], self.field_errors["directory"]
+        for widget in (caption, editor):
+            widget.setVisible(shown)
+        hint.setVisible(shown and not error.text())
+        error.setVisible(shown and bool(error.text()))
+        self.advanced_button.setIcon(icons.icon("chevron-up" if shown else "chevron-down", theme.TEXT_SECONDARY))
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(card)
+    def _show_jar(self) -> None:
+        chosen = bool(self._source_jar)
+        self.jar_icon.setPixmap(
+            icons.pixmap("check" if chosen else "info", theme.ACCENT if chosen else theme.TEXT_MUTED)
+        )
 
-    # --- form ------------------------------------------------------------------------------
+    # --- form ---------------------------------------------------------------------------------
+
+    @property
+    def memory_mb(self) -> int:
+        """Return the memory the server will get, in megabytes."""
+        return self.memory_slider.value_mb()
 
     def form(self) -> CreationForm:
         """Return the current input."""
@@ -268,17 +253,17 @@ class CreateServerDialog(QDialog):
             server_id=self.server_id_edit.text(),
             directory=self.directory_edit.text(),
             source_jar=self._source_jar,
-            memory_mb=self.memory_spin.value(),
+            memory_mb=self.memory_mb,
             eula_accepted=self.eula_check.isChecked(),
         )
 
-    def _on_server_id_edited(self, text: str) -> None:
+    def _on_server_id_edited(self, value: str) -> None:
         if self._directory_follows_id:
-            self.directory_edit.setText(text.strip())
+            self.directory_edit.setText(value.strip())
         self._refresh_validation()
 
-    def _on_directory_edited(self, text: str) -> None:
-        self._directory_follows_id = text == "" or text == self.server_id_edit.text().strip()
+    def _on_directory_edited(self, value: str) -> None:
+        self._directory_follows_id = value == "" or value == self.server_id_edit.text().strip()
         self._refresh_validation()
 
     def _on_download(self) -> None:
@@ -294,6 +279,9 @@ class CreateServerDialog(QDialog):
         self._source_jar = path
         self.jar_edit.setText(PurePath(path).name)
         self.jar_edit.setToolTip(path)
+        self.jar_edit.setProperty("chosen", True)
+        repolish(self.jar_edit)
+        self._show_jar()
         self._refresh_validation()
 
     def _refresh_validation(self) -> None:
@@ -307,13 +295,17 @@ class CreateServerDialog(QDialog):
         }
         for field, label in self.field_errors.items():
             key = validation.errors.get(field)
+            hint = self.field_hints[field]
             if key is not None and touched[field]:
                 label.setText(self._error_text(field, key))
+                if field == "directory" and not self.advanced_button.isChecked():
+                    self.advanced_button.setChecked(True)  # a folder problem is never hidden
                 label.show()
-                self.field_hints[field].hide()
+                hint.hide()
             else:
+                label.clear()
                 label.hide()
-                self.field_hints[field].show()
+                hint.setVisible(bool(hint.text()) and (field != "directory" or self.advanced_button.isChecked()))
         self.create_button.setEnabled(validation.ok and not self._controller.busy)
 
     def _error_text(self, field: str, key: str) -> str:
@@ -324,7 +316,7 @@ class CreateServerDialog(QDialog):
             return self._messages.text(key, minimum=MIN_MEMORY_MB, maximum=MAX_MEMORY_MB)
         return self._messages.text(key)
 
-    # --- submission ------------------------------------------------------------------------
+    # --- submission ---------------------------------------------------------------------------
 
     def _on_submit(self) -> None:
         self._attempted = True
@@ -338,9 +330,10 @@ class CreateServerDialog(QDialog):
             self.directory_edit,
             self.browse_button,
             self.download_button,
-            self.memory_spin,
+            self.memory_slider,
             self.eula_check,
             self.cancel_button,
+            self.advanced_button,
         ):
             widget.setEnabled(not busy)
         self.progress.setVisible(busy)
@@ -351,7 +344,7 @@ class CreateServerDialog(QDialog):
             self.details_label.setText(state.error.details)
             self.error_banner.show()
             self.details_label.setVisible(bool(state.error.details))
-            _repolish(self.error_banner)
+            repolish(self.error_banner)
         elif busy:
             self.error_banner.hide()
             self.details_label.hide()
@@ -364,7 +357,7 @@ class CreateServerDialog(QDialog):
         self.created_server_id = configuration.server_id
         self.accept()
 
-    # --- closing ---------------------------------------------------------------------------
+    # --- closing ------------------------------------------------------------------------------
 
     def reject(self) -> None:
         """Cancel (also Escape) only before the operation starts; a running copy cannot be cancelled."""

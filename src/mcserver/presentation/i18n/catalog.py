@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Callable, Mapping
+from importlib import resources
 
 _logger = logging.getLogger(__name__)
 
@@ -12,6 +14,35 @@ Entry = str | Mapping[str, str]
 
 Catalog = Mapping[str, Entry]
 PluralRule = Callable[[int], str]
+
+PLURAL_FORMS = ("zero", "one", "two", "few", "many", "other")
+"""Key suffixes for plural forms in the JSON files (i18next style, as Crowdin writes them: ``key_one``)."""
+LOCALES_PACKAGE = "mcserver.presentation.i18n"
+
+
+def parse_catalog(data: Mapping[str, object], source: str = "catalog") -> dict[str, Entry]:
+    """Turn a flat i18next-style mapping into a catalog: ``key_one``/``key_few``… become one plural entry."""
+    catalog: dict[str, Entry] = {}
+    plurals: dict[str, dict[str, str]] = {}
+    for key, value in data.items():
+        if not isinstance(value, str):
+            raise ValueError(f"{source}: {key!r} must be a string")
+        base, _, form = key.rpartition("_")
+        if base and form in PLURAL_FORMS:
+            plurals.setdefault(base, {})[form] = value
+        else:
+            catalog[key] = value
+    for base, forms in plurals.items():
+        if base in catalog:
+            raise ValueError(f"{source}: {base!r} is both a plain text and a plural")
+        catalog[base] = forms
+    return catalog
+
+
+def load_catalog(language: str) -> dict[str, Entry]:
+    """Read ``locales/<language>.json`` shipped with the package (the files Crowdin syncs)."""
+    path = resources.files(LOCALES_PACKAGE).joinpath("locales", f"{language}.json")
+    return parse_catalog(json.loads(path.read_text(encoding="utf-8")), f"{language}.json")
 
 
 def english_plural(count: int) -> str:
@@ -39,9 +70,16 @@ class Messages:
     """
 
     def __init__(
-        self, catalog: Catalog, *, plural_rule: PluralRule = english_plural, fallback: Messages | None = None
+        self,
+        catalog: Catalog,
+        *,
+        plural_rule: PluralRule = english_plural,
+        fallback: Messages | None = None,
+        language: str = "en",
     ) -> None:
         """Use ``catalog`` with its language's ``plural_rule`` and an optional ``fallback``."""
+        self.language = language
+        """The language code of ``catalog`` (``en``, ``uk``)."""
         self._catalog = catalog
         self._plural_rule = plural_rule
         self._fallback = fallback

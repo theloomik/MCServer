@@ -8,10 +8,34 @@ returns to it when answered.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QEventLoop, QObject, Qt
-from PySide6.QtWidgets import QDialog, QFrame, QScrollArea, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QAbstractSpinBox,
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QLineEdit,
+    QListWidget,
+    QPlainTextEdit,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
+from mcserver.presentation.views.modal_host import take_footer
 
 PAGE_WIDTH = 640
 COMPACT_WIDTH = 520
+WIDE_MAX_WIDTH = 800
+"""A full page (Settings) grows with the window up to this width."""
+
+
+_FIELDS = (QLineEdit, QAbstractSpinBox, QComboBox, QCheckBox, QListWidget, QPlainTextEdit)
 
 
 class PageHost(QStackedWidget):
@@ -24,6 +48,7 @@ class PageHost(QStackedWidget):
         self.base = base
         self.addWidget(base)
         self._pages: list[tuple[QDialog, QWidget]] = []
+        self._return_focus: dict[int, QWidget | None] = {}
 
     @property
     def pages(self) -> tuple[QDialog, ...]:
@@ -35,7 +60,7 @@ class PageHost(QStackedWidget):
         """Return the page on top, if any."""
         return self._pages[-1][0] if self._pages else None
 
-    def open_page(self, dialog: QDialog, *, compact: bool = False) -> None:
+    def open_page(self, dialog: QDialog, *, compact: bool = False, wide: bool = False) -> None:
         """Embed ``dialog`` above the current content and show it; it is removed when it finishes."""
         frame = QFrame()
         frame.setObjectName("pageFrame")
@@ -49,26 +74,49 @@ class PageHost(QStackedWidget):
         # A fixed width lets wrapped text compute its height; the page is never squeezed vertically (it scrolls).
         dialog.setMinimumWidth(0)
         dialog.setMaximumWidth(16777215)
-        dialog.setFixedWidth(COMPACT_WIDTH if compact else PAGE_WIDTH)
-        policy = QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
+        if wide:
+            dialog.setMaximumWidth(WIDE_MAX_WIDTH)
+            horizontal = QSizePolicy.Policy.Expanding
+        else:
+            dialog.setFixedWidth(COMPACT_WIDTH if compact else PAGE_WIDTH)
+            horizontal = QSizePolicy.Policy.Fixed
+        policy = QSizePolicy(horizontal, QSizePolicy.Policy.Minimum)
         policy.setHeightForWidth(True)  # wrapped text gets the height it needs at this width
         dialog.setSizePolicy(policy)
         if compact:
             holder_layout.addStretch(1)
-        holder_layout.addWidget(dialog, 0, Qt.AlignmentFlag.AlignHCenter)
+        if wide:
+            # Grows with the window up to WIDE_MAX_WIDTH, centred by the stretches either side.
+            row = QHBoxLayout()
+            row.addStretch(0)
+            row.addWidget(dialog, 1)
+            row.addStretch(0)
+            holder_layout.addLayout(row)
+        else:
+            holder_layout.addWidget(dialog, 0, Qt.AlignmentFlag.AlignHCenter)
         holder_layout.addStretch(1)
         scroll.setWidget(holder)
         frame_layout = QVBoxLayout(frame)
         frame_layout.setContentsMargins(0, 0, 0, 0)
-        frame_layout.addWidget(scroll)
+        frame_layout.setSpacing(0)
+        frame_layout.addWidget(scroll, 1)
+        footer = take_footer(dialog) if wide else None
+        if footer is not None:
+            # A long page (Settings) keeps Save and Cancel in view at the bottom of the content area.
+            footer.setObjectName("pageFooter")
+            frame_layout.addWidget(footer)
         self._pages.append((dialog, frame))
         self.addWidget(frame)
         self.setCurrentWidget(frame)
         dialog.finished.connect(lambda _result, page=dialog: self._close_page(page))
         dialog.installEventFilter(self)
+        previous = QApplication.focusWidget()
+        self._return_focus[id(dialog)] = previous
+        if previous is not None:
+            previous.destroyed.connect(lambda _object=None, key=id(dialog): self._return_focus.pop(key, None))
         dialog.show()
         _fit_height(dialog)
-        dialog.setFocus()
+        _focus_first_field(dialog)
 
     def run_page(self, dialog: QDialog, *, compact: bool = True) -> int:
         """Show ``dialog`` as a page and wait (in a local event loop) until it finishes; return its result code."""
@@ -107,6 +155,45 @@ class PageHost(QStackedWidget):
                 frame.deleteLater()
                 break
         self.setCurrentWidget(self._pages[-1][1] if self._pages else self.base)
+        # Keyboard users continue where they were before the page opened.
+        previous = self._return_focus.pop(id(dialog), None)
+        if not self.isVisible():
+            return  # the window is closing; nothing to give the focus to
+        if self._pages:
+            _focus_first_field(self._pages[-1][0])
+        elif previous is not None and previous.isVisible() and previous.isEnabled():
+            previous.setFocus(Qt.FocusReason.OtherFocusReason)
+
+
+def _focus_first_field(dialog: QDialog) -> None:
+    """Focus the first field a keyboard user would fill in, else the default button, else the page."""
+    candidates = [
+        widget
+        for widget in dialog.findChildren(QWidget)
+        if widget.isVisibleTo(dialog) and widget.isEnabled() and widget.focusPolicy() & Qt.FocusPolicy.TabFocus
+    ]
+    for widget in _in_focus_order(dialog, candidates):
+        if isinstance(widget, _FIELDS) and not (isinstance(widget, QLineEdit) and widget.isReadOnly()):
+            widget.setFocus(Qt.FocusReason.TabFocusReason)
+            return
+    for widget in candidates:
+        if isinstance(widget, QPushButton) and widget.isDefault():
+            widget.setFocus(Qt.FocusReason.TabFocusReason)
+            return
+    dialog.setFocus()
+
+
+def _in_focus_order(dialog: QDialog, candidates: list[QWidget]) -> list[QWidget]:
+    wanted = {id(widget) for widget in candidates}
+    ordered: list[QWidget] = []
+    current = dialog.nextInFocusChain()
+    for _ in range(2000):
+        if current is None or current is dialog:
+            break
+        if id(current) in wanted and current not in ordered:
+            ordered.append(current)
+        current = current.nextInFocusChain()
+    return ordered
 
 
 def _fit_height(dialog: QDialog) -> None:

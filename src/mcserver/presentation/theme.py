@@ -1,40 +1,150 @@
-"""Dark theme from the M4 design: tokens and the window stylesheet (no text, no behaviour).
+"""Dark and light themes from the M4 design: tokens and the window stylesheet (no text, no behaviour).
 
 Token names follow the Figma variables (``color/bg/app`` → ``BG_APP``). Older
 names remain as aliases so existing code keeps its meaning.
+
+Code reads ``theme.X`` when it builds a widget. ``apply`` switches every token,
+the derived tables and ``STYLESHEET`` at once; windows built afterwards use the
+new theme (``app.WindowHost`` rebuilds the window for a live switch, M4).
 """
 
 from __future__ import annotations
 
-BG_APP = "#0b0b0d"
-BG_SIDEBAR = "#111114"
-SURFACE_CARD = "#17171a"
-SURFACE_RAISED = "#1e1e22"
-SURFACE_HOVER = "#26262b"
-SURFACE_CONSOLE = "#09090b"
-BORDER = "#26262b"
-BORDER_STRONG = "#36363d"
-TEXT = "#f4f4f5"
-TEXT_SECONDARY = "#a1a1aa"
-TEXT_MUTED = "#71717a"
-TEXT_FAINT = "#52525b"
-TEXT_ON_ACCENT = "#04130d"
-ACCENT = "#10b981"
-ACCENT_HOVER = "#34d399"
-ACCENT_SUBTLE = "#0e2620"
-DANGER = "#ef4444"
-DANGER_TEXT = "#f87171"
-DANGER_SUBTLE = "#2a1314"
-WARNING = "#f59e0b"
-WARNING_TEXT = "#fbbf24"
-WARNING_SUBTLE = "#2a1f0b"
-INFO = "#60a5fa"
-INFO_SUBTLE = "#0f1d2e"
-CONSOLE_TEXT = "#e4e4e7"
-CONSOLE_TIMESTAMP = "#52525b"
-CONSOLE_COMMAND = "#34d399"
+THEMES = ("dark", "light")
+DEFAULT_THEME = "dark"
 
-# Aliases used by earlier code.
+DARK: dict[str, str] = {
+    "BG_APP": "#0b0b0d",
+    "BG_SIDEBAR": "#111114",
+    "SURFACE_CARD": "#17171a",
+    "SURFACE_RAISED": "#1e1e22",
+    "SURFACE_HOVER": "#26262b",
+    "SURFACE_CONSOLE": "#09090b",
+    "SURFACE_BAND": "#1a1a1e",
+    "BORDER": "#26262b",
+    "BORDER_STRONG": "#36363d",
+    "TEXT": "#f4f4f5",
+    "TEXT_SECONDARY": "#a1a1aa",
+    "TEXT_MUTED": "#8c8c95",
+    "TEXT_FAINT": "#52525b",
+    "TEXT_ON_ACCENT": "#04130d",
+    "ACCENT": "#10b981",
+    "ACCENT_HOVER": "#34d399",
+    "ACCENT_SUBTLE": "#0e2620",
+    "ACCENT_BORDER": "#1b5a45",
+    "ACCENT_DISABLED_TEXT": "#1f5a45",
+    "DANGER": "#ef4444",
+    "DANGER_TEXT": "#f87171",
+    "DANGER_SUBTLE": "#2a1314",
+    "DANGER_BORDER": "#6b2a2a",
+    "DANGER_SUBTLE_BORDER": "#5b2526",
+    "DANGER_HOVER": "#3a1718",
+    "DANGER_DISABLED_TEXT": "#6b3a3a",
+    "DANGER_DISABLED_BORDER": "#3a1f20",
+    "WARNING": "#f59e0b",
+    "WARNING_TEXT": "#fbbf24",
+    "WARNING_SUBTLE": "#2a1f0b",
+    "WARNING_SUBTLE_BORDER": "#5a4114",
+    "INFO": "#60a5fa",
+    "INFO_SUBTLE": "#0f1d2e",
+    "INFO_SUBTLE_BORDER": "#23446b",
+    "FOCUS": "#93c5fd",
+    "CONSOLE_TEXT": "#e4e4e7",
+    "CONSOLE_TIMESTAMP": "#84848d",
+    "CONSOLE_COMMAND": "#34d399",
+}
+"""The original M4 theme."""
+
+LIGHT: dict[str, str] = {
+    "BG_APP": "#f4f4f5",
+    "BG_SIDEBAR": "#fafafa",
+    "SURFACE_CARD": "#ffffff",
+    "SURFACE_RAISED": "#ffffff",
+    "SURFACE_HOVER": "#ececef",
+    "SURFACE_CONSOLE": "#fbfbfc",
+    "SURFACE_BAND": "#f7f7f8",
+    "BORDER": "#e4e4e7",
+    "BORDER_STRONG": "#d4d4d8",
+    "TEXT": "#18181b",
+    "TEXT_SECONDARY": "#3f3f46",
+    "TEXT_MUTED": "#5f5f68",
+    "TEXT_FAINT": "#a1a1aa",
+    "TEXT_ON_ACCENT": "#ffffff",
+    "ACCENT": "#047857",
+    "ACCENT_HOVER": "#065f46",
+    "ACCENT_SUBTLE": "#e3f6ec",
+    "ACCENT_BORDER": "#9fdcbf",
+    "ACCENT_DISABLED_TEXT": "#7aa894",
+    "DANGER": "#dc2626",
+    "DANGER_TEXT": "#b91c1c",
+    "DANGER_SUBTLE": "#fdeded",
+    "DANGER_BORDER": "#f3b4b4",
+    "DANGER_SUBTLE_BORDER": "#f5c2c2",
+    "DANGER_HOVER": "#fbdcdc",
+    "DANGER_DISABLED_TEXT": "#d99a9a",
+    "DANGER_DISABLED_BORDER": "#f6d5d5",
+    "WARNING": "#b45309",
+    "WARNING_TEXT": "#92400e",
+    "WARNING_SUBTLE": "#fdf4e3",
+    "WARNING_SUBTLE_BORDER": "#f3d39b",
+    "INFO": "#1d4ed8",
+    "INFO_SUBTLE": "#eaf1fe",
+    "INFO_SUBTLE_BORDER": "#bcd0f7",
+    "FOCUS": "#2563eb",
+    "CONSOLE_TEXT": "#27272a",
+    "CONSOLE_TIMESTAMP": "#63636c",
+    "CONSOLE_COMMAND": "#047857",
+}
+"""Light theme: the same roles, contrast checked like the dark one (tests/unit/presentation/test_accessibility.py)."""
+
+PALETTES = {"dark": DARK, "light": LIGHT}
+current = DEFAULT_THEME
+"""The applied theme."""
+
+# Tokens (set by ``apply``; the dark values are the initial ones).
+BG_APP = DARK["BG_APP"]
+BG_SIDEBAR = DARK["BG_SIDEBAR"]
+SURFACE_CARD = DARK["SURFACE_CARD"]
+SURFACE_RAISED = DARK["SURFACE_RAISED"]
+SURFACE_HOVER = DARK["SURFACE_HOVER"]
+SURFACE_CONSOLE = DARK["SURFACE_CONSOLE"]
+SURFACE_BAND = DARK["SURFACE_BAND"]
+BORDER = DARK["BORDER"]
+BORDER_STRONG = DARK["BORDER_STRONG"]
+TEXT = DARK["TEXT"]
+TEXT_SECONDARY = DARK["TEXT_SECONDARY"]
+TEXT_MUTED = DARK["TEXT_MUTED"]
+"""Hints and captions: at least 4.5:1 on every surface (WCAG AA, M4-GUI-07)."""
+TEXT_FAINT = DARK["TEXT_FAINT"]
+"""Disabled controls, borders and scrollbars only; never text a user must read."""
+TEXT_ON_ACCENT = DARK["TEXT_ON_ACCENT"]
+ACCENT = DARK["ACCENT"]
+ACCENT_HOVER = DARK["ACCENT_HOVER"]
+ACCENT_SUBTLE = DARK["ACCENT_SUBTLE"]
+ACCENT_BORDER = DARK["ACCENT_BORDER"]
+ACCENT_DISABLED_TEXT = DARK["ACCENT_DISABLED_TEXT"]
+DANGER = DARK["DANGER"]
+DANGER_TEXT = DARK["DANGER_TEXT"]
+DANGER_SUBTLE = DARK["DANGER_SUBTLE"]
+DANGER_BORDER = DARK["DANGER_BORDER"]
+DANGER_SUBTLE_BORDER = DARK["DANGER_SUBTLE_BORDER"]
+DANGER_HOVER = DARK["DANGER_HOVER"]
+DANGER_DISABLED_TEXT = DARK["DANGER_DISABLED_TEXT"]
+DANGER_DISABLED_BORDER = DARK["DANGER_DISABLED_BORDER"]
+WARNING = DARK["WARNING"]
+WARNING_TEXT = DARK["WARNING_TEXT"]
+WARNING_SUBTLE = DARK["WARNING_SUBTLE"]
+WARNING_SUBTLE_BORDER = DARK["WARNING_SUBTLE_BORDER"]
+INFO = DARK["INFO"]
+INFO_SUBTLE = DARK["INFO_SUBTLE"]
+INFO_SUBTLE_BORDER = DARK["INFO_SUBTLE_BORDER"]
+FOCUS = DARK["FOCUS"]
+"""Keyboard focus ring; reads on every surface and is not a status colour."""
+CONSOLE_TEXT = DARK["CONSOLE_TEXT"]
+CONSOLE_TIMESTAMP = DARK["CONSOLE_TIMESTAMP"]
+CONSOLE_COMMAND = DARK["CONSOLE_COMMAND"]
+
+# Aliases used by earlier code (kept in step by ``apply``).
 BACKGROUND = BG_APP
 SIDEBAR = BG_SIDEBAR
 CARD = SURFACE_CARD
@@ -47,21 +157,13 @@ CONSOLE_ERROR = DANGER_TEXT
 FONT_FAMILY = "Segoe UI"
 MONO_FAMILY = "Cascadia Mono, Consolas, monospace"
 
-STATUS_COLORS = {
-    "running": ACCENT,
-    "starting": WARNING,
-    "stopping": WARNING,
-    "killing": DANGER,
-    "stopped": TEXT_FAINT,
-    "unknown": TEXT_FAINT,
-}
-TONE_COLORS = {
-    "error": (DANGER_SUBTLE, DANGER, DANGER_TEXT),
-    "notice": (WARNING_SUBTLE, WARNING, WARNING_TEXT),
-    "success": (ACCENT_SUBTLE, ACCENT, ACCENT_HOVER),
-    "info": (INFO_SUBTLE, INFO, INFO),
-}
+STATUS_COLORS: dict[str, str] = {}
+TONE_COLORS: dict[str, tuple[str, str, str]] = {}
 """Banner tone → (background, border, foreground)."""
+STYLESHEET = ""
+ARROW_DOWN = ""
+ARROW_UP = ""
+"""Image files for the combo and spin box arrows (``appearance`` draws them in the theme's colours)."""
 
 _PRIMARY = "QPushButton#primaryButton, QPushButton#startButton, QPushButton#createServerButton"
 _SECONDARY = (
@@ -75,7 +177,62 @@ def _each(selectors: str, state: str) -> str:
     return ", ".join(f"{part.strip()}{state}" for part in selectors.split(","))
 
 
-STYLESHEET = f"""
+def resolve_theme(setting: str | None, system_dark: bool | None) -> str:
+    """Return the theme to show: the user's setting, else the Windows app mode when known, else dark."""
+    if setting in THEMES:
+        return str(setting)
+    if system_dark is None:
+        return DEFAULT_THEME
+    return "dark" if system_dark else "light"
+
+
+def set_arrow_images(down: str, up: str) -> None:
+    """Use the image files ``down`` and ``up`` for the arrows and rebuild ``STYLESHEET``."""
+    global ARROW_DOWN, ARROW_UP, STYLESHEET
+    ARROW_DOWN, ARROW_UP = down.replace("\\", "/"), up.replace("\\", "/")
+    STYLESHEET = _build_stylesheet()
+
+
+def _arrow_rules() -> str:
+    if not (ARROW_DOWN and ARROW_UP):
+        return ""
+    return "\n".join(
+        (
+            f"QComboBox::down-arrow {{ image: url({ARROW_DOWN}); width: 12px; height: 12px; }}",
+            f"QSpinBox::up-arrow {{ image: url({ARROW_UP}); width: 10px; height: 10px; }}",
+            f"QSpinBox::down-arrow {{ image: url({ARROW_DOWN}); width: 10px; height: 10px; }}",
+        )
+    )
+
+
+def apply(name: str) -> None:
+    """Switch every token, the derived tables and ``STYLESHEET`` to theme ``name`` (unknown names: dark)."""
+    global current, BACKGROUND, SIDEBAR, CARD, CARD_RAISED, ACCENT_DIM, DANGER_DIM, CONSOLE, CONSOLE_ERROR
+    global STATUS_COLORS, TONE_COLORS, STYLESHEET
+    name = name if name in PALETTES else DEFAULT_THEME
+    globals().update(PALETTES[name])
+    current = name
+    BACKGROUND, SIDEBAR, CARD, CARD_RAISED = BG_APP, BG_SIDEBAR, SURFACE_CARD, SURFACE_RAISED
+    ACCENT_DIM, DANGER_DIM, CONSOLE, CONSOLE_ERROR = ACCENT_SUBTLE, DANGER_SUBTLE, SURFACE_CONSOLE, DANGER_TEXT
+    STATUS_COLORS = {
+        "running": ACCENT,
+        "starting": WARNING,
+        "stopping": WARNING,
+        "killing": DANGER,
+        "stopped": TEXT_MUTED,
+        "unknown": TEXT_MUTED,
+    }
+    TONE_COLORS = {
+        "error": (DANGER_SUBTLE, DANGER, DANGER_TEXT),
+        "notice": (WARNING_SUBTLE, WARNING, WARNING_TEXT),
+        "success": (ACCENT_SUBTLE, ACCENT, ACCENT_HOVER),
+        "info": (INFO_SUBTLE, INFO, INFO),
+    }
+    STYLESHEET = _build_stylesheet()
+
+
+def _build_stylesheet() -> str:
+    return f"""
 QMainWindow, QWidget#central {{ background-color: {BG_APP}; }}
 QWidget {{ font-family: '{FONT_FAMILY}'; font-size: 13px; color: {TEXT}; }}
 QToolTip {{ background-color: {SURFACE_RAISED}; color: {TEXT}; border: 1px solid {BORDER_STRONG}; padding: 6px; }}
@@ -114,16 +271,16 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0px; 
 }}
 {_PRIMARY} {{ background-color: {ACCENT}; color: {TEXT_ON_ACCENT}; border: 1px solid {ACCENT}; }}
 {_each(_PRIMARY, ":hover")} {{ background-color: {ACCENT_HOVER}; border-color: {ACCENT_HOVER}; }}
-{_each(_PRIMARY, ":disabled")} {{ background-color: {ACCENT_SUBTLE}; color: #1f5a45; border-color: {ACCENT_SUBTLE}; }}
+{_each(_PRIMARY, ":disabled")} {{ background-color: {ACCENT_SUBTLE}; color: {ACCENT_DISABLED_TEXT}; border-color: {ACCENT_SUBTLE}; }}
 {_SECONDARY} {{ background-color: {SURFACE_RAISED}; color: {TEXT}; border: 1px solid {BORDER_STRONG}; }}
 {_each(_SECONDARY, ":hover")} {{ background-color: {SURFACE_HOVER}; }}
 {_each(_SECONDARY, ":disabled")} {{ color: {TEXT_FAINT}; background-color: {SURFACE_CARD}; border-color: {BORDER}; }}
 {_GHOST} {{ background: transparent; color: {TEXT_SECONDARY}; border: 1px solid transparent; }}
 {_each(_GHOST, ":hover")} {{ background-color: {SURFACE_RAISED}; color: {TEXT}; }}
 {_each(_GHOST, ":disabled")} {{ color: {TEXT_FAINT}; }}
-{_DANGER} {{ background-color: {DANGER_SUBTLE}; color: {DANGER_TEXT}; border: 1px solid #6b2a2a; }}
-{_each(_DANGER, ":hover")} {{ background-color: #3a1718; border-color: {DANGER}; }}
-{_each(_DANGER, ":disabled")} {{ color: #6b3a3a; border-color: #3a1f20; }}
+{_DANGER} {{ background-color: {DANGER_SUBTLE}; color: {DANGER_TEXT}; border: 1px solid {DANGER_BORDER}; }}
+{_each(_DANGER, ":hover")} {{ background-color: {DANGER_HOVER}; border-color: {DANGER}; }}
+{_each(_DANGER, ":disabled")} {{ color: {DANGER_DISABLED_TEXT}; border-color: {DANGER_DISABLED_BORDER}; }}
 QPushButton#iconButton, QPushButton#refreshServers, QPushButton#addServerButton {{
     background: transparent; border: none; border-radius: 6px; padding: 6px; min-width: 16px;
 }}
@@ -181,6 +338,11 @@ QLineEdit:disabled, QSpinBox:disabled {{ color: {TEXT_FAINT}; border-color: {BOR
 QLineEdit[readOnly="true"] {{ color: {TEXT_SECONDARY}; }}
 QLineEdit[invalid="true"], QComboBox[invalid="true"], QSpinBox[invalid="true"] {{ border-color: {DANGER}; }}
 QSpinBox QLineEdit {{ background: transparent; border: none; padding: 0px 0px 0px 6px; }}
+/* Drop-down and step buttons: no frame of their own (Qt draws a black one otherwise); the arrows stay native. */
+QComboBox::drop-down {{ border: none; background: transparent; width: 24px; }}
+QSpinBox::up-button, QSpinBox::down-button {{ border: none; background: transparent; width: 18px; }}
+QSpinBox::up-button:hover, QSpinBox::down-button:hover, QComboBox::drop-down:hover {{ background-color: {SURFACE_HOVER}; }}
+{_arrow_rules()}
 QProgressBar#creationProgress {{ background-color: {SURFACE_HOVER}; border: none; border-radius: 2px; }}
 QProgressBar#creationProgress::chunk {{ background-color: {ACCENT}; border-radius: 2px; }}
 QCheckBox {{ spacing: 10px; color: {TEXT}; }}
@@ -196,7 +358,7 @@ QFrame[card="true"] {{ background-color: {SURFACE_CARD}; border: 1px solid {BORD
 QFrame[card="true"] QLabel {{ background: transparent; border: none; }}
 QFrame[panelBar="top"] {{ border: none; border-bottom: 1px solid {BORDER}; background: transparent; }}
 QFrame[panelBar="bottom"] {{ border: none; border-top: 1px solid {BORDER}; background: transparent; }}
-QFrame[panelBar="band"] {{ border: none; border-bottom: 1px solid {BORDER}; background-color: #1a1a1e; }}
+QFrame[panelBar="band"] {{ border: none; border-bottom: 1px solid {BORDER}; background-color: {SURFACE_BAND}; }}
 QLabel#serverTitle {{ font-size: 22px; font-weight: 600; }}
 QLabel#serverSubtitle {{ color: {TEXT_MUTED}; font-size: 12px; }}
 QLabel#fieldLabel {{ color: {TEXT_MUTED}; font-size: 12px; }}
@@ -205,15 +367,19 @@ QLabel#metricValue {{ color: {TEXT}; font-size: 12px; font-weight: 600; }}
 QLabel#controlHint {{ color: {TEXT_MUTED}; font-size: 12px; }}
 QLabel#controlHint[tone="warning"] {{ color: {WARNING_TEXT}; }}
 QLabel#panelTitle {{ color: {TEXT}; font-weight: 600; }}
-QLabel#panelCount {{ color: {TEXT_FAINT}; font-size: 12px; }}
+QLabel#panelCount {{ color: {TEXT_MUTED}; font-size: 12px; }}
 QLabel#monoTitle {{ font-family: {MONO_FAMILY}; font-weight: 600; }}
+QLabel#folderPath {{
+    font-family: {MONO_FAMILY}; font-size: 12px; color: {TEXT};
+    background-color: {SURFACE_CONSOLE}; border: 1px solid {BORDER}; border-radius: 6px; padding: 8px 10px;
+}}
 QLabel#propertyKey {{ font-family: {MONO_FAMILY}; font-size: 12px; color: {TEXT_SECONDARY}; }}
 QLabel#propertyKey[invalid="true"] {{ color: {DANGER_TEXT}; }}
 QLabel#unsavedCount {{ color: {WARNING_TEXT}; font-size: 12px; }}
 QLabel#emptyTitle {{ font-size: 14px; font-weight: 600; }}
 QLabel#emptyText {{ color: {TEXT_MUTED}; font-size: 12px; }}
 QLabel#iconTile {{ background-color: {SURFACE_RAISED}; border-radius: 10px; }}
-QLabel#iconTile[tone="accent"] {{ background-color: {ACCENT_SUBTLE}; border: 1px solid #1b5a45; border-radius: 12px; }}
+QLabel#iconTile[tone="accent"] {{ background-color: {ACCENT_SUBTLE}; border: 1px solid {ACCENT_BORDER}; border-radius: 12px; }}
 
 QLabel#statusPill {{
     border-radius: 11px; padding: 2px 10px 2px 8px; font-weight: 600; font-size: 12px;
@@ -227,13 +393,23 @@ QLabel#statusPill[status="killing"] {{ color: {DANGER_TEXT}; background-color: {
 
 QFrame#banner {{ border-radius: 8px; border: 1px solid {BORDER}; }}
 QFrame#banner QLabel {{ background: transparent; border: none; color: {TEXT}; }}
-QFrame#banner[tone="error"] {{ background-color: {DANGER_SUBTLE}; border-color: #5b2526; }}
-QFrame#banner[tone="notice"] {{ background-color: {WARNING_SUBTLE}; border-color: #5a4114; }}
-QFrame#banner[tone="success"] {{ background-color: {ACCENT_SUBTLE}; border-color: #1b5a45; }}
-QFrame#banner[tone="info"] {{ background-color: {INFO_SUBTLE}; border-color: #23446b; }}
+QFrame#banner[tone="error"] {{ background-color: {DANGER_SUBTLE}; border-color: {DANGER_SUBTLE_BORDER}; }}
+QFrame#banner[tone="notice"] {{ background-color: {WARNING_SUBTLE}; border-color: {WARNING_SUBTLE_BORDER}; }}
+QFrame#banner[tone="success"] {{ background-color: {ACCENT_SUBTLE}; border-color: {ACCENT_BORDER}; }}
+QFrame#banner[tone="info"] {{ background-color: {INFO_SUBTLE}; border-color: {INFO_SUBTLE_BORDER}; }}
 QFrame#banner[tone="error"] QPushButton {{ color: {DANGER_TEXT}; }}
 QFrame#banner[tone="notice"] QPushButton {{ color: {WARNING_TEXT}; }}
 QFrame#banner[tone="success"] QPushButton {{ color: {ACCENT_HOVER}; }}
+QFrame#toast, QFrame#toastMoreRow {{
+    background-color: {SURFACE_RAISED}; border: 1px solid {BORDER_STRONG}; border-radius: 8px;
+}}
+QFrame#toast {{ border-left: 3px solid {INFO}; }}
+QFrame#toast[tone="error"] {{ border-left-color: {DANGER}; }}
+QFrame#toast[tone="notice"] {{ border-left-color: {WARNING}; }}
+QFrame#toast[tone="success"] {{ border-left-color: {ACCENT}; }}
+QFrame#toast QLabel, QFrame#toastMoreRow QLabel {{ background: transparent; border: none; color: {TEXT}; }}
+QLabel#toastMore {{ color: {TEXT_SECONDARY}; }}
+QFrame#toast[tone="error"] QPushButton#linkButton {{ color: {DANGER_TEXT}; }}
 QFrame#banner[tone="info"] QPushButton {{ color: {INFO}; }}
 
 /* Console */
@@ -250,7 +426,7 @@ QLabel#consoleUnavailable {{ color: {TEXT_MUTED}; padding: 16px; background-colo
 /* Welcome */
 QLabel#welcomeTitle {{ color: {TEXT}; font-size: 22px; font-weight: 600; }}
 QLabel#welcomeText {{ color: {TEXT_SECONDARY}; font-size: 13px; }}
-QLabel#welcomeLegacy {{ color: {TEXT_FAINT}; font-size: 12px; }}
+QLabel#welcomeLegacy {{ color: {TEXT_MUTED}; font-size: 12px; }}
 
 /* Tabs */
 QTabWidget#dashboardTabs::pane {{ border: none; border-top: 1px solid {BORDER}; top: -1px; }}
@@ -282,4 +458,83 @@ QListWidget#versionList {{
 QListWidget#versionList::item {{ padding: 5px 8px; border-radius: 6px; }}
 QListWidget#versionList::item:hover {{ background-color: {BORDER}; }}
 QListWidget#versionList::item:selected {{ background-color: {ACCENT_SUBTLE}; color: {TEXT}; }}
+
+/* Dialogs over the dimmed window (UX overhaul) */
+QFrame#modalCard {{ background-color: {SURFACE_CARD}; border: 1px solid {BORDER_STRONG}; border-radius: 12px; }}
+QFrame#modalCard QFrame#dialogCard {{ background: transparent; border: none; }}
+QFrame#modalCard QFrame#dialogFooter {{
+    border-bottom-left-radius: 12px; border-bottom-right-radius: 12px;
+}}
+QScrollArea#modalScroll, QScrollArea#modalScroll > QWidget > QWidget {{ background: transparent; border: none; }}
+QPushButton#disclosureButton {{
+    background: transparent; border: 1px solid transparent; border-radius: 6px;
+    color: {TEXT_SECONDARY}; font-weight: 600; padding: 4px 8px 4px 4px; text-align: left;
+}}
+QPushButton#disclosureButton:hover {{ color: {TEXT}; background-color: {SURFACE_HOVER}; }}
+QPushButton#disclosureButton:focus {{ border-color: {FOCUS}; }}
+
+/* Settings and server properties: grouped rows (UX overhaul) */
+QDialog#settingsPage QFrame#dialogCard {{ background: transparent; border: none; }}
+QDialog#settingsPage QFrame#dialogFooter {{ background: transparent; border-top: 1px solid {BORDER}; }}
+QFrame#pageFooter {{ background-color: {BG_APP}; border: none; border-top: 1px solid {BORDER}; }}
+QFrame#settingsGroup {{ background-color: {SURFACE_CARD}; border: 1px solid {BORDER}; border-radius: 10px; }}
+QFrame#settingsRow {{ background: transparent; border: none; border-top: 1px solid {BORDER}; }}
+QFrame#settingsRow[first="true"] {{ border-top: none; }}
+QFrame#settingsGroup QLabel {{ background: transparent; border: none; }}
+QLabel#settingsSection {{ color: {TEXT}; font-size: 14px; font-weight: 600; }}
+QLabel#settingTitle {{ color: {TEXT}; font-size: 13px; }}
+QLabel#settingTitle[invalid="true"] {{ color: {DANGER_TEXT}; }}
+QLabel#settingStatus {{ color: {TEXT}; font-weight: 600; }}
+QLabel#settingStatus[tone="problem"] {{ color: {WARNING_TEXT}; }}
+QLabel#monoValue {{ color: {TEXT_SECONDARY}; font-family: {MONO_FAMILY}; font-size: 12px; }}
+
+/* Memory slider (UX overhaul) */
+QLabel#memoryValue {{ color: {TEXT}; font-size: 18px; font-weight: 600; min-width: 64px; }}
+QLabel#memoryValue[warning="true"] {{ color: {WARNING_TEXT}; }}
+QSlider#memorySliderBar::groove:horizontal {{ height: 4px; background: {BORDER_STRONG}; border-radius: 2px; }}
+QSlider#memorySliderBar::sub-page:horizontal {{ background: {ACCENT}; border-radius: 2px; }}
+QSlider#memorySliderBar::handle:horizontal {{
+    background: {SURFACE_CARD}; border: 2px solid {ACCENT}; width: 14px; height: 14px; margin: -7px 0; border-radius: 9px;
+}}
+QSlider#memorySliderBar::handle:horizontal:hover {{ background: {ACCENT_SUBTLE}; }}
+QSlider#memorySliderBar:focus::handle:horizontal {{ border-color: {FOCUS}; }}
+QSlider#memorySliderBar::sub-page:horizontal:disabled {{ background: {TEXT_FAINT}; }}
+QPushButton#chipButton {{
+    background-color: transparent; color: {TEXT_SECONDARY}; border: 1px solid {BORDER_STRONG};
+    border-radius: 12px; padding: 3px 10px; font-size: 12px;
+}}
+QPushButton#chipButton:hover {{ color: {TEXT}; border-color: {TEXT_FAINT}; }}
+QPushButton#chipButton:checked {{ color: {ACCENT_HOVER}; background-color: {ACCENT_SUBTLE}; border-color: {ACCENT_BORDER}; }}
+QPushButton#chipButton:focus {{ border-color: {FOCUS}; }}
+QLabel#jarName {{ color: {TEXT_MUTED}; }}
+QLabel#jarName[chosen="true"] {{ color: {TEXT}; font-weight: 600; }}
+
+/* Dashboard: stat tiles and tab-bar actions (UX overhaul) */
+QFrame#statTile {{ background-color: {SURFACE_CARD}; border: 1px solid {BORDER}; border-radius: 10px; }}
+QFrame#statTile QLabel {{ background: transparent; border: none; }}
+QLabel#tileCaption {{ color: {TEXT_MUTED}; font-size: 11px; font-weight: 600; letter-spacing: 0.6px; }}
+QLabel#tileValue {{ color: {TEXT}; font-size: 22px; font-weight: 600; }}
+QLabel#tileDetail {{ color: {TEXT_MUTED}; font-size: 12px; }}
+QLabel#addressValue {{ color: {TEXT}; font-family: {MONO_FAMILY}; font-size: 12px; }}
+QPushButton#toolButton {{ background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 6px; }}
+QPushButton#toolButton:hover {{ background-color: {SURFACE_HOVER}; }}
+QPushButton#toolButton:focus {{ border-color: {FOCUS}; }}
+QPushButton#toolButton:disabled {{ background: transparent; }}
+
+/* Keyboard focus (M4-GUI-07): every control shows where the focus is, in a colour no state uses. */
+{_PRIMARY}, {_SECONDARY}, {_DANGER}, QPushButton {{ outline: none; }}
+{_each(_PRIMARY, ":focus")} {{ border: 1px solid {FOCUS}; }}
+{_each(_SECONDARY, ":focus")}, {_each(_DANGER, ":focus")}, {_each(_GHOST, ":focus")} {{ border-color: {FOCUS}; }}
+QPushButton#iconButton:focus, QPushButton#refreshServers:focus, QPushButton#addServerButton:focus {{
+    background-color: {SURFACE_HOVER};
+}}
+QPushButton#linkButton:focus, QPushButton#detailsButton:focus {{ text-decoration: underline; }}
+QComboBox:focus, QPlainTextEdit:focus, QTableWidget:focus, QListWidget:focus {{ border: 1px solid {FOCUS}; }}
+QListWidget#serverList:focus {{ border: none; }}
+QCheckBox:focus {{ color: {FOCUS}; }}
+QCheckBox::indicator:focus {{ border-color: {FOCUS}; }}
+QTabBar::tab:focus {{ color: {FOCUS}; }}
 """
+
+
+apply(DEFAULT_THEME)

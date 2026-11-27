@@ -23,6 +23,7 @@ from mcserver.application.server_properties import ServerPropertiesService
 from mcserver.application.server_provisioning import ServerProvisioning
 from mcserver.application.settings import SettingsService
 from mcserver.application.worlds import WorldService
+from mcserver.presentation.metrics_history import MetricsHistory
 
 
 class PresentationServices:
@@ -57,6 +58,7 @@ class PresentationServices:
         scheduled_backups: ScheduledBackups | None = None,
         worlds: WorldService | None = None,
         jar_catalog: ServerJarCatalog | None = None,
+        system_memory_mb: int | None = None,
     ) -> None:
         """Hold the services; ``closer`` releases backend resources on shutdown."""
         self.servers_root = servers_root
@@ -72,12 +74,16 @@ class PresentationServices:
         self.health = health
         """Unclean-shutdown incidents from the previous session."""
         self.settings = settings
-        """Application settings (Java, timeouts, one-time legacy import offer)."""
+        """Application settings (Java, timeouts, language, theme)."""
         self.adoption = adoption
         """Imports existing server folders."""
         self.properties = properties
         """Reads and changes server.properties."""
         self.metrics = metrics
+        self.metrics_history = MetricsHistory()
+        self.system_memory_mb = system_memory_mb
+        """This PC's RAM, for the memory slider's range (``None``: unknown, a safe default is used)."""
+        """Recent CPU and memory samples; kept here so a rebuilt window shows the same charts."""
         """CPU, memory and uptime of the running server."""
         self.backups = backups
         """Backups and restores."""

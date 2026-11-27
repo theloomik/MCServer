@@ -1,18 +1,19 @@
-"""Edit, delete and import servers, legacy migration and application settings (M2 GUI)."""
+"""Edit, delete and import servers, and application settings (M2 GUI)."""
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, Signal
 
+from mcserver.application.progress import CancelToken
 from mcserver.application.server_adoption import FolderContents
-from mcserver.application.server_management import DeletedServer, LegacyImportResult
+from mcserver.application.server_management import DeletedServer
 from mcserver.domain.server_configuration import ServerConfiguration
 from mcserver.presentation.errors import UserMessage, describe_error
 from mcserver.presentation.services import PresentationServices
-from mcserver.presentation.workers import BackgroundRunner
+from mcserver.presentation.workers import BackgroundRunner, ProgressRelay
 
 _logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ class ManagementController(QObject):
     """Run installation-level operations through the application use cases.
 
     Small changes (edit, settings) run synchronously and return an error
-    message or ``None``. Slow ones (delete, folder copy, legacy import) run in
+    message or ``None``. Slow ones (delete, folder copy) run in
     the background and report through signals. Business rules stay in the
     use cases; this controller only translates results into messages.
     """
@@ -30,8 +31,7 @@ class ManagementController(QObject):
     message = Signal(object)  # UserMessage for the status bar
     failed = Signal(object)  # UserMessage
     busy_changed = Signal(bool)
-    copy_progress = Signal(int, int)  # bytes copied, total bytes
-    legacy_imported = Signal(object)  # LegacyImportResult
+    copy_progress = Signal(object)  # Progress
 
     def __init__(self, services: PresentationServices, runner: BackgroundRunner, parent: QObject | None = None) -> None:
         """Use ``services``; background work goes through ``runner``."""
@@ -40,8 +40,9 @@ class ManagementController(QObject):
         self._runner = runner
         self._busy = False
         # Progress is reported from the copy thread; deliver it on the GUI thread.
-        self._progress_relay = _ProgressRelay(self)
-        self._progress_relay.progress.connect(self.copy_progress, Qt.ConnectionType.QueuedConnection)
+        self._progress_relay = ProgressRelay(self)
+        self._progress_relay.connect_to(self.copy_progress)
+        self._cancel: CancelToken | None = None
 
     @property
     def busy(self) -> bool:
@@ -126,11 +127,19 @@ class ManagementController(QObject):
         adoption = self._services.adoption
         if adoption is None:
             return
-        relay = self._progress_relay
+        if self._busy:
+            return
+        relay, cancel = self._progress_relay, CancelToken()
+        self._cancel = cancel
 
         def work() -> ServerConfiguration:
             return adoption.adopt(
-                folder, server_id=server_id, jar_file=jar_file, memory_mb=memory_mb, progress=relay.report
+                folder,
+                server_id=server_id,
+                jar_file=jar_file,
+                memory_mb=memory_mb,
+                progress=relay.report,
+                cancel=cancel,
             )
 
         def done(created: ServerConfiguration) -> None:
@@ -139,42 +148,10 @@ class ManagementController(QObject):
 
         self._run(work, done)
 
-    # --- legacy import (M2-GUI-02) ----------------------------------------------------------------
-
-    def pending_legacy_servers(self) -> tuple[str, ...]:
-        """Return MCServer 0.9.1 servers not imported yet (none if the legacy list cannot be read)."""
-        try:
-            return self._services.management.pending_legacy_servers()
-        except Exception:
-            _logger.warning("Could not read the MCServer 0.9.1 server list.", exc_info=True)
-            return ()
-
-    def should_offer_legacy_import(self) -> bool:
-        """Return whether the one-time import offer should be shown now."""
-        settings = self._services.settings
-        if settings is not None and settings.current.legacy_import_offered:
-            return False
-        return bool(self.pending_legacy_servers())
-
-    def mark_legacy_import_offered(self) -> None:
-        """Remember that the offer was shown, so it is never repeated automatically."""
-        settings = self._services.settings
-        if settings is None or settings.current.legacy_import_offered:
-            return
-        try:
-            settings.update(legacy_import_offered=True)
-        except Exception:
-            _logger.warning("Could not save that the import was offered.", exc_info=True)
-
-    def import_legacy(self) -> None:
-        """Import MCServer 0.9.1 servers in the background (safe to repeat)."""
-        management = self._services.management
-
-        def done(result: LegacyImportResult) -> None:
-            self.legacy_imported.emit(result)
-            self.changed.emit(None)
-
-        self._run(management.import_legacy_servers, done)
+    def cancel_adopt(self) -> None:
+        """Ask the running copy to stop; the partly copied folder is removed."""
+        if self._cancel is not None and self._busy:
+            self._cancel.cancel()
 
     # --- settings (M2-GUI-01) ---------------------------------------------------------------------
 
@@ -210,16 +187,9 @@ class ManagementController(QObject):
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
+        if not busy:
+            self._cancel = None
         self.busy_changed.emit(busy)
-
-
-class _ProgressRelay(QObject):
-    """Carries copy progress from a worker thread to the GUI thread."""
-
-    progress = Signal(int, int)
-
-    def report(self, done: int, total: int) -> None:
-        self.progress.emit(done, total)
 
 
 __all__ = ["ManagementController"]

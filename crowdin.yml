@@ -1,0 +1,20 @@
+# Crowdin configuration: English is the source; Crowdin writes the other languages next to it.
+# Credentials come from the environment (never commit them):
+#   CROWDIN_PROJECT_ID, CROWDIN_PERSONAL_TOKEN
+# Use tools/crowdin_sync.py (upload / download) rather than the bare CLI: after a download it
+# merges with the committed files so no existing translation is lost. See docs/translations.md.
+"project_id_env": "CROWDIN_PROJECT_ID"
+"api_token_env": "CROWDIN_PERSONAL_TOKEN"
+"base_path": "."
+"preserve_hierarchy": true
+
+"files":
+  - "source": "/src/mcserver/presentation/i18n/locales/en.json"
+    "translation": "/src/mcserver/presentation/i18n/locales/%two_letters_code%.json"
+    # i18next JSON: plural forms are keys with suffixes (_one, _few, _many, _other), expanded per language.
+    "type": "i18next_json"
+    # Untranslated strings are left out of downloads (MCServer shows English for them); the merge
+    # step keeps the repository's translation instead of ever writing English into uk.json.
+    "skip_untranslated_strings": true
+    # A corrected English text keeps its translations (marked unapproved) instead of losing them.
+    "update_option": "update_as_unapproved"
