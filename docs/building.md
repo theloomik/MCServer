@@ -1,27 +1,71 @@
-# Building the Windows app and installer
+# Building MCServer
+
+This page is for developers: setting up the project, running it from source, testing it, and
+building the Windows app and installer. Users want the [user guide](user-guide.md).
+
+## Development setup
+
+You need:
+
+- Windows 10 or 11, 64-bit (MCServer is a Windows app; some tests use Windows Job Objects).
+- [uv](https://docs.astral.sh/uv/), which installs the right Python (3.11) and the locked
+  dependencies (PySide6, psutil, and the dev tools: pytest, ruff, mypy, bandit, PyInstaller).
+- Git.
+
+```powershell
+git clone https://github.com/theloomik/MCServer.git
+cd MCServer
+uv sync --all-groups
+```
+
+### Run from source
+
+```powershell
+uv run python -m mcserver.presentation
+```
+
+Run from source, MCServer keeps its servers in `minecraft_servers` in the current folder, so
+development never touches the data of an installed copy (`%LOCALAPPDATA%\MCServer\servers`).
+
+### Tests and checks
+
+The same checks run on every push and pull request (`.github/workflows/quality.yml`):
+
+```powershell
+uv run ruff format --check src tests tools
+uv run ruff check src tests tools
+uv run mypy src/mcserver
+uv run pytest
+uv run bandit -q -r src/mcserver
+```
+
+Real-server smoke tests are skipped unless `MCSERVER_TEST_JAR` points to a server JAR. Texts in
+the interface are checked too: see [translations](translations.md) for adding or changing them
+(`uv run python tools/crowdin_sync.py check`).
+
+Architecture notes are in [gui-architecture.md](gui-architecture.md) and the decision records in
+[decisions/](decisions/).
+
+## Building the Windows app and installer
 
 MCServer 2.0 ships as a normal Windows program: a folder with `MCServer.exe` that runs
 without Python, and an installer that puts it on the Start menu. One command builds both.
 
-## What you need
+You also need [Inno Setup 6](https://jrsoftware.org/isdl.php) (6.6 or newer) for the installer.
+The build finds it in the usual install folders or on `PATH`; otherwise pass `--iscc`.
 
-- Windows 10 or 11, 64-bit.
-- The project's virtual environment with the dev dependencies (`uv sync`), which include PyInstaller.
-- [Inno Setup 6](https://jrsoftware.org/isdl.php) (6.6 or newer) for the installer. The build finds
-  it in the usual install folders or on `PATH`; otherwise pass `--iscc`.
-
-## Build
+### Build
 
 From the repository root:
 
 ```powershell
-.venv\Scripts\python tools\build_windows.py
+uv run python tools\build_windows.py
 ```
 
 Only the app folder, without the installer:
 
 ```powershell
-.venv\Scripts\python tools\build_windows.py --skip-installer
+uv run python tools\build_windows.py --skip-installer
 ```
 
 The build:
@@ -32,7 +76,7 @@ The build:
 4. runs PyInstaller with `packaging/windows/MCServer.spec`;
 5. runs Inno Setup with `packaging/windows/MCServer.iss`.
 
-## Output
+### Output
 
 | Path | What it is |
 |------|------------|
@@ -42,13 +86,13 @@ The build:
 
 `build/` and `dist/` are ignored by Git; never commit what the build produces.
 
-## Changing the version
+### Changing the version
 
 Edit `__version__` in `src/mcserver/__init__.py`. `pyproject.toml`, the About dialog, the exe's
 details and the installer all read it from there. Windows needs a numeric file version, so
 `2.0.0a1` becomes `2.0.0.0` in the file details; the full text stays in "Product version".
 
-## Where things go on the user's PC
+### Where things go on the user's PC
 
 | What | Where |
 |------|-------|
@@ -61,10 +105,7 @@ User data never lives in the program folder, so upgrading or uninstalling never 
 The uninstaller removes only the files it installed; the servers folder stays until the user
 deletes it.
 
-Run from source (`python -m mcserver.presentation`), MCServer uses `minecraft_servers` in the
-current folder instead, so development never touches the data of an installed copy.
-
-## Packaging notes
+### Packaging notes
 
 - **One folder, not one file.** A one-file exe unpacks itself to `%TEMP%` on every start: slower,
   and more often flagged by antivirus software. The installer installs the folder.
@@ -82,13 +123,13 @@ current folder instead, so development never touches the data of an installed co
 - **Not signed.** The exe and installer are not code-signed yet, so Windows SmartScreen warns on
   first run ("Windows protected your PC" → More info → Run anyway). Signing needs a certificate.
 
-## MCServer 0.9.1
+### MCServer 0.9.1
 
 The old `MCServer.spec`, `build.ps1` and `installer/setup.iss` in the repository root build
 MCServer 0.9.1 and are left as they were. The 2.0 installer has its own AppId, so it installs next
 to 0.9.1 rather than replacing it; both use the same servers folder.
 
-## Checking a build
+### Checking a build
 
 Before publishing an installer, on a PC (ideally one without Python):
 
