@@ -487,5 +487,7 @@
   "a11y.worlds_table": "Worlds",
   "menu.view": "&View",
   "menu.view.server_list": "Go to server &list",
-  "menu.view.console": "Go to console &command"
+  "menu.view.console": "Go to console &command",
+  "errors.server_not_found": "{server_id} is no longer in the server list. It may have been removed outside MCServer; refresh the list.",
+  "errors.invalid_schedule": "The backup schedule was not saved: back up every {min_hours}–{max_hours} hours and keep {min_keep}–{max_keep} backups."
 }
