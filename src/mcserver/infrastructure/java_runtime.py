@@ -80,6 +80,10 @@ def parse_java_major(version_output: str) -> int | None:
 VersionProbe = Callable[[Path], int | None]
 
 
+NO_CONSOLE_WINDOW = 0x08000000 if sys.platform == "win32" else 0
+"""``CREATE_NO_WINDOW``: probing Java from the packaged app (no console) must not flash a console window."""
+
+
 def probe_java_version(executable: Path) -> int | None:
     """Run ``executable -version`` and return its major version, or ``None`` if it does not work."""
     if not executable.is_file():
@@ -94,6 +98,7 @@ def probe_java_version(executable: Path) -> int | None:
             timeout=10,
             check=False,
             errors="replace",
+            creationflags=NO_CONSOLE_WINDOW,
         )
     except (OSError, TimeoutExpired):
         return None
