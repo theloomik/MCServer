@@ -4,7 +4,7 @@ The application's identity lives here, in one place: the version (also read by
 ``pyproject.toml`` and the Windows build), the name and the project's home page.
 """
 
-__version__ = "2.0.0a1"
+__version__ = "2.0.0"
 
 APP_NAME = "MCServer"
 PUBLISHER = "LooMik"

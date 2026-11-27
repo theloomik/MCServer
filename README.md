@@ -46,6 +46,7 @@ open MCServer from the Start menu. No administrator rights needed. The
 ## Links
 
 - [User guide](docs/user-guide.md) — install, create, run, back up, troubleshoot
+- [What's new](CHANGELOG.md) — changes in each release
 - [Building from source](docs/building.md) — development setup, tests, app and installer builds
 - [Translations](docs/translations.md) — help translate MCServer
 - [Report a bug or suggest a feature](https://github.com/theloomik/MCServer/issues/new/choose)
